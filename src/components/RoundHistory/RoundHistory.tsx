@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { supabase, rowToRound, rowToHoleScore } from '../../lib/supabase'
-import { buildCourseHandicaps, fmtAmount, strokesOnHole } from '../../lib/gameLogic'
+import { buildCourseHandicaps, fmtAmount, strokesOnHole, isUnitGame } from '../../lib/gameLogic'
 import { makePlayableSnapshot, roundToHolesConfig } from '../../lib/holeUtils'
 import { ConfirmModal } from '../ConfirmModal'
 import type { Round, HoleScore, RoundPlayer, GameType } from '../../types'
@@ -139,7 +139,8 @@ export function RoundHistory({ userId, onBack, onViewSettlements, onPlayAgain }:
           const game = round.game
           const players = round.players ?? []
           const isExpanded = expandedId === round.id
-          const potCents = game ? game.buyInCents * players.length : 0
+          // Unit games (wolf/banker/hammer/dots) have no pot — buyIn × N is meaningless.
+          const potCents = game && !isUnitGame(game.type) ? game.buyInCents * players.length : 0
           const sStatus = settlementStatus.get(round.id)
 
           return (
