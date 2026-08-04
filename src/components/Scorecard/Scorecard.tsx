@@ -235,6 +235,9 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
   const [confirmParFill, setConfirmParFill] = useState(false)
   const [showMiniBoard, setShowMiniBoard] = useState(false)
   const [showGameStatus, setShowGameStatus] = useState(true)
+  // BBB (Bingo Bango Bongo) settles from points, not strokes — so golf-score entry
+  // is optional and collapsed by default, and the standings/nags key off points.
+  const [showScoreEntry, setShowScoreEntry] = useState(false)
   const { isOnline } = useOnlineStatus()
   const [syncing, setSyncing] = useState(false)
   const [pendingCount, setPendingCount] = useState(getPending())
@@ -1251,6 +1254,8 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
   const miniBoard = useMemo(() => {
     if (!playableSnapshot) return []
     const pSnap = playableSnapshot
+    // BBB is a points game — rank by points, not strokes.
+    const isBBB = game?.type === 'bingo_bango_bongo'
     const board = players.map(p => {
       const pScores = holeScores.filter(s => s.playerId === p.id && playableHoleNums.includes(s.holeNumber))
       const gross = pScores.reduce((s, hs) => s + hs.grossScore, 0)
@@ -1265,15 +1270,19 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
         return s + (hole?.par ?? 0)
       }, 0)
       const vsPar = gross - scoredPar
-      return { player: p, gross, net, vsPar, thru: pScores.length }
-    }).sort((a, b) => a.net - b.net)
+      const points = bbbResult?.pointsWon[p.id] ?? 0
+      return { player: p, gross, net, vsPar, thru: pScores.length, points }
+    }).sort((a, b) => (isBBB ? b.points - a.points : a.net - b.net))
     const positions: number[] = []
     board.forEach((entry, idx) => {
       if (idx === 0) positions.push(1)
-      else positions.push(entry.net === board[idx - 1].net ? positions[idx - 1] : idx + 1)
+      else {
+        const tied = isBBB ? entry.points === board[idx - 1].points : entry.net === board[idx - 1].net
+        positions.push(tied ? positions[idx - 1] : idx + 1)
+      }
     })
     return board.map((entry, idx) => ({ ...entry, pos: positions[idx] }))
-  }, [players, holeScores, playableSnapshot, playableHoleNums, courseHcps])
+  }, [players, holeScores, playableSnapshot, playableHoleNums, courseHcps, game, bbbResult])
 
   const headerClass = game?.stakesMode === 'high_roller' ? 'hr-header' : 'app-header'
 
@@ -1696,9 +1705,13 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
                     <span key={e.player.id}>
                       {i > 0 && <span className="text-gray-300 mx-0.5">·</span>}
                       {e.pos}. {e.player.name}{' '}
-                      <span className={e.vsPar > 0 ? 'text-red-500' : e.vsPar < 0 ? 'text-green-600' : 'text-gray-400'}>
-                        ({e.thru > 0 ? `${e.vsPar > 0 ? '+' : ''}${e.vsPar === 0 ? 'E' : e.vsPar}` : '—'})
-                      </span>
+                      {game?.type === 'bingo_bango_bongo' ? (
+                        <span className="text-purple-600 font-bold">{e.points}pt</span>
+                      ) : (
+                        <span className={e.vsPar > 0 ? 'text-red-500' : e.vsPar < 0 ? 'text-green-600' : 'text-gray-400'}>
+                          ({e.thru > 0 ? `${e.vsPar > 0 ? '+' : ''}${e.vsPar === 0 ? 'E' : e.vsPar}` : '—'})
+                        </span>
+                      )}
                     </span>
                   ))}
                 </div>
@@ -1712,8 +1725,14 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
                     <tr className="text-xs text-gray-400 uppercase">
                       <th className="text-left py-1 px-1 font-medium w-6">Pos</th>
                       <th className="text-left py-1 px-1 font-medium">Player</th>
-                      <th className="text-center py-1 px-1 font-medium"><Tooltip term="Net">Net</Tooltip></th>
-                      <th className="text-center py-1 px-1 font-medium">vs Par</th>
+                      {game?.type === 'bingo_bango_bongo' ? (
+                        <th className="text-center py-1 px-1 font-medium">Points</th>
+                      ) : (
+                        <>
+                          <th className="text-center py-1 px-1 font-medium"><Tooltip term="Net">Net</Tooltip></th>
+                          <th className="text-center py-1 px-1 font-medium">vs Par</th>
+                        </>
+                      )}
                     </tr>
                   </thead>
                   <tbody>
@@ -1721,10 +1740,16 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
                       <tr key={e.player.id} className={e.pos === 1 ? 'bg-amber-50' : ''}>
                         <td className={`py-1 px-1 font-bold text-sm ${e.pos === 1 ? 'text-amber-600' : 'text-gray-500'}`}>{e.pos}</td>
                         <td className="py-1 px-1 font-semibold text-gray-800 text-sm">{e.player.name}</td>
-                        <td className="py-1 px-1 text-center font-semibold text-gray-700 text-sm">{e.net || '—'}</td>
-                        <td className={`py-1 px-1 text-center font-semibold text-sm ${e.vsPar > 0 ? 'text-red-600' : e.vsPar < 0 ? 'text-green-600' : 'text-gray-400'}`}>
-                          {e.thru > 0 ? `${e.vsPar > 0 ? '+' : ''}${e.vsPar === 0 ? 'E' : e.vsPar}` : '—'}
-                        </td>
+                        {game?.type === 'bingo_bango_bongo' ? (
+                          <td className="py-1 px-1 text-center font-bold text-purple-600 text-sm">{e.points} pt</td>
+                        ) : (
+                          <>
+                            <td className="py-1 px-1 text-center font-semibold text-gray-700 text-sm">{e.net || '—'}</td>
+                            <td className={`py-1 px-1 text-center font-semibold text-sm ${e.vsPar > 0 ? 'text-red-600' : e.vsPar < 0 ? 'text-green-600' : 'text-gray-400'}`}>
+                              {e.thru > 0 ? `${e.vsPar > 0 ? '+' : ''}${e.vsPar === 0 ? 'E' : e.vsPar}` : '—'}
+                            </td>
+                          </>
+                        )}
                       </tr>
                     ))}
                   </tbody>
@@ -2396,8 +2421,18 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
           )
         })()}
 
+        {/* BBB doesn't need strokes — offer golf-score entry as an optional, collapsed section. */}
+        {!showBatchEntry && game?.type === 'bingo_bango_bongo' && (
+          <button
+            onClick={() => setShowScoreEntry(v => !v)}
+            className="w-full text-sm font-semibold text-gray-500 py-2.5 rounded-xl bg-gray-50 dark:bg-gray-800 active:bg-gray-100 transition-colors"
+          >
+            {showScoreEntry ? 'Hide golf scores' : '⛳ Enter golf scores (optional) ▸'}
+          </button>
+        )}
+
         {/* Score cards */}
-        {!showBatchEntry && players.map(player => {
+        {!showBatchEntry && (game?.type !== 'bingo_bango_bongo' || showScoreEntry) && players.map(player => {
           const grossScore = getScore(player.id)
           const courseHcp = courseHcps[player.id] ?? 0
           const strokesGiven = strokesOnHole(courseHcp, strokeIndex)
@@ -2599,8 +2634,9 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
           )
         })()}
 
-        {/* Next Hole / End Round — in scrollable content */}
-        {!showBatchEntry && !readOnly && !showHoleConfirm && (() => {
+        {/* Next Hole / End Round — in scrollable content. BBB settles from points,
+            so a missing-strokes nag would be noise there. */}
+        {!showBatchEntry && !readOnly && !showHoleConfirm && game?.type !== 'bingo_bango_bongo' && (() => {
           const missingPlayers = players.filter(p => !holeScores.some(s => s.playerId === p.id && s.holeNumber === currentHole))
           return missingPlayers.length > 0 ? (
             <p className="text-amber-600 text-xs font-medium text-center py-1.5 bg-amber-50 rounded-xl">
