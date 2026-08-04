@@ -40,6 +40,7 @@ import {
   strokesOnHole,
   fmtAmount,
 } from '../../lib/gameLogic'
+import type { BestBallResult } from '../../lib/gameLogic'
 import { makePlayableSnapshot, getPlayableHoleNumbers, roundToHolesConfig } from '../../lib/holeUtils'
 import type {
   Round,
@@ -179,7 +180,21 @@ function SkinsStatus({ carry, potCents, stakesMode }: { carry: number; potCents:
   )
 }
 
-function BestBallStatus({ holesWon }: { holesWon: { A: number; B: number; tied: number } }) {
+function BestBallStatus({ result, scoring }: { result: BestBallResult; scoring: 'match' | 'total' }) {
+  // Stroke Play (total): the winner is decided by total strokes, so the scoreboard
+  // must show strokes — not holes-won, which could contradict the payout.
+  if (scoring === 'total') {
+    const { A, B } = result.totalScore
+    const diff = A - B
+    const label = diff === 0 ? 'All Square' : diff < 0 ? `Team A leads` : `Team B leads`
+    return (
+      <div className="bg-blue-50 border border-blue-200 rounded-xl px-3 py-2">
+        <span className="text-blue-700 font-bold text-sm">{label}</span>
+        <span className="text-blue-500 text-xs ml-2">(A {A} · B {B} strokes)</span>
+      </div>
+    )
+  }
+  const { holesWon } = result
   const diff = holesWon.A - holesWon.B
   const label = diff === 0 ? 'All Square' : diff > 0 ? `Team A +${diff}` : `Team B +${Math.abs(diff)}`
   return (
@@ -1744,9 +1759,12 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
                       </p>
                     )
                   })()}
-                  {bestBallResult && (
+                  {bestBallResult && game && (
                     <p className="text-xs text-gray-500">
-                      <span className="font-semibold">Best Ball:</span> Team A {bestBallResult.holesWon.A} – Team B {bestBallResult.holesWon.B}
+                      <span className="font-semibold">Best Ball:</span>{' '}
+                      {(game.config as BestBallConfig).scoring === 'total'
+                        ? `Team A ${bestBallResult.totalScore.A} – Team B ${bestBallResult.totalScore.B} strokes`
+                        : `Team A ${bestBallResult.holesWon.A} – Team B ${bestBallResult.holesWon.B}`}
                     </p>
                   )}
                   {wolfResult && (
@@ -1945,7 +1963,7 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
                 )}
               </div>
             )}
-            {showGameStatus && bestBallResult && <BestBallStatus holesWon={bestBallResult.holesWon} />}
+            {showGameStatus && bestBallResult && game && <BestBallStatus result={bestBallResult} scoring={(game.config as BestBallConfig).scoring} />}
 
             {/* Nassau status */}
             {showGameStatus && nassauResult && game && (() => {

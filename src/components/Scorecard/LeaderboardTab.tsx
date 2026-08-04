@@ -213,23 +213,34 @@ export function LeaderboardTab({
           </div>
         )}
 
-        {/* Best Ball */}
-        {bestBallResult && (
-          <div className="mt-3 pt-3 border-t border-gray-100">
-            <p className="text-xs font-semibold text-gray-500 uppercase mb-1">Best Ball ({primaryLabel})</p>
-            <p className="text-sm font-semibold text-gray-700">
-              Team A: {bestBallResult.holesWon.A}W · Team B: {bestBallResult.holesWon.B}W · Tied: {bestBallResult.holesWon.tied}
-            </p>
-          </div>
-        )}
-        {bestBallResultAlt && (
-          <div className="mt-2 pl-2 border-l-2 border-gray-200">
-            <p className="text-xs font-medium text-gray-400 uppercase mb-1">Best Ball ({altLabel})</p>
-            <p className="text-sm text-gray-500">
-              Team A: {bestBallResultAlt.holesWon.A}W · Team B: {bestBallResultAlt.holesWon.B}W · Tied: {bestBallResultAlt.holesWon.tied}
-            </p>
-          </div>
-        )}
+        {/* Best Ball — Stroke Play (total) shows strokes to match the payout; Match
+            Play shows holes won. */}
+        {bestBallResult && game && (() => {
+          const isTotal = (game.config as BestBallConfig).scoring === 'total'
+          return (
+            <div className="mt-3 pt-3 border-t border-gray-100">
+              <p className="text-xs font-semibold text-gray-500 uppercase mb-1">Best Ball ({primaryLabel})</p>
+              <p className="text-sm font-semibold text-gray-700">
+                {isTotal
+                  ? `Team A: ${bestBallResult.totalScore.A} · Team B: ${bestBallResult.totalScore.B} strokes`
+                  : `Team A: ${bestBallResult.holesWon.A}W · Team B: ${bestBallResult.holesWon.B}W · Tied: ${bestBallResult.holesWon.tied}`}
+              </p>
+            </div>
+          )
+        })()}
+        {bestBallResultAlt && game && (() => {
+          const isTotal = (game.config as BestBallConfig).scoring === 'total'
+          return (
+            <div className="mt-2 pl-2 border-l-2 border-gray-200">
+              <p className="text-xs font-medium text-gray-400 uppercase mb-1">Best Ball ({altLabel})</p>
+              <p className="text-sm text-gray-500">
+                {isTotal
+                  ? `Team A: ${bestBallResultAlt.totalScore.A} · Team B: ${bestBallResultAlt.totalScore.B} strokes`
+                  : `Team A: ${bestBallResultAlt.holesWon.A}W · Team B: ${bestBallResultAlt.holesWon.B}W · Tied: ${bestBallResultAlt.holesWon.tied}`}
+              </p>
+            </div>
+          )
+        })()}
 
         {/* Nassau */}
         {nassauResult && (
