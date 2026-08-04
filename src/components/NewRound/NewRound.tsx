@@ -357,6 +357,10 @@ function PlayerPicker({
   const [newTee, setNewTee] = useState(course.tees[0]?.name ?? 'White')
   const [addError, setAddError] = useState('')
   const [saving, setSaving] = useState(false)
+  // "Invite to join" chooser sheet — explains the self-scoring path and directs to
+  // the in-round invite (the live share link/QR need the round to exist; that's a
+  // documented follow-up requiring the invite code to thread into round creation).
+  const [showInviteSheet, setShowInviteSheet] = useState(false)
   const [loadingPlayers, setLoadingPlayers] = useState(true)
 
   const MAX_PLAYERS = 6
@@ -548,13 +552,47 @@ function PlayerPicker({
             </div>
           </div>
         ) : (
-          <button
-            onClick={() => setShowAddForm(true)}
-            disabled={selectedIds.size >= MAX_PLAYERS}
-            className="w-full h-12 border-2 border-dashed border-amber-300 text-amber-600 font-semibold rounded-2xl active:bg-amber-50 disabled:opacity-40"
-          >
-            + Add Guest Player
-          </button>
+          <div className="grid grid-cols-2 gap-2">
+            {/* Two explicit intents for adding a new person (the core reframe). */}
+            <button
+              onClick={() => setShowAddForm(true)}
+              disabled={selectedIds.size >= MAX_PLAYERS}
+              className="py-3 px-3 border-2 border-dashed border-amber-300 text-left rounded-2xl active:bg-amber-50 disabled:opacity-40"
+            >
+              <p className="font-semibold text-amber-700 text-sm">👤 Add a guest</p>
+              <p className="text-[11px] text-gray-500 mt-0.5 leading-tight">I'll keep their score</p>
+            </button>
+            <button
+              onClick={() => setShowInviteSheet(true)}
+              disabled={selectedIds.size >= MAX_PLAYERS}
+              className="py-3 px-3 border-2 border-dashed border-emerald-300 text-left rounded-2xl active:bg-emerald-50 disabled:opacity-40"
+            >
+              <p className="font-semibold text-emerald-700 text-sm">📲 Invite to join</p>
+              <p className="text-[11px] text-gray-500 mt-0.5 leading-tight">They score on their own phone</p>
+            </button>
+          </div>
+        )}
+
+        {/* Invite-to-join explainer. The live share link/QR + by-name invite are
+            in the round itself (they need the round to exist) — this surfaces the
+            self-scoring path at the moment of adding and points there. */}
+        {showInviteSheet && (
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={() => setShowInviteSheet(false)}>
+            <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl max-w-sm w-full p-6 space-y-4 text-center" onClick={e => e.stopPropagation()}>
+              <div className="text-3xl">📲</div>
+              <h3 className="font-display font-bold text-lg text-gray-900 dark:text-gray-100">Invite friends to join</h3>
+              <p className="text-sm text-gray-500">
+                They score on their <strong>own phone</strong> — no account needed, just their name.
+              </p>
+              <div className="bg-emerald-50 dark:bg-emerald-900/20 rounded-xl p-3 text-sm text-emerald-800 dark:text-emerald-300 text-left space-y-1">
+                <p className="font-semibold">How it works:</p>
+                <p>1. Finish setup and tap <strong>Start Round</strong>.</p>
+                <p>2. In the round, open the <strong>⋮</strong> menu → <strong>Invite</strong>.</p>
+                <p>3. Share the link or QR — or invite a Gimme user by name.</p>
+              </div>
+              <button onClick={() => setShowInviteSheet(false)} className="w-full h-12 bg-emerald-600 text-white font-bold rounded-xl active:bg-emerald-700">Got it</button>
+            </div>
+          </div>
         )}
 
         <input
