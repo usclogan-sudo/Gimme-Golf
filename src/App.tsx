@@ -362,8 +362,12 @@ function Home({
           <GuestBanner onUpgrade={onUpgrade} />
         )}
 
-        {/* Primary CTA: Start New Round — directly below feedback banner */}
-        <button onClick={() => guardAnon(onNewRound)}
+        {/* Primary CTA: Start New Round. Guests can play a real round (it persists
+            under their anonymous session and upgrades in place when they create an
+            account) — otherwise "Try it first" is a dead-end. The GuestBanner above
+            nudges the upgrade. Events/Tournaments stay account-gated (they hinge on
+            inviting others). */}
+        <button onClick={onNewRound}
           className="w-full rounded-2xl shadow-lg overflow-hidden active:scale-[0.98] transition-transform"
           style={{ background: 'linear-gradient(135deg, #1f2937 0%, #374151 100%)' }}>
           <div className="px-6 py-5 flex items-center justify-between">
