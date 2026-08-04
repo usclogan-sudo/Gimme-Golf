@@ -5,8 +5,9 @@ import type { ShareCardStanding } from '../ShareCard/ShareCard'
 import {
   strokesOnHole, fmtAmount,
   calculateSkinsPayouts, calculateBestBallPayouts, calculateNassauPayouts,
-  calculateWolfPayouts, calculateBBBPayouts, calculateVegasPayouts,
+  calculateBBBPayouts, calculateVegasPayouts,
   calculateStablefordPayouts, calculateQuotaPayouts,
+  isUnitGame, unitGameNet, netFromPayouts,
 } from '../../lib/gameLogic'
 import type {
   SkinsResult, BestBallResult, NassauResult, WolfResult, BBBResult,
@@ -95,47 +96,43 @@ export function LeaderboardTab({
     const netByPlayer = new Map<string, number>()
     players.forEach(p => netByPlayer.set(p.id, 0))
 
-    // Direct-settlement results
-    if (hammerResult) {
-      Object.entries(hammerResult.netCents).forEach(([pid, c]) => {
+    // Use the SAME net the settlement engine records, so in-round standings match
+    // Settle Up. Unit games (hammer/dots/banker/wolf) settle head-to-head from a
+    // signed net (wolf/banker units × per-unit stake; hammer real cents); pot games
+    // are payout − buy-in.
+    const unitRaw =
+      game.type === 'wolf' ? wolfResult ?? undefined
+      : game.type === 'banker' ? bankerResult ?? undefined
+      : game.type === 'hammer' ? hammerResult ?? undefined
+      : undefined
+    if (isUnitGame(game.type) && unitRaw) {
+      Object.entries(unitGameNet(game.type, game.buyInCents, unitRaw)).forEach(([pid, c]) => {
         netByPlayer.set(pid, (netByPlayer.get(pid) ?? 0) + c)
       })
-    }
-    if (bankerResult) {
-      Object.entries(bankerResult.netCents).forEach(([pid, c]) => {
-        netByPlayer.set(pid, (netByPlayer.get(pid) ?? 0) + c)
-      })
-    }
+    } else {
+      // Pot-based dispatch — mirrors SettleUp.payouts
+      let payouts: PlayerPayout[] = []
+      if (game.type === 'skins' && skinsResult) {
+        payouts = calculateSkinsPayouts(skinsResult, game, players.length)
+      } else if (game.type === 'best_ball' && bestBallResult) {
+        payouts = calculateBestBallPayouts(bestBallResult, game.config as BestBallConfig, game, players)
+      } else if (game.type === 'nassau' && nassauResult) {
+        payouts = calculateNassauPayouts(nassauResult, game, players, holeScores, snapshot, courseHcps)
+      } else if (game.type === 'bingo_bango_bongo' && bbbResult) {
+        payouts = calculateBBBPayouts(bbbResult, game, players)
+      } else if (game.type === 'vegas' && vegasResult) {
+        payouts = calculateVegasPayouts(vegasResult, game.config as VegasConfig, game, players)
+      } else if (game.type === 'stableford' && stablefordResult) {
+        payouts = calculateStablefordPayouts(stablefordResult, game, players)
+      } else if (game.type === 'quota' && quotaResult) {
+        payouts = calculateQuotaPayouts(quotaResult, game, players)
+      }
 
-    // Pot-based dispatch — mirrors SettleUp.payouts
-    let payouts: PlayerPayout[] = []
-    if (game.type === 'skins' && skinsResult) {
-      payouts = calculateSkinsPayouts(skinsResult, game, players.length)
-    } else if (game.type === 'best_ball' && bestBallResult) {
-      payouts = calculateBestBallPayouts(bestBallResult, game.config as BestBallConfig, game, players)
-    } else if (game.type === 'nassau' && nassauResult) {
-      payouts = calculateNassauPayouts(nassauResult, game, players, holeScores, snapshot, courseHcps)
-    } else if (game.type === 'wolf' && wolfResult) {
-      payouts = calculateWolfPayouts(wolfResult, game, players)
-    } else if (game.type === 'bingo_bango_bongo' && bbbResult) {
-      payouts = calculateBBBPayouts(bbbResult, game, players)
-    } else if (game.type === 'vegas' && vegasResult) {
-      payouts = calculateVegasPayouts(vegasResult, game.config as VegasConfig, game, players)
-    } else if (game.type === 'stableford' && stablefordResult) {
-      payouts = calculateStablefordPayouts(stablefordResult, game, players)
-    } else if (game.type === 'quota' && quotaResult) {
-      payouts = calculateQuotaPayouts(quotaResult, game, players)
-    }
-
-    if (payouts.length > 0 && game.buyInCents > 0) {
-      // Everyone implicitly paid in
-      players.forEach(p => {
-        netByPlayer.set(p.id, (netByPlayer.get(p.id) ?? 0) - game.buyInCents)
-      })
-      // Winners receive from the pot
-      payouts.forEach(po => {
-        netByPlayer.set(po.playerId, (netByPlayer.get(po.playerId) ?? 0) + po.amountCents)
-      })
+      if (payouts.length > 0 && game.buyInCents > 0) {
+        Object.entries(netFromPayouts(payouts, players, game.buyInCents)).forEach(([pid, c]) => {
+          netByPlayer.set(pid, c)
+        })
+      }
     }
 
     // Drop empty standings — keeps "All square." path for unscored rounds clean.
