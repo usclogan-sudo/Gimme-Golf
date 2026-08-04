@@ -556,11 +556,7 @@ export function calculateWolfPayouts(
   const positiveUnits = Object.values(result.netUnits).filter(u => u > 0).reduce((s, u) => s + u, 0)
 
   if (positiveUnits === 0) {
-    return players.map(p => ({
-      playerId: p.id,
-      amountCents: Math.floor(totalPot / players.length),
-      reason: 'Wolf — all square, refund',
-    }))
+    return refundEvenly(players, totalPot, 'Wolf — all square, refund')
   }
 
   const centsPerUnit = Math.floor(totalPot / positiveUnits)
@@ -620,11 +616,7 @@ export function calculateBBBPayouts(
   const totalPot = game.buyInCents * players.length
 
   if (result.totalPoints === 0) {
-    return players.map(p => ({
-      playerId: p.id,
-      amountCents: Math.floor(totalPot / players.length),
-      reason: 'BBB — no points recorded, refund',
-    }))
+    return refundEvenly(players, totalPot, 'BBB — no points recorded, refund')
   }
 
   const entries = Object.entries(result.pointsWon)
@@ -850,8 +842,7 @@ export function calculateVegasPayouts(
   const potCents = game.buyInCents * players.length
 
   if (result.winner === 'tie') {
-    const perPlayer = Math.floor(potCents / players.length)
-    return players.map(p => ({ playerId: p.id, amountCents: perPlayer, reason: 'Vegas — tie, refund' }))
+    return refundEvenly(players, potCents, 'Vegas — tie, refund')
   }
 
   const winTeam = result.winner
@@ -934,7 +925,7 @@ export function calculateStablefordPayouts(
   const totalPoints = Object.values(result.points).reduce((s, p) => s + p, 0)
 
   if (totalPoints === 0) {
-    return players.map(p => ({ playerId: p.id, amountCents: Math.floor(totalPot / players.length), reason: 'Stableford — no points, refund' }))
+    return refundEvenly(players, totalPot, 'Stableford — no points, refund')
   }
 
   let remainder = totalPot
@@ -1117,11 +1108,7 @@ export function calculateBankerPayouts(
   const positiveUnits = Object.values(result.netCents).filter(u => u > 0).reduce((s, u) => s + u, 0)
 
   if (positiveUnits === 0) {
-    return players.map(p => ({
-      playerId: p.id,
-      amountCents: Math.floor(totalPot / players.length),
-      reason: 'Banker — all square, refund',
-    }))
+    return refundEvenly(players, totalPot, 'Banker — all square, refund')
   }
 
   const centsPerUnit = Math.floor(totalPot / positiveUnits)
@@ -1146,6 +1133,21 @@ export interface QuotaResult {
   winner: string | null
 }
 
+/**
+ * Refund a pot evenly with remainder drip so it sums to EXACTLY `totalPot`.
+ * `floor(pot/N)` alone orphans up to N−1 cents on uneven pots (breaking net-zero);
+ * this drips the leftover one cent at a time. Used by no-winner / all-tied refunds.
+ */
+function refundEvenly(players: Player[], totalPot: number, reason: string): PlayerPayout[] {
+  const per = Math.floor(totalPot / players.length)
+  let remainder = totalPot - per * players.length
+  return players.map(p => {
+    const extra = remainder > 0 ? 1 : 0
+    remainder -= extra
+    return { playerId: p.id, amountCents: per + extra, reason }
+  })
+}
+
 export function calculateQuota(
   players: Player[],
   holeScores: HoleScore[],
@@ -1153,8 +1155,11 @@ export function calculateQuota(
   config: QuotaConfig,
   courseHcps: Record<string, number>,
 ): QuotaResult {
-  // First calculate stableford points
-  const stablefordResult = calculateStableford(players, holeScores, snapshot, { mode: config.mode }, courseHcps)
+  // Quota already bakes the handicap into each player's target (36 − handicap), so
+  // the underlying Stableford MUST be scored GROSS — scoring it net would subtract
+  // the handicap a second time and unfairly reward higher handicaps. (config.mode is
+  // intentionally ignored here for that reason.)
+  const stablefordResult = calculateStableford(players, holeScores, snapshot, { mode: 'gross' }, courseHcps)
 
   const netPoints: Record<string, number> = {}
   for (const p of players) {
@@ -1193,11 +1198,7 @@ export function calculateQuotaPayouts(
   const totalPositive = positiveNet.reduce((s, n) => s + n, 0)
 
   if (totalPositive === 0) {
-    return players.map(p => ({
-      playerId: p.id,
-      amountCents: Math.floor(totalPot / players.length),
-      reason: 'Quota — no one over quota, refund',
-    }))
+    return refundEvenly(players, totalPot, 'Quota — no one over quota, refund')
   }
 
   let remainder = totalPot
@@ -1280,12 +1281,7 @@ export function calculateBestBallPayouts(
   const potCents = game.buyInCents * players.length
 
   if (result.winner === 'tie') {
-    const perPlayer = Math.floor(potCents / players.length)
-    return players.map(p => ({
-      playerId: p.id,
-      amountCents: perPlayer,
-      reason: 'Tie — refund',
-    }))
+    return refundEvenly(players, potCents, 'Tie — refund')
   }
 
   const winTeam = result.winner

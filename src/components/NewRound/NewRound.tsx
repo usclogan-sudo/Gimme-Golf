@@ -3,7 +3,7 @@ import { v4 as uuidv4 } from 'uuid'
 import { supabase, courseToRow, playerToRow, roundToRow, roundPlayerToRow, buyInToRow, rowToCourse, rowToPlayer, rowToSharedCourse, rowToGamePreset, rowToUserProfile, generateInviteCode } from '../../lib/supabase'
 import { safeWrite } from '../../lib/safeWrite'
 import { reportSupabaseError } from '../../lib/sentry'
-import { SHOW_HOLE_BETS, SHOW_EXTRA_GAMES, SHOW_BEST_BALL_STROKE_PLAY } from '../../lib/featureFlags'
+import { SHOW_HOLE_BETS, SHOW_EXTRA_GAMES, SHOW_DOTS, SHOW_BEST_BALL_STROKE_PLAY } from '../../lib/featureFlags'
 import { fmtMoney, fmtAmount, JUNK_LABELS } from '../../lib/gameLogic'
 import { parseDollarsToCents, parsePointsValue } from '../../lib/money'
 import { venturaCourses } from '../../data/venturaCourses'
@@ -1298,7 +1298,7 @@ function GameSetup({
                 <>
                   <GameButton gameType="hammer" label="🔨 Hammer" disabled={!hammerAllowed} />
                   <GameButton gameType="stableford" label="📊 Stableford" />
-                  <GameButton gameType="dots" label="🔴 Dots" />
+                  {SHOW_DOTS && <GameButton gameType="dots" label="🔴 Dots" />}
                   <GameButton gameType="banker" label="🏦 Banker" disabled={!bankerAllowed} />
                   <GameButton gameType="quota" label="📋 Quota" />
                 </>
@@ -1309,7 +1309,7 @@ function GameSetup({
             onClick={() => setShowAllGames(v => !v)}
             className="w-full text-sm font-semibold text-gray-500 py-2 rounded-xl bg-gray-50 active:bg-gray-100 transition-colors"
           >
-            {showAllGames ? 'Hide extra games' : `More Games (${SHOW_EXTRA_GAMES ? 8 : 3} more)`}
+            {showAllGames ? 'Hide extra games' : `More Games (${SHOW_EXTRA_GAMES ? (SHOW_DOTS ? 8 : 7) : 3} more)`}
           </button>
           {!bestBallAllowed && type === 'best_ball' && (
             <p className="text-sm text-gray-400">Best Ball requires an even number of players (2, 4, 6…).</p>

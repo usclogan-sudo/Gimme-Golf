@@ -29,13 +29,21 @@ export const SHOW_PROP_BETS = false
 
 /**
  * "More Games" beyond the marketed launch 5 (Skins, Best Ball, Nassau, Wolf, BBB).
- * Hammer, Stableford, Dots, Banker, Quota are hidden at launch pending a
- * settlement-engine rework (see docs/GAMEPLAY-QA-FINDINGS.md) — their scoring is
- * fine but the flat treasurer-pot settlement mis-handles their variable/asymmetric/
- * buy-in-less stakes. When false, NewRound hides these game buttons. The engine +
- * calc functions stay intact so existing rounds still settle.
+ * Re-enabled after the settlement-engine rework (unit games now settle head-to-head
+ * from signed netCents; Quota's handicap double-application fixed). This un-gates
+ * Hammer, Stableford, Banker, Quota. Dots stays behind SHOW_DOTS below (it has no
+ * in-round dot-entry surface yet — playable only once that lands).
  */
-export const SHOW_EXTRA_GAMES = false
+export const SHOW_EXTRA_GAMES = true
+
+/**
+ * Dots specifically. Unlike the other extra games, Dots has no way to award dots
+ * in-round: dot entry lives only in the SHOW_HOLE_BETS-gated HoleBetsPanel, and
+ * DotsConfig.activeDots is configured there too — so with SHOW_HOLE_BETS off a Dots
+ * round starts unplayable (nothing to award, always settles all-square). Keep hidden
+ * until a dedicated dot-entry UI exists. Settlement for Dots is already correct.
+ */
+export const SHOW_DOTS = false
 
 /**
  * Presses (Skins & Nassau — a new bet started when down, doubling stakes).
