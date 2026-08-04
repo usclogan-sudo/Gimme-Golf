@@ -1146,11 +1146,19 @@ export function SettleUp({ roundId, userId, eventId, onDone, onContinue }: Props
             </button>
             {expandedSections.has('bestball') && (
               <div className="px-4 pb-4 space-y-3">
+                {/* Stroke Play shows total strokes (matches the payout); Match Play shows holes won. */}
+                {(game.config as BestBallConfig).scoring === 'total' ? (
+                  <div className="grid grid-cols-2 gap-2 text-center">
+                    <div className="bg-blue-50 rounded-xl p-3"><p className="text-xs text-blue-600 font-medium">Team A</p><p className="text-2xl font-bold text-blue-800">{bestBallResult.totalScore.A}</p><p className="text-xs text-blue-500">strokes</p></div>
+                    <div className="bg-orange-50 rounded-xl p-3"><p className="text-xs text-orange-600 font-medium">Team B</p><p className="text-2xl font-bold text-orange-800">{bestBallResult.totalScore.B}</p><p className="text-xs text-orange-500">strokes</p></div>
+                  </div>
+                ) : (
                 <div className="grid grid-cols-3 gap-2 text-center">
                   <div className="bg-blue-50 rounded-xl p-3"><p className="text-xs text-blue-600 font-medium">Team A</p><p className="text-2xl font-bold text-blue-800">{bestBallResult.holesWon.A}</p><p className="text-xs text-blue-500">holes</p></div>
                   <div className="bg-gray-50 rounded-xl p-3"><p className="text-xs text-gray-500 font-medium">Tied</p><p className="text-2xl font-bold text-gray-600">{bestBallResult.holesWon.tied}</p><p className="text-xs text-gray-400">holes</p></div>
                   <div className="bg-orange-50 rounded-xl p-3"><p className="text-xs text-orange-600 font-medium">Team B</p><p className="text-2xl font-bold text-orange-800">{bestBallResult.holesWon.B}</p><p className="text-xs text-orange-500">holes</p></div>
                 </div>
+                )}
                 {(() => {
                   const config = game.config as BestBallConfig
                   return (

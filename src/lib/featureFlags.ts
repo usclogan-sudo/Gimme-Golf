@@ -53,9 +53,9 @@ export const SHOW_DOTS = true
 export const SHOW_PRESSES = true
 
 /**
- * Best Ball "Stroke Play" (total-strokes) scoring mode. When false, Best Ball is
- * Match Play only. Stroke-Play's winner is decided by total strokes but every
- * scoreboard shows only holes-won, so the display can contradict the payout.
- * Hidden until the display is fixed. Match Play (the default) is unaffected.
+ * Best Ball "Stroke Play" (total-strokes) scoring mode. Re-enabled: every Best Ball
+ * scoreboard (in-round status, leaderboard, Settle Up) now shows total strokes in
+ * this mode so the display matches the total-strokes payout. Match Play (holes-won)
+ * is unchanged.
  */
-export const SHOW_BEST_BALL_STROKE_PLAY = false
+export const SHOW_BEST_BALL_STROKE_PLAY = true

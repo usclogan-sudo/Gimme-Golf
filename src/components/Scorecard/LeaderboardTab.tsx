@@ -147,7 +147,38 @@ export function LeaderboardTab({
 
   return (
     <div className="px-4 py-4 max-w-2xl mx-auto">
+      {/* BBB is a points game — lead with the points standings; strokes are secondary. */}
+      {game?.type === 'bingo_bango_bongo' && bbbResult && (() => {
+        const ranked = players.slice().sort((a, b) => (bbbResult.pointsWon[b.id] ?? 0) - (bbbResult.pointsWon[a.id] ?? 0))
+        const pos: number[] = []
+        ranked.forEach((p, i) => {
+          const pts = bbbResult.pointsWon[p.id] ?? 0
+          pos.push(i > 0 && pts === (bbbResult.pointsWon[ranked[i - 1].id] ?? 0) ? pos[i - 1] : i + 1)
+        })
+        return (
+          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm p-4 mb-3">
+            <p className="text-xs font-semibold text-gray-500 uppercase mb-2">⭐ Bingo Bango Bongo · Points</p>
+            <table className="w-full text-sm">
+              <tbody>
+                {ranked.map((p, i) => {
+                  const pts = bbbResult.pointsWon[p.id] ?? 0
+                  return (
+                    <tr key={p.id} className={`border-b border-gray-50 ${pos[i] === 1 ? 'bg-amber-50' : ''}`}>
+                      <td className={`py-2.5 px-1 font-bold w-8 ${pos[i] === 1 ? 'text-amber-600' : 'text-gray-500'}`}>{pos[i]}</td>
+                      <td className="py-2.5 px-1 font-semibold text-gray-800 dark:text-gray-100">{p.name}</td>
+                      <td className="py-2.5 px-1 text-right font-bold text-purple-600 text-lg">{pts} pt{pts !== 1 ? 's' : ''}</td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        )
+      })()}
       <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm p-4">
+        {game?.type === 'bingo_bango_bongo' && (
+          <p className="text-xs font-medium text-gray-400 uppercase mb-2">Golf scores (reference)</p>
+        )}
         <table className="w-full text-sm">
           <thead>
             <tr className="text-xs text-gray-400 uppercase border-b border-gray-200">
@@ -213,23 +244,34 @@ export function LeaderboardTab({
           </div>
         )}
 
-        {/* Best Ball */}
-        {bestBallResult && (
-          <div className="mt-3 pt-3 border-t border-gray-100">
-            <p className="text-xs font-semibold text-gray-500 uppercase mb-1">Best Ball ({primaryLabel})</p>
-            <p className="text-sm font-semibold text-gray-700">
-              Team A: {bestBallResult.holesWon.A}W · Team B: {bestBallResult.holesWon.B}W · Tied: {bestBallResult.holesWon.tied}
-            </p>
-          </div>
-        )}
-        {bestBallResultAlt && (
-          <div className="mt-2 pl-2 border-l-2 border-gray-200">
-            <p className="text-xs font-medium text-gray-400 uppercase mb-1">Best Ball ({altLabel})</p>
-            <p className="text-sm text-gray-500">
-              Team A: {bestBallResultAlt.holesWon.A}W · Team B: {bestBallResultAlt.holesWon.B}W · Tied: {bestBallResultAlt.holesWon.tied}
-            </p>
-          </div>
-        )}
+        {/* Best Ball — Stroke Play (total) shows strokes to match the payout; Match
+            Play shows holes won. */}
+        {bestBallResult && game && (() => {
+          const isTotal = (game.config as BestBallConfig).scoring === 'total'
+          return (
+            <div className="mt-3 pt-3 border-t border-gray-100">
+              <p className="text-xs font-semibold text-gray-500 uppercase mb-1">Best Ball ({primaryLabel})</p>
+              <p className="text-sm font-semibold text-gray-700">
+                {isTotal
+                  ? `Team A: ${bestBallResult.totalScore.A} · Team B: ${bestBallResult.totalScore.B} strokes`
+                  : `Team A: ${bestBallResult.holesWon.A}W · Team B: ${bestBallResult.holesWon.B}W · Tied: ${bestBallResult.holesWon.tied}`}
+              </p>
+            </div>
+          )
+        })()}
+        {bestBallResultAlt && game && (() => {
+          const isTotal = (game.config as BestBallConfig).scoring === 'total'
+          return (
+            <div className="mt-2 pl-2 border-l-2 border-gray-200">
+              <p className="text-xs font-medium text-gray-400 uppercase mb-1">Best Ball ({altLabel})</p>
+              <p className="text-sm text-gray-500">
+                {isTotal
+                  ? `Team A: ${bestBallResultAlt.totalScore.A} · Team B: ${bestBallResultAlt.totalScore.B} strokes`
+                  : `Team A: ${bestBallResultAlt.holesWon.A}W · Team B: ${bestBallResultAlt.holesWon.B}W · Tied: ${bestBallResultAlt.holesWon.tied}`}
+              </p>
+            </div>
+          )
+        })()}
 
         {/* Nassau */}
         {nassauResult && (
@@ -307,22 +349,7 @@ export function LeaderboardTab({
           </div>
         )}
 
-        {/* BBB — no mode, no alt */}
-        {bbbResult && (
-          <div className="mt-3 pt-3 border-t border-gray-100">
-            <p className="text-xs font-semibold text-gray-500 uppercase mb-2">Bingo Bango Bongo</p>
-            <div className="flex flex-wrap gap-2">
-              {players.slice().sort((a, b) => (bbbResult.pointsWon[b.id] ?? 0) - (bbbResult.pointsWon[a.id] ?? 0)).map(p => {
-                const pts = bbbResult.pointsWon[p.id] ?? 0
-                return (
-                  <span key={p.id} className={`text-xs font-semibold px-2 py-1 rounded-lg ${pts > 0 ? 'bg-amber-50 text-amber-700' : 'bg-gray-50 text-gray-500'}`}>
-                    {p.name}: {pts}pt{pts !== 1 ? 's' : ''}
-                  </span>
-                )
-              })}
-            </div>
-          </div>
-        )}
+        {/* BBB points are shown as the headline table above (this is a points game). */}
 
         {/* Hammer — no mode, no alt */}
         {hammerResult && (
