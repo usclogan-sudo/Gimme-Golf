@@ -11,6 +11,7 @@ import type {
   JunkConfig,
   JunkType,
   Game,
+  GameType,
   RoundPlayer,
   Press,
   SideBet,
@@ -1558,23 +1559,54 @@ export function buildUnifiedSettlements(
 }
 
 /**
- * Direct (no-treasurer) settlements for points-mode rounds. Points mode never
- * assigns a treasurer, so instead of routing every flow through one, compute each
- * player's net (game winnings − their buy-in, plus junk/side-bet/prop nets) and
- * greedily match debtors to creditors so losers pay winners directly. Nets to zero.
+ * Games classified as *unit* (variable / asymmetric / buy-in-less) settle from a
+ * signed, zero-sum per-player net rather than a shared pot. Their calc result
+ * already carries that net in real cents (buy-in is 0), so it feeds settlement
+ * directly — no winner-only pot conversion. Pot games (everything else) still net
+ * to zero via `netFromPayouts` (payout − buy-in).
+ *
+ * PR-A ships hammer + dots (unambiguous: buy-in 0, `netCents` are real cents).
+ * banker + wolf are also unit games but their nets are *units* needing a per-unit
+ * cash value — deferred to PR-B (see docs/GAMEPLAY-QA-FINDINGS.md). Both are gated
+ * off (SHOW_EXTRA_GAMES) so deferring has no live impact.
  */
-export function buildDirectSettlements(
+const UNIT_GAMES: GameType[] = ['hammer', 'dots']
+
+export function isUnitGame(gameType: GameType): boolean {
+  return UNIT_GAMES.includes(gameType)
+}
+
+/**
+ * Signed per-player net (cents) for a *pot* game: everyone antes one buy-in and
+ * winners receive their payout, so net = payout − buy-in. Sums to zero because a
+ * pot game distributes exactly the collected pot (buyIn × N).
+ */
+export function netFromPayouts(
   payouts: PlayerPayout[],
   players: Player[],
   buyInCents: number,
+): Record<string, number> {
+  const net: Record<string, number> = {}
+  players.forEach(p => (net[p.id] = -buyInCents))
+  for (const p of payouts) net[p.playerId] = (net[p.playerId] ?? 0) + p.amountCents
+  return net
+}
+
+/**
+ * Direct (no-treasurer) settlements for points-mode rounds. Points mode never
+ * assigns a treasurer, so instead of routing every flow through one, take each
+ * player's signed game net (`gameNet` — from `netFromPayouts` for pot games, or a
+ * unit game's real-cents net), fold in junk/side-bet/prop nets, and greedily match
+ * debtors to creditors so losers pay winners directly. Nets to zero.
+ */
+export function buildDirectSettlements(
+  gameNet: Record<string, number>,
   junkResult: JunkResult | null,
   sideBetSettlements: SideBetSettlement[] = [],
   propSettlements: PropSettlement[] = [],
 ): UnifiedSettlement[] {
   const net = new Map<string, number>()
-  // Everyone antes one buy-in; winners receive their payout.
-  players.forEach(p => net.set(p.id, -buyInCents))
-  for (const p of payouts) net.set(p.playerId, (net.get(p.playerId) ?? 0) + p.amountCents)
+  for (const [id, c] of Object.entries(gameNet)) net.set(id, (net.get(id) ?? 0) + c)
   if (junkResult) {
     for (const [id, c] of Object.entries(junkResult.netCents)) net.set(id, (net.get(id) ?? 0) + c)
   }

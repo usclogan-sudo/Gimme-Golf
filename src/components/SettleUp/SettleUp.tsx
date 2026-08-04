@@ -37,6 +37,7 @@ import {
   autoResolveProps,
   buildUnifiedSettlements,
   buildDirectSettlements,
+  netFromPayouts,
   JUNK_LABELS,
   fmtAmount,
 } from '../../lib/gameLogic'
@@ -444,9 +445,16 @@ export function SettleUp({ roundId, userId, eventId, onDone, onContinue }: Props
     }
 
     setCalculatingSettlements(true)
+    // Points mode settles from each player's signed game net. Unit games (hammer,
+    // dots) carry a real-cents zero-sum net already; pot games derive it from
+    // payouts (payout − buy-in). The treasurer/money path is unchanged.
+    const gameNet =
+      game?.type === 'hammer' && hammerResult ? { ...hammerResult.netCents }
+      : game?.type === 'dots' && dotsResult ? { ...dotsResult.netCents }
+      : netFromPayouts(payouts, players, game?.buyInCents ?? 0)
     const unified = treasurerId
       ? buildUnifiedSettlements(payouts, treasurerId, junkResult, sideBetSettlements, propSettlements)
-      : buildDirectSettlements(payouts, players, game?.buyInCents ?? 0, junkResult, sideBetSettlements, propSettlements)
+      : buildDirectSettlements(gameNet, junkResult, sideBetSettlements, propSettlements)
     if (unified.length === 0) { setCalculatingSettlements(false); return }
 
     const records: SettlementRecord[] = unified.map(s => ({
@@ -498,7 +506,7 @@ export function SettleUp({ roundId, userId, eventId, onDone, onContinue }: Props
     }
 
     setCalculatingSettlements(false)
-  }, [treasurerId, userId, settlementsInitialized, settlementRecords.length, payouts, junkResult, sideBetSettlements, propSettlements, resolvedPropBets, propBets, roundId, participantMap, players])
+  }, [treasurerId, userId, settlementsInitialized, settlementRecords.length, payouts, junkResult, sideBetSettlements, propSettlements, resolvedPropBets, propBets, roundId, participantMap, players, game, hammerResult, dotsResult])
 
   useEffect(() => {
     if (!loading && round && game && snapshot) {

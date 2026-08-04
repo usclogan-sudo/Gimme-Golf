@@ -24,6 +24,8 @@ import {
   buildDirectSettlements,
   buildSettlements,
   buildUnifiedSettlements,
+  netFromPayouts,
+  isUnitGame,
   calculateSideBetSettlements,
   fmtMoney,
   fmtAmount,
@@ -611,12 +613,98 @@ describe('settlement net-zero invariants', () => {
 
   it('buildDirectSettlements (points mode, no treasurer): losers pay the winner, nets to zero', () => {
     // p2 (Bob) wins the whole 75-pt pot; p1 & p3 each lose their 25 buy-in.
-    const payouts = [{ playerId: 'p2', amountCents: 75, reason: '3 skins' }]
-    const out = buildDirectSettlements(payouts, players, 25, null)
+    const gameNet = netFromPayouts([{ playerId: 'p2', amountCents: 75, reason: '3 skins' }], players, 25)
+    const out = buildDirectSettlements(gameNet, null)
     expect(out.length).toBe(2)
     expect(out.every(s => s.toId === 'p2')).toBe(true) // both losers pay the winner directly
     expect(out.reduce((s, x) => s + x.amountCents, 0)).toBe(50) // = winner's net (75 − 25 buy-in)
     // net-zero: each debtor's −25 exactly funds the winner's +50
     expect(out.map(s => s.amountCents).sort()).toEqual([25, 25])
+  })
+})
+
+// ─── Direct-settlement soundness across games (the single-engine invariant) ──
+// The rework routes every points-mode round through one engine: a signed, zero-sum
+// per-player net → debtor→creditor match. This locks the invariant that matters —
+// the recorded settlements RECONSTRUCT each player's true net exactly — for pot
+// games (net = payout − buy-in) AND unit games (real-cents net, buy-in 0). Unit
+// games were previously mis-settled: losers were never debited.
+
+type DirectSettlement = { fromId: string; toId: string; amountCents: number }
+
+/**
+ * Assert a points-mode settlement set is internally sound and faithful to `trueNet`:
+ *  - trueNet is itself zero-sum,
+ *  - every settlement is positive with no self-pay,
+ *  - the settlements move exactly the winners' side of the ledger,
+ *  - and received − paid reconstructs each player's true net.
+ */
+function assertDirectSettlementSound(settlements: DirectSettlement[], trueNet: Record<string, number>) {
+  expect(Object.values(trueNet).reduce((s, x) => s + x, 0)).toBe(0) // trueNet zero-sum
+
+  const recon: Record<string, number> = {}
+  Object.keys(trueNet).forEach(id => (recon[id] = 0))
+  for (const s of settlements) {
+    expect(s.amountCents).toBeGreaterThan(0)
+    expect(s.fromId).not.toBe(s.toId)
+    recon[s.fromId] = (recon[s.fromId] ?? 0) - s.amountCents
+    recon[s.toId] = (recon[s.toId] ?? 0) + s.amountCents
+  }
+  for (const id of Object.keys(trueNet)) expect(recon[id] ?? 0).toBe(trueNet[id]) // faithful reconstruction
+
+  const winnersSide = Object.values(trueNet).filter(n => n > 0).reduce((s, x) => s + x, 0)
+  expect(settlements.reduce((s, x) => s + x.amountCents, 0)).toBe(winnersSide) // minimal cash moved
+}
+
+describe('single settlement engine — direct (points) soundness', () => {
+  it('classifies hammer + dots as unit games; pot games are not', () => {
+    expect(isUnitGame('hammer')).toBe(true)
+    expect(isUnitGame('dots')).toBe(true)
+    expect(isUnitGame('skins')).toBe(false)
+    expect(isUnitGame('best_ball')).toBe(false)
+    expect(isUnitGame('nassau')).toBe(false)
+    expect(isUnitGame('wolf')).toBe(false) // deferred to PR-B (unit value TBD)
+    expect(isUnitGame('bingo_bango_bongo')).toBe(false)
+  })
+
+  it('POT game (skins): net = payout − buy-in, losers pay winners, reconstructs', () => {
+    // p1 wins 3 skins, p2 wins 1, p3 none; buy-in 1000 → pot 3000.
+    const payouts = [
+      { playerId: 'p1', amountCents: 2250, reason: '3 skins' },
+      { playerId: 'p2', amountCents: 750, reason: '1 skin' },
+    ]
+    const trueNet = netFromPayouts(payouts, players, 1000)
+    expect(trueNet).toEqual({ p1: 1250, p2: -250, p3: -1000 })
+    assertDirectSettlementSound(buildDirectSettlements(trueNet, null), trueNet)
+  })
+
+  it('UNIT game (hammer, 2p): loser is debited the winner exactly (was previously never settled)', () => {
+    // Real bug the rework fixes: buy-in 0 + winner-only payouts meant p2 owed nothing.
+    const hammerResult = { netCents: { p1: 300, p2: -300 }, holeResults: [], totalHolesPlayed: 6 } as any
+    const trueNet: Record<string, number> = hammerResult.netCents
+    const out = buildDirectSettlements({ ...trueNet }, null)
+    expect(out).toEqual([{ fromId: 'p2', toId: 'p1', amountCents: 300, reason: 'Round settlement', source: 'game' }])
+    assertDirectSettlementSound(out, trueNet)
+  })
+
+  it('UNIT game (dots, 3p): asymmetric losses are attributed by magnitude, not flattened', () => {
+    // p1 +400, p2 −100, p3 −300 — a −300 must pay 3× a −100, not a flat share.
+    const dotsResult = { netCents: { p1: 400, p2: -100, p3: -300 }, tallies: {} } as any
+    const trueNet: Record<string, number> = dotsResult.netCents
+    const out = buildDirectSettlements({ ...trueNet }, null)
+    assertDirectSettlementSound(out, trueNet)
+    expect(out.every(s => s.toId === 'p1')).toBe(true)
+    expect(out.find(s => s.fromId === 'p2')?.amountCents).toBe(100)
+    expect(out.find(s => s.fromId === 'p3')?.amountCents).toBe(300)
+  })
+
+  it('unit-game net + junk fold into one settlement set and still reconstruct', () => {
+    const trueGameNet = { p1: 400, p2: -100, p3: -300 }
+    const junkResult = calculateJunks(players, [{ id: 'j1', roundId: 'r1', playerId: 'p2', holeNumber: 4, junkType: 'greenie' }] as any, { types: ['greenie'], valueCents: 60 })
+    const out = buildDirectSettlements({ ...trueGameNet }, junkResult)
+    // combined net = game + junk
+    const combined: Record<string, number> = {}
+    ;[...players].forEach(p => (combined[p.id] = (trueGameNet as any)[p.id] + junkResult.netCents[p.id]))
+    assertDirectSettlementSound(out, combined)
   })
 })
