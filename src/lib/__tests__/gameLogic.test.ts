@@ -17,6 +17,7 @@ import {
   buildCourseHandicaps,
   calculateSkins,
   calculateStableford,
+  calculateQuota,
   calculateJunks,
   calculateSkinsPayouts,
   calculateBBBPayouts,
@@ -289,6 +290,31 @@ describe('calculateStableford', () => {
     expect(result.points['p1']).toBe(5)
     expect(result.points['p2']).toBe(3)
     expect(result.winner).toBe('p1')
+  })
+})
+
+// ─── Quota ──────────────────────────────────────────────────────────────────
+
+describe('calculateQuota', () => {
+  it('scores Stableford GROSS — handicap is not double-applied via the quota target', () => {
+    // Two players both shoot even-par gross (4 on every par-4 hole). p2 gets a
+    // stroke a hole via course handicap; if Quota scored NET it would count those
+    // strokes AGAIN (on top of the 36−hcp target), inflating the high handicapper.
+    const qp = [players[0], players[1]] // p1, p2
+    const scores: HoleScore[] = []
+    for (let h = 1; h <= 18; h++) {
+      scores.push(hs('p1', h, 4))
+      scores.push(hs('p2', h, 4))
+    }
+    const courseHcps = { p1: 0, p2: 18 }
+    const config = { mode: 'net' as const, quotas: { p1: 36, p2: 18 } }
+    const result = calculateQuota(qp, scores, snapshot, config, courseHcps)
+    // GROSS stableford: par = 2 pts/hole × 18 = 36 for BOTH (strokes ignored).
+    expect(result.stablefordPoints['p1']).toBe(36)
+    expect(result.stablefordPoints['p2']).toBe(36) // 36, NOT the net-inflated 54
+    // netPoints = gross stableford − quota target
+    expect(result.netPoints['p1']).toBe(0)
+    expect(result.netPoints['p2']).toBe(18)
   })
 })
 

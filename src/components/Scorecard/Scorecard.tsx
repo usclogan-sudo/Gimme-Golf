@@ -21,6 +21,7 @@ import { NumberPad } from './NumberPad'
 import { BuyInBanner } from './BuyInBanner'
 import { LeaderboardTab } from './LeaderboardTab'
 import { HoleBetsPanel } from './HoleBetsPanel'
+import { DotsPanel } from './DotsPanel'
 import { PropBetsPanel } from './PropBetsPanel'
 import {
   buildCourseHandicaps,
@@ -34,6 +35,7 @@ import {
   calculateStableford,
   calculateBanker,
   calculateQuota,
+  calculateDots,
   wolfForHole,
   strokesOnHole,
   fmtAmount,
@@ -59,6 +61,8 @@ import type {
   StablefordConfig,
   BankerConfig,
   QuotaConfig,
+  DotsConfig,
+  DotType,
   GolfEvent,
   EventParticipant,
   ScoreStatus,
@@ -1162,6 +1166,15 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
     return calculateQuota(players, approvedScores, playableSnapshot, game.config as QuotaConfig, courseHcps)
   }, [game, players, approvedScores, playableSnapshot, courseHcps])
 
+  // Dots settle from the junk_records for this round (junkType holds the DotType).
+  const dotsResult = useMemo(() => {
+    if (!game || game.type !== 'dots') return null
+    return calculateDots(players, junkRecords, game.config as DotsConfig)
+  }, [game, players, junkRecords])
+
+  // Dots reuse the junk toggle/persistence (junkType stores a DotType string).
+  const toggleDot = (dot: DotType, playerId: string) => toggleJunk(dot as JunkType, playerId)
+
   // Alt (opposite mode) results — compute the other mode for dual display
   const skinsResultAlt = useMemo(() => {
     if (!game || game.type !== 'skins' || !playableSnapshot) return null
@@ -2165,6 +2178,21 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
                 createSideBet={createSideBet}
                 resolveSideBet={resolveSideBet}
                 cancelSideBet={cancelSideBet}
+              />
+            )}
+
+            {/* Dots award panel — always on for a Dots round (own entry surface,
+                independent of the SHOW_HOLE_BETS junk panel above). */}
+            {game?.type === 'dots' && (
+              <DotsPanel
+                currentHole={currentHole}
+                players={players}
+                config={game.config as DotsConfig}
+                junkRecords={junkRecords}
+                toggleDot={toggleDot}
+                netCents={dotsResult?.netCents}
+                stakesMode={game.stakesMode}
+                readOnly={readOnly}
               />
             )}
 

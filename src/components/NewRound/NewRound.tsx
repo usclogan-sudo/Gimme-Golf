@@ -3,8 +3,8 @@ import { v4 as uuidv4 } from 'uuid'
 import { supabase, courseToRow, playerToRow, roundToRow, roundPlayerToRow, buyInToRow, rowToCourse, rowToPlayer, rowToSharedCourse, rowToGamePreset, rowToUserProfile, generateInviteCode } from '../../lib/supabase'
 import { safeWrite } from '../../lib/safeWrite'
 import { reportSupabaseError } from '../../lib/sentry'
-import { SHOW_HOLE_BETS, SHOW_EXTRA_GAMES, SHOW_BEST_BALL_STROKE_PLAY } from '../../lib/featureFlags'
-import { fmtMoney, fmtAmount, JUNK_LABELS } from '../../lib/gameLogic'
+import { SHOW_HOLE_BETS, SHOW_EXTRA_GAMES, SHOW_DOTS, SHOW_BEST_BALL_STROKE_PLAY } from '../../lib/featureFlags'
+import { fmtMoney, fmtAmount, JUNK_LABELS, DOT_LABELS } from '../../lib/gameLogic'
 import { parseDollarsToCents, parsePointsValue } from '../../lib/money'
 import { venturaCourses } from '../../data/venturaCourses'
 import { NearMeCourses } from '../NearMeCourses/NearMeCourses'
@@ -989,6 +989,19 @@ function GameSetup({
   const [dotsValueDollars, setDotsValueDollars] = useState(
     initialGame?.type === 'dots' ? String((initialGame.config as any).valueCentsPerDot / 100) : '1'
   )
+  // Which dot types are in play (independent of the junk side-bets picker, which is
+  // gated behind SHOW_HOLE_BETS). Defaults to a common set.
+  const [dotsTypes, setDotsTypes] = useState<Set<DotType>>(
+    new Set<DotType>(initialGame?.type === 'dots' ? (initialGame.config as any).activeDots : ['greenie', 'sandy', 'one_putt', 'snake'])
+  )
+  const toggleDotType = (dt: DotType) => {
+    setDotsTypes(prev => {
+      const next = new Set(prev)
+      if (next.has(dt)) next.delete(dt)
+      else next.add(dt)
+      return next
+    })
+  }
 
   // Banker
   const [bankerOrder, setBankerOrder] = useState<string[]>(() =>
@@ -1079,7 +1092,7 @@ function GameSetup({
       type === 'bingo_bango_bongo' ||
       type === 'stableford' ||
       type === 'quota' ||
-      type === 'dots' ||
+      (type === 'dots' && dotsTypes.size > 0) ||
       (type === 'best_ball' && bestBallAllowed && teamsValid) ||
       (type === 'wolf' && wolfAllowed) ||
       (type === 'hammer' && hammerAllowed) ||
@@ -1121,7 +1134,11 @@ function GameSetup({
       return { id, type: 'wolf', buyInCents, stakesMode, config }
     }
     if (type === 'hammer') {
-      const baseValueCents = Math.max(1, parseDollarsToCents(hammerBaseValueDollars))
+      // Unit-game value: points mode stores the raw point value (like buyInCents),
+      // money mode stores cents. Otherwise "1" becomes 100 and settles 100× too big.
+      const baseValueCents = stakesMode === 'points'
+        ? Math.max(1, parsePointsValue(hammerBaseValueDollars))
+        : Math.max(1, parseDollarsToCents(hammerBaseValueDollars))
       const config: HammerConfig = { baseValueCents, maxPresses: hammerMaxPresses }
       return { id, type: 'hammer', buyInCents: 0, stakesMode, config }
     }
@@ -1134,8 +1151,10 @@ function GameSetup({
       return { id, type: 'stableford', buyInCents, stakesMode, config }
     }
     if (type === 'dots') {
-      const valueCentsPerDot = Math.max(1, parseDollarsToCents(dotsValueDollars))
-      const activeDots: DotType[] = Array.from(junkTypes) as DotType[]
+      const valueCentsPerDot = stakesMode === 'points'
+        ? Math.max(1, parsePointsValue(dotsValueDollars))
+        : Math.max(1, parseDollarsToCents(dotsValueDollars))
+      const activeDots: DotType[] = Array.from(dotsTypes)
       const config: DotsConfig = { activeDots, valueCentsPerDot }
       return { id, type: 'dots', buyInCents: 0, stakesMode, config }
     }
@@ -1298,7 +1317,7 @@ function GameSetup({
                 <>
                   <GameButton gameType="hammer" label="🔨 Hammer" disabled={!hammerAllowed} />
                   <GameButton gameType="stableford" label="📊 Stableford" />
-                  <GameButton gameType="dots" label="🔴 Dots" />
+                  {SHOW_DOTS && <GameButton gameType="dots" label="🔴 Dots" />}
                   <GameButton gameType="banker" label="🏦 Banker" disabled={!bankerAllowed} />
                   <GameButton gameType="quota" label="📋 Quota" />
                 </>
@@ -1309,7 +1328,7 @@ function GameSetup({
             onClick={() => setShowAllGames(v => !v)}
             className="w-full text-sm font-semibold text-gray-500 py-2 rounded-xl bg-gray-50 active:bg-gray-100 transition-colors"
           >
-            {showAllGames ? 'Hide extra games' : `More Games (${SHOW_EXTRA_GAMES ? 8 : 3} more)`}
+            {showAllGames ? 'Hide extra games' : `More Games (${SHOW_EXTRA_GAMES ? (SHOW_DOTS ? 8 : 7) : 3} more)`}
           </button>
           {!bestBallAllowed && type === 'best_ball' && (
             <p className="text-sm text-gray-400">Best Ball requires an even number of players (2, 4, 6…).</p>
@@ -1712,7 +1731,34 @@ function GameSetup({
                 />
               </div>
             </div>
-            <p className="text-xs text-gray-500">Configure active dot types in the Junk Side Bets section below.</p>
+            <div>
+              <p className="text-sm text-gray-600 mb-2">
+                Dots in play <span className="text-gray-400 font-normal">({dotsTypes.size} selected)</span>
+              </p>
+              <div className="flex flex-wrap gap-1.5">
+                {(Object.keys(DOT_LABELS) as DotType[]).map(dt => {
+                  const info = DOT_LABELS[dt]
+                  const active = dotsTypes.has(dt)
+                  const isSnake = dt === 'snake'
+                  return (
+                    <button
+                      key={dt}
+                      type="button"
+                      onClick={() => toggleDotType(dt)}
+                      title={info.description}
+                      className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
+                        active
+                          ? isSnake ? 'bg-red-500 text-white' : 'bg-rose-500 text-white'
+                          : 'bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-300'
+                      }`}
+                    >
+                      {info.emoji} {info.name}
+                    </button>
+                  )
+                })}
+              </div>
+              {dotsTypes.size === 0 && <p className="text-xs text-red-500 mt-1">Select at least one dot type.</p>}
+            </div>
             <div className="bg-red-50 rounded-xl p-3 text-sm text-red-700 space-y-1">
               <p className="font-semibold">How Dots work:</p>
               <p>• Each dot earned = value from each other player</p>

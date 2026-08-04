@@ -438,6 +438,13 @@ export function SettleUp({ roundId, userId, eventId, onDone, onContinue }: Props
   const unitTotalWon = unitNet
     ? Object.values(unitNet).filter(n => n > 0).reduce((s, n) => s + n, 0)
     : null
+  // The per-unit stake for the Summary. Dots/Hammer are buy-in-less — their value
+  // lives in the game config, not buyInCents (which is 0).
+  const perUnitCents = game
+    ? game.type === 'dots' ? (game.config as { valueCentsPerDot: number }).valueCentsPerDot
+      : game.type === 'hammer' ? (game.config as { baseValueCents: number }).baseValueCents
+      : game.buyInCents
+    : 0
 
   // Persist settlements: compute + insert on first view, or load from DB
   const persistSettlements = useCallback(async () => {
@@ -987,7 +994,7 @@ export function SettleUp({ roundId, userId, eventId, onDone, onContinue }: Props
             </div>
             <div className={`rounded-xl p-3 ${isHighRoller ? 'bg-black/30' : 'bg-gray-50'}`}>
               <p className={`text-xs ${isHighRoller ? 'text-amber-400' : 'text-gray-500'}`}>{unitNet ? 'Per unit' : isPoints ? 'Entry' : 'Buy-in'}</p>
-              <p className={`text-xl font-bold ${isHighRoller ? 'text-white' : 'text-gray-800'}`}>{fmt(game.buyInCents)}</p>
+              <p className={`text-xl font-bold ${isHighRoller ? 'text-white' : 'text-gray-800'}`}>{fmt(unitNet ? perUnitCents : game.buyInCents)}</p>
             </div>
             <div className={`rounded-xl p-3 ${isHighRoller ? 'bg-amber-900/40' : 'bg-green-50'}`}>
               {/* Unit games have no pot — show total points that actually changed hands. */}
