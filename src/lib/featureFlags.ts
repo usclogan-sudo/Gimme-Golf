@@ -37,13 +37,12 @@ export const SHOW_PROP_BETS = false
 export const SHOW_EXTRA_GAMES = true
 
 /**
- * Dots specifically. Unlike the other extra games, Dots has no way to award dots
- * in-round: dot entry lives only in the SHOW_HOLE_BETS-gated HoleBetsPanel, and
- * DotsConfig.activeDots is configured there too — so with SHOW_HOLE_BETS off a Dots
- * round starts unplayable (nothing to award, always settles all-square). Keep hidden
- * until a dedicated dot-entry UI exists. Settlement for Dots is already correct.
+ * Dots. Now playable end-to-end: a dedicated dot-type picker in NewRound (Dots
+ * Options) sets DotsConfig.activeDots independently of the junk section, and an
+ * always-on in-round DotsPanel (Scorecard) awards dots — both independent of
+ * SHOW_HOLE_BETS. Settlement was already correct (unit game).
  */
-export const SHOW_DOTS = false
+export const SHOW_DOTS = true
 
 /**
  * Presses (Skins & Nassau — a new bet started when down, doubling stakes).
