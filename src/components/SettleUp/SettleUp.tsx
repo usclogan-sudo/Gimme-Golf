@@ -420,6 +420,25 @@ export function SettleUp({ roundId, userId, eventId, onDone, onContinue }: Props
     return []
   }, [game, players, playableSnapshot, skinsResult, bestBallResult, nassauResult, wolfResult, bbbResult, hammerResult, vegasResult, stablefordResult, dotsResult, bankerResult, quotaResult])
 
+  // Unit games (wolf/banker/hammer/dots) settle from a signed net, not a pot, so
+  // the pot-model "Winners" payout and "Total pot" (buyIn × N) would contradict the
+  // actual settlement. Compute the real signed net here and drive the display from
+  // it for unit games. Null for pot games (they keep the pot display).
+  const unitNet = useMemo((): Record<string, number> | null => {
+    if (!game || !isUnitGame(game.type)) return null
+    const raw =
+      game.type === 'wolf' ? wolfResult
+      : game.type === 'banker' ? bankerResult
+      : game.type === 'hammer' ? hammerResult
+      : game.type === 'dots' ? dotsResult
+      : null
+    if (!raw) return null
+    return unitGameNet(game.type, game.buyInCents, raw)
+  }, [game, wolfResult, bankerResult, hammerResult, dotsResult])
+  const unitTotalWon = unitNet
+    ? Object.values(unitNet).filter(n => n > 0).reduce((s, n) => s + n, 0)
+    : null
+
   // Persist settlements: compute + insert on first view, or load from DB
   const persistSettlements = useCallback(async () => {
     // Points-mode rounds have no treasurer — they settle directly (below), so we
@@ -1119,12 +1138,13 @@ export function SettleUp({ roundId, userId, eventId, onDone, onContinue }: Props
               <p className={`text-xl font-bold ${isHighRoller ? 'text-white' : 'text-gray-800'}`}>{players.length}</p>
             </div>
             <div className={`rounded-xl p-3 ${isHighRoller ? 'bg-black/30' : 'bg-gray-50'}`}>
-              <p className={`text-xs ${isHighRoller ? 'text-amber-400' : 'text-gray-500'}`}>{isPoints ? 'Entry' : 'Buy-in'}</p>
+              <p className={`text-xs ${isHighRoller ? 'text-amber-400' : 'text-gray-500'}`}>{unitNet ? 'Per unit' : isPoints ? 'Entry' : 'Buy-in'}</p>
               <p className={`text-xl font-bold ${isHighRoller ? 'text-white' : 'text-gray-800'}`}>{fmt(game.buyInCents)}</p>
             </div>
             <div className={`rounded-xl p-3 ${isHighRoller ? 'bg-amber-900/40' : 'bg-green-50'}`}>
-              <p className={`text-xs ${isHighRoller ? 'text-amber-400' : 'text-gray-500'}`}>{isPoints ? 'Total points' : 'Total pot'}</p>
-              <p className={`text-xl font-bold ${isHighRoller ? 'text-amber-400' : 'text-green-800'}`}>{fmt(potCents)}</p>
+              {/* Unit games have no pot — show total points that actually changed hands. */}
+              <p className={`text-xs ${isHighRoller ? 'text-amber-400' : 'text-gray-500'}`}>{unitNet ? 'Total won' : isPoints ? 'Total points' : 'Total pot'}</p>
+              <p className={`text-xl font-bold ${isHighRoller ? 'text-amber-400' : 'text-green-800'}`}>{fmt(unitTotalWon ?? potCents)}</p>
             </div>
           </div>
           {treasurer && (
@@ -1464,10 +1484,13 @@ export function SettleUp({ roundId, userId, eventId, onDone, onContinue }: Props
             <div className="space-y-2">
               {payouts.map(payout => {
                 const winner = playerById(payout.playerId)
+                // For unit games show the player's true net (matches the settlement),
+                // not the pot-model payout. Pot games keep the payout amount.
+                const amount = unitNet ? (unitNet[payout.playerId] ?? payout.amountCents) : payout.amountCents
                 return (
                   <div key={payout.playerId} className="bg-green-50 rounded-xl p-3 flex items-center justify-between">
                     <div><p className="font-bold text-gray-800 dark:text-gray-100">{winner?.name}</p><p className="text-xs text-gray-500">{payout.reason}</p></div>
-                    <p className="text-2xl font-bold text-green-700">{fmt(payout.amountCents)}</p>
+                    <p className="text-2xl font-bold text-green-700">{fmt(amount)}</p>
                   </div>
                 )
               })}
