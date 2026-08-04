@@ -569,8 +569,14 @@ export function SettleUp({ roundId, userId, eventId, onDone, onContinue }: Props
   // Current user's player ID (for "I Paid" buttons)
   const myPlayerId = useMemo(() => {
     return Array.from(participantMap.entries()).find(([, uid]) => uid === userId)?.[0]
+      // The creator's own player uses their auth userId as its player id (see
+      // NewRound), so match that directly — otherwise self-created guest rounds
+      // (no round_participants row, no treasurer) can't identify the viewer and
+      // the personal "you owe / you collect" summary silently falls back to an
+      // impersonal pot total.
+      ?? players.find(p => p.id === userId)?.id
       ?? (treasurerId && (userId === round?.createdBy) ? treasurerId : null)
-  }, [participantMap, userId, treasurerId, round?.createdBy])
+  }, [participantMap, userId, treasurerId, round?.createdBy, players])
 
   // Report settlement payment (non-treasurer player)
   const [reportingSettlementId, setReportingSettlementId] = useState<string | null>(null)
@@ -895,8 +901,8 @@ export function SettleUp({ roundId, userId, eventId, onDone, onContinue }: Props
 
         {/* ── You Owe / You Collect Summary (moved to top) ── */}
         {settlementRecords.length > 0 && userId && (() => {
-          const myPlayerId = Array.from(participantMap.entries()).find(([, uid]) => uid === userId)?.[0]
-            ?? (treasurerId && (userId === round?.createdBy) ? treasurerId : null)
+          // Use the canonical resolver (handles self-created guest rounds) so this
+          // shows the viewer's own result instead of the impersonal fallback.
           if (!myPlayerId) {
             const totalOwed = owedSettlements.reduce((s, r) => s + r.amountCents, 0)
             return (
@@ -1474,27 +1480,6 @@ export function SettleUp({ roundId, userId, eventId, onDone, onContinue }: Props
                 })}
               </div>
             )}
-          </section>
-        )}
-
-        {/* ── Winners / Payouts ── */}
-        {payouts.length > 0 && (
-          <section className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm p-4 space-y-3">
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Winners</p>
-            <div className="space-y-2">
-              {payouts.map(payout => {
-                const winner = playerById(payout.playerId)
-                // For unit games show the player's true net (matches the settlement),
-                // not the pot-model payout. Pot games keep the payout amount.
-                const amount = unitNet ? (unitNet[payout.playerId] ?? payout.amountCents) : payout.amountCents
-                return (
-                  <div key={payout.playerId} className="bg-green-50 rounded-xl p-3 flex items-center justify-between">
-                    <div><p className="font-bold text-gray-800 dark:text-gray-100">{winner?.name}</p><p className="text-xs text-gray-500">{payout.reason}</p></div>
-                    <p className="text-2xl font-bold text-green-700">{fmt(amount)}</p>
-                  </div>
-                )
-              })}
-            </div>
           </section>
         )}
 
