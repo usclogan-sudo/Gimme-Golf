@@ -1107,9 +1107,11 @@ export function SettleUp({ roundId, userId, eventId, onDone, onContinue }: Props
               <p className={`text-xl font-bold ${isHighRoller ? 'text-amber-400' : 'text-green-800'}`}>{fmt(potCents)}</p>
             </div>
           </div>
-          <p className={`text-sm mt-3 ${isHighRoller ? 'text-amber-200' : 'text-gray-500'}`}>
-            Treasurer: <strong>{treasurer?.name ?? 'Not assigned'}</strong>
-          </p>
+          {treasurer && (
+            <p className={`text-sm mt-3 ${isHighRoller ? 'text-amber-200' : 'text-gray-500'}`}>
+              Treasurer: <strong>{treasurer.name}</strong>
+            </p>
+          )}
         </section>
 
         {/* ── Group Breakdown (Event only) ── */}

@@ -694,11 +694,11 @@ function PlayerPicker({
         <div className="max-w-2xl mx-auto">
           <button
             onClick={handleNext}
-            disabled={selectedIds.size === 0}
+            disabled={selectedIds.size < 2}
             className="w-full h-14 bg-gray-800 text-white text-lg font-bold rounded-2xl shadow-lg disabled:opacity-40 active:bg-gray-900 transition-colors"
           >
-            {selectedIds.size === 0
-              ? 'Select at Least 1 Player'
+            {selectedIds.size < 2
+              ? 'Select at Least 2 Players'
               : `Next · ${selectedIds.size} Player${selectedIds.size !== 1 ? 's' : ''}`}
           </button>
         </div>
