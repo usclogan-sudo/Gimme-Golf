@@ -1594,17 +1594,31 @@ export function unitGameNet(
 }
 
 /**
- * Signed per-player net (cents) for a *pot* game: everyone antes one buy-in and
- * winners receive their payout, so net = payout − buy-in. Sums to zero because a
- * pot game distributes exactly the collected pot (buyIn × N).
+ * Signed per-player net (cents) for a *pot* game: winners receive their payout and
+ * everyone antes an equal share of the collected pot, so net = payout − ante.
+ *
+ * The ante is the *distributed* pot split evenly (`sum(payouts) / N`), not a fixed
+ * buy-in. For a plain pot game that equals `buyInCents` (pot = buyIn × N), so this
+ * is unchanged. But presses inflate the winners' pot without a matching flat buy-in
+ * — deriving the ante from what's actually distributed keeps the round net-zero
+ * (everyone's exposure scales with the presses). `buyInCents` is the fallback ante
+ * when no payouts exist yet (so an unscored round still reads as everyone-down).
  */
 export function netFromPayouts(
   payouts: PlayerPayout[],
   players: Player[],
   buyInCents: number,
 ): Record<string, number> {
+  const distributed = payouts.reduce((s, p) => s + p.amountCents, 0)
+  const anteTotal = distributed > 0 ? distributed : buyInCents * players.length
+  const perAnte = Math.floor(anteTotal / players.length)
+  let remainder = anteTotal - perAnte * players.length
   const net: Record<string, number> = {}
-  players.forEach(p => (net[p.id] = -buyInCents))
+  players.forEach(p => {
+    const extra = remainder > 0 ? 1 : 0
+    remainder -= extra
+    net[p.id] = -(perAnte + extra)
+  })
   for (const p of payouts) net[p.playerId] = (net[p.playerId] ?? 0) + p.amountCents
   return net
 }

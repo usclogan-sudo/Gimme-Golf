@@ -617,6 +617,29 @@ describe('settlement net-zero invariants', () => {
     expect(sum).toBe(POT(1000))
   })
 
+  it('Skins WITH a press: settlement still nets to zero (ante scales with the pot)', () => {
+    // A press at hole 5 doubles later holes and inflates the winners' pot. The old
+    // flat buy-in ante left the pot short; the ante now scales with what's distributed.
+    const skinsResult = {
+      skinsWon: { p1: 1, p2: 1, p3: 0 },
+      holeResults: [
+        { holeNumber: 1, winnerId: 'p1', carry: 0, skinsInPlay: 1 }, // pre-press, ×1
+        { holeNumber: 6, winnerId: 'p2', carry: 0, skinsInPlay: 1 }, // post-press, ×2
+      ],
+      totalSkins: 2,
+      pendingCarry: 0,
+    } as any
+    const game: Game = { id: 'g', type: 'skins', buyInCents: 1000, stakesMode: 'points', config: { presses: [{ holeNumber: 5, playerId: 'p1' }] } as any }
+    const payouts = calculateSkinsPayouts(skinsResult, game, players.length)
+    // pot = base 3000 × (1 + 1 press) = 6000, distributed over weighted units 1 + 2 = 3.
+    expect(payouts.reduce((s, p) => s + p.amountCents, 0)).toBe(6000)
+    const net = netFromPayouts(payouts, players, game.buyInCents)
+    expect(Object.values(net).reduce((s, n) => s + n, 0)).toBe(0) // nets to zero
+    const out = buildDirectSettlements(net, null)
+    expect(out.reduce((s, x) => s + x.amountCents, 0)).toBe(2000) // p2 collects, p3 pays
+    expect(out.every(s => s.amountCents > 0 && s.fromId !== s.toId)).toBe(true)
+  })
+
   it('BBB (points recorded): payouts sum to the full pot, remainder included', () => {
     const result = { pointsWon: { p1: 4, p2: 2, p3: 3 }, totalPoints: 9 } as any
     const game: Game = { id: 'g', type: 'bingo_bango_bongo', buyInCents: 1000, stakesMode: 'points', config: {} as any }
