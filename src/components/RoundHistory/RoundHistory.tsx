@@ -183,7 +183,6 @@ export function RoundHistory({ userId, onBack, onViewSettlements, onPlayAgain }:
                   {players.length > 0 && snapshot && (() => {
                     const pSnap = makePlayableSnapshot(snapshot, roundToHolesConfig(round))
                     const courseHcps = buildCourseHandicaps(players, expandedRoundPlayers, snapshot, round.holesMode)
-                    const totalPar = pSnap.holes.reduce((s, h) => s + h.par, 0)
 
                     const board = players.map(player => {
                       const playerScores = expandedScores.filter(s => s.playerId === player.id)
@@ -193,7 +192,13 @@ export function RoundHistory({ userId, onBack, onViewSettlements, onPlayAgain }:
                         const hole = pSnap.holes.find(h => h.number === hs.holeNumber)
                         return s + (hole ? strokesOnHole(courseHcp, hole.strokeIndex, pSnap.holes.length) : 0)
                       }, 0)
-                      return { player, gross, net: gross - netStrokes, vsPar: gross - totalPar, hasScores: playerScores.length > 0 }
+                      // vs par over the holes actually played (not all 18), so a
+                      // partial round doesn't read e.g. −68 for a 1-hole gross of 6.
+                      const scoredPar = playerScores.reduce((s, hs) => {
+                        const hole = pSnap.holes.find(h => h.number === hs.holeNumber)
+                        return s + (hole?.par ?? 0)
+                      }, 0)
+                      return { player, gross, net: gross - netStrokes, vsPar: gross - scoredPar, hasScores: playerScores.length > 0 }
                     }).sort((a, b) => a.net - b.net)
 
                     return (
