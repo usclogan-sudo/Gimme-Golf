@@ -369,9 +369,11 @@ function PlayerPicker({
   useEffect(() => {
     // Fetch registered users from user_profiles (display_name IS NOT NULL = completed onboarding)
     const loadPlayers = async () => {
-      const [profilesRes, guestsRes] = await Promise.all([
+      const [profilesRes, guestsRes, myProfileRes] = await Promise.all([
         supabase.from('user_profiles').select('*').not('display_name', 'is', null).limit(200),
         supabase.from('players').select('*').eq('user_id', userId).order('name'),
+        // The current user's own profile (may have a null display_name for a fresh guest).
+        supabase.from('user_profiles').select('*').eq('user_id', userId).maybeSingle(),
       ])
 
       const registeredPlayers: Player[] = (profilesRes.data ?? []).map((row: any) => {
@@ -391,7 +393,24 @@ function PlayerPicker({
       const registeredIds = new Set(registeredPlayers.map(p => p.id))
       const uniqueGuests = guestPlayers.filter(g => !registeredIds.has(g.id))
 
-      const all = [...registeredPlayers, ...uniqueGuests].sort((a, b) => a.name.localeCompare(b.name))
+      let all = [...registeredPlayers, ...uniqueGuests].sort((a, b) => a.name.localeCompare(b.name))
+
+      // Always include the current user as a selectable "You" player. A brand-new
+      // guest has no display_name yet (so they're not in registeredPlayers) — without
+      // this they'd land on Select Players with nobody pre-selected. Synthesize a
+      // self-player from their profile (name defaults to "You") so the guest path is
+      // as smooth as a logged-in user's.
+      if (!all.some(p => p.id === userId)) {
+        const mp = myProfileRes.data ? rowToUserProfile(myProfileRes.data as any) : null
+        const self: Player = {
+          id: userId,
+          name: mp?.displayName || 'You',
+          handicapIndex: mp?.handicapIndex ?? 0,
+          tee: mp?.tee ?? 'White',
+          ghinNumber: '',
+        }
+        all = [self, ...all]
+      }
       setAllPlayers(all)
 
       // Auto-select the logged-in user if no pre-selected IDs provided
