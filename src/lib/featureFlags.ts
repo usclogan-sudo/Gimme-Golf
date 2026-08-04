@@ -46,12 +46,11 @@ export const SHOW_DOTS = true
 
 /**
  * Presses (Skins & Nassau — a new bet started when down, doubling stakes).
- * When false, the in-round Press button is hidden. Presses currently over-
- * distribute: the doubled winnings aren't funded by extra buy-ins, so the
- * treasurer covers the shortfall (docs/GAMEPLAY-QA-FINDINGS.md). Hidden until the
- * settlement rework funds presses as head-to-head bets. Calc logic preserved.
+ * Re-enabled: settlement now derives each player's ante from the *distributed* pot
+ * (`netFromPayouts`), so a press that inflates the winners' pot scales everyone's
+ * exposure equally and the round still nets to zero (no treasurer shortfall).
  */
-export const SHOW_PRESSES = false
+export const SHOW_PRESSES = true
 
 /**
  * Best Ball "Stroke Play" (total-strokes) scoring mode. When false, Best Ball is

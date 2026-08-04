@@ -59,7 +59,7 @@ export function LeaderboardTab({
   skinsResult, bestBallResult, nassauResult, wolfResult, bbbResult,
   hammerResult, vegasResult, stablefordResult, bankerResult, quotaResult,
   skinsResultAlt, bestBallResultAlt, nassauResultAlt, wolfResultAlt,
-  vegasResultAlt, stablefordResultAlt, bankerResultAlt, quotaResultAlt,
+  vegasResultAlt, stablefordResultAlt, bankerResultAlt,
   primaryMode = 'net',
   shareRef, sharing, shareImage,
 }: Props) {
@@ -419,30 +419,16 @@ export function LeaderboardTab({
           </div>
         )}
 
-        {/* Quota */}
+        {/* Quota — always scored gross (handicap is baked into the target), so there
+            is no net/gross distinction to show. */}
         {quotaResult && (
           <div className="mt-3 pt-3 border-t border-gray-100">
-            <p className="text-xs font-semibold text-gray-500 uppercase mb-2">Quota ({primaryLabel})</p>
+            <p className="text-xs font-semibold text-gray-500 uppercase mb-2">Quota</p>
             <div className="flex flex-wrap gap-2">
               {players.slice().sort((a, b) => (quotaResult.netPoints[b.id] ?? 0) - (quotaResult.netPoints[a.id] ?? 0)).map(p => {
                 const net = quotaResult.netPoints[p.id] ?? 0
                 return (
                   <span key={p.id} className={`text-xs font-semibold px-2 py-1 rounded-lg ${net > 0 ? 'bg-blue-50 text-blue-700' : net < 0 ? 'bg-red-50 text-red-600' : 'bg-gray-50 text-gray-500'}`}>
-                    {p.name}: {net > 0 ? '+' : ''}{net}
-                  </span>
-                )
-              })}
-            </div>
-          </div>
-        )}
-        {quotaResultAlt && (
-          <div className="mt-2 pl-2 border-l-2 border-gray-200">
-            <p className="text-xs font-medium text-gray-400 uppercase mb-1">Quota ({altLabel})</p>
-            <div className="flex flex-wrap gap-2">
-              {players.slice().sort((a, b) => (quotaResultAlt.netPoints[b.id] ?? 0) - (quotaResultAlt.netPoints[a.id] ?? 0)).map(p => {
-                const net = quotaResultAlt.netPoints[p.id] ?? 0
-                return (
-                  <span key={p.id} className="text-xs text-gray-500 px-2 py-0.5 rounded bg-gray-50">
                     {p.name}: {net > 0 ? '+' : ''}{net}
                   </span>
                 )
