@@ -38,6 +38,8 @@ import {
   buildUnifiedSettlements,
   buildDirectSettlements,
   netFromPayouts,
+  isUnitGame,
+  unitGameNet,
   JUNK_LABELS,
   fmtAmount,
 } from '../../lib/gameLogic'
@@ -418,6 +420,25 @@ export function SettleUp({ roundId, userId, eventId, onDone, onContinue }: Props
     return []
   }, [game, players, playableSnapshot, skinsResult, bestBallResult, nassauResult, wolfResult, bbbResult, hammerResult, vegasResult, stablefordResult, dotsResult, bankerResult, quotaResult])
 
+  // Unit games (wolf/banker/hammer/dots) settle from a signed net, not a pot, so
+  // the pot-model "Winners" payout and "Total pot" (buyIn × N) would contradict the
+  // actual settlement. Compute the real signed net here and drive the display from
+  // it for unit games. Null for pot games (they keep the pot display).
+  const unitNet = useMemo((): Record<string, number> | null => {
+    if (!game || !isUnitGame(game.type)) return null
+    const raw =
+      game.type === 'wolf' ? wolfResult
+      : game.type === 'banker' ? bankerResult
+      : game.type === 'hammer' ? hammerResult
+      : game.type === 'dots' ? dotsResult
+      : null
+    if (!raw) return null
+    return unitGameNet(game.type, game.buyInCents, raw)
+  }, [game, wolfResult, bankerResult, hammerResult, dotsResult])
+  const unitTotalWon = unitNet
+    ? Object.values(unitNet).filter(n => n > 0).reduce((s, n) => s + n, 0)
+    : null
+
   // Persist settlements: compute + insert on first view, or load from DB
   const persistSettlements = useCallback(async () => {
     // Points-mode rounds have no treasurer — they settle directly (below), so we
@@ -445,16 +466,26 @@ export function SettleUp({ roundId, userId, eventId, onDone, onContinue }: Props
     }
 
     setCalculatingSettlements(true)
-    // Points mode settles from each player's signed game net. Unit games (hammer,
-    // dots) carry a real-cents zero-sum net already; pot games derive it from
-    // payouts (payout − buy-in). The treasurer/money path is unchanged.
-    const gameNet =
-      game?.type === 'hammer' && hammerResult ? { ...hammerResult.netCents }
-      : game?.type === 'dots' && dotsResult ? { ...dotsResult.netCents }
+    // Unit games (hammer, dots, wolf, banker) have no pot or treasurer — each
+    // player's signed net is settled head-to-head, in BOTH points and money mode.
+    // Wolf/banker carry signed units scaled by the per-unit stake; hammer/dots
+    // carry real cents. Pot games net = payout − buy-in and keep the treasurer hub
+    // in money mode.
+    const isUnit = game ? isUnitGame(game.type) : false
+    const unitRaw =
+      game?.type === 'wolf' ? wolfResult ?? undefined
+      : game?.type === 'banker' ? bankerResult ?? undefined
+      : game?.type === 'hammer' ? hammerResult ?? undefined
+      : game?.type === 'dots' ? dotsResult ?? undefined
+      : undefined
+    const gameNet = isUnit && game && unitRaw
+      ? unitGameNet(game.type, game.buyInCents, unitRaw)
       : netFromPayouts(payouts, players, game?.buyInCents ?? 0)
-    const unified = treasurerId
-      ? buildUnifiedSettlements(payouts, treasurerId, junkResult, sideBetSettlements, propSettlements)
-      : buildDirectSettlements(gameNet, junkResult, sideBetSettlements, propSettlements)
+    const unified = isUnit
+      ? buildDirectSettlements(gameNet, junkResult, sideBetSettlements, propSettlements)
+      : treasurerId
+        ? buildUnifiedSettlements(payouts, treasurerId, junkResult, sideBetSettlements, propSettlements)
+        : buildDirectSettlements(gameNet, junkResult, sideBetSettlements, propSettlements)
     if (unified.length === 0) { setCalculatingSettlements(false); return }
 
     const records: SettlementRecord[] = unified.map(s => ({
@@ -506,7 +537,7 @@ export function SettleUp({ roundId, userId, eventId, onDone, onContinue }: Props
     }
 
     setCalculatingSettlements(false)
-  }, [treasurerId, userId, settlementsInitialized, settlementRecords.length, payouts, junkResult, sideBetSettlements, propSettlements, resolvedPropBets, propBets, roundId, participantMap, players, game, hammerResult, dotsResult])
+  }, [treasurerId, userId, settlementsInitialized, settlementRecords.length, payouts, junkResult, sideBetSettlements, propSettlements, resolvedPropBets, propBets, roundId, participantMap, players, game, hammerResult, dotsResult, wolfResult, bankerResult])
 
   useEffect(() => {
     if (!loading && round && game && snapshot) {
@@ -538,8 +569,14 @@ export function SettleUp({ roundId, userId, eventId, onDone, onContinue }: Props
   // Current user's player ID (for "I Paid" buttons)
   const myPlayerId = useMemo(() => {
     return Array.from(participantMap.entries()).find(([, uid]) => uid === userId)?.[0]
+      // The creator's own player uses their auth userId as its player id (see
+      // NewRound), so match that directly — otherwise self-created guest rounds
+      // (no round_participants row, no treasurer) can't identify the viewer and
+      // the personal "you owe / you collect" summary silently falls back to an
+      // impersonal pot total.
+      ?? players.find(p => p.id === userId)?.id
       ?? (treasurerId && (userId === round?.createdBy) ? treasurerId : null)
-  }, [participantMap, userId, treasurerId, round?.createdBy])
+  }, [participantMap, userId, treasurerId, round?.createdBy, players])
 
   // Report settlement payment (non-treasurer player)
   const [reportingSettlementId, setReportingSettlementId] = useState<string | null>(null)
@@ -657,21 +694,6 @@ export function SettleUp({ roundId, userId, eventId, onDone, onContinue }: Props
     setPendingAction(null)
   }
 
-  const markPlayerSettled = async (settlementIds: string[]) => {
-    cancelPendingAction()
-    const paidAt = new Date().toISOString()
-    const prevRecords = [...settlementRecords]
-    setSettlementRecords(prev => prev.map(s =>
-      settlementIds.includes(s.id) ? { ...s, status: 'paid' as SettlementRecord['status'], paidAt: new Date(paidAt) } : s
-    ))
-    setMutationError(null)
-    const { error } = await supabase.from('settlements').update({ status: 'paid', paid_at: paidAt }).in('id', settlementIds)
-    if (error) {
-      setSettlementRecords(prevRecords)
-      setMutationError('Failed to mark settlements as paid. Please try again.')
-    }
-  }
-
   const markAllBuyInsPaid = () => {
     cancelPendingAction()
     const prevBuyIns = [...buyIns]
@@ -723,72 +745,6 @@ export function SettleUp({ roundId, userId, eventId, onDone, onContinue }: Props
 
     setPendingAction({ type: 'bulk_settlement', id: 'bulk', ids: owedIds, name: `${owedIds.length} settlement${owedIds.length !== 1 ? 's' : ''}`, timer, prevRecords })
   }
-
-  // Collection Checklist: aggregate settlements by counterparty. With a treasurer
-  // it's the treasurer's perspective; in points mode it's the current user's.
-  // (must be before early return to keep hook order stable)
-  const collectionChecklist = useMemo(() => {
-    const settleHubId = treasurerId ?? myPlayerId
-    if (!settleHubId || settlementRecords.length === 0) return []
-    const byPlayer = new Map<string, { collectCents: number; payCents: number; owedIds: string[]; totalIds: string[]; paidCount: number }>()
-    for (const s of settlementRecords) {
-      const involvesT = s.fromPlayerId === settleHubId || s.toPlayerId === settleHubId
-      if (!involvesT) {
-        const key = s.fromPlayerId + '→' + s.toPlayerId
-        if (!byPlayer.has(key)) byPlayer.set(key, { collectCents: 0, payCents: 0, owedIds: [], totalIds: [], paidCount: 0 })
-        const entry = byPlayer.get(key)!
-        entry.totalIds.push(s.id)
-        if (s.status === 'paid') entry.paidCount++
-        else entry.owedIds.push(s.id)
-        entry.collectCents += s.amountCents
-        continue
-      }
-      const counterpartyId = s.fromPlayerId === settleHubId ? s.toPlayerId : s.fromPlayerId
-      if (!byPlayer.has(counterpartyId)) byPlayer.set(counterpartyId, { collectCents: 0, payCents: 0, owedIds: [], totalIds: [], paidCount: 0 })
-      const entry = byPlayer.get(counterpartyId)!
-      entry.totalIds.push(s.id)
-      if (s.status === 'paid') { entry.paidCount++; continue }
-      entry.owedIds.push(s.id)
-      if (s.toPlayerId === settleHubId) {
-        entry.collectCents += s.amountCents
-      } else {
-        entry.payCents += s.amountCents
-      }
-    }
-    const result: { playerId: string; playerName: string; netCents: number; owedIds: string[]; totalCount: number; paidCount: number; player: Player | undefined; isDirect?: boolean; directLabel?: string }[] = []
-    for (const [key, data] of byPlayer) {
-      if (key.includes('→')) {
-        const [fromId, toId] = key.split('→')
-        const fromP = playerById(fromId)
-        const toP = playerById(toId)
-        if (data.owedIds.length === 0) continue
-        result.push({
-          playerId: key,
-          playerName: `${fromP?.name ?? '?'} → ${toP?.name ?? '?'}`,
-          netCents: data.collectCents,
-          owedIds: data.owedIds,
-          totalCount: data.totalIds.length,
-          paidCount: data.paidCount,
-          player: fromP,
-          isDirect: true,
-          directLabel: `${fromP?.name ?? '?'} pays ${toP?.name ?? '?'}`,
-        })
-      } else {
-        const net = data.collectCents - data.payCents
-        if (data.owedIds.length === 0) continue
-        result.push({
-          playerId: key,
-          playerName: playerById(key)?.name ?? key.slice(0, 8),
-          netCents: net,
-          owedIds: data.owedIds,
-          totalCount: data.totalIds.length,
-          paidCount: data.paidCount,
-          player: playerById(key),
-        })
-      }
-    }
-    return result.sort((a, b) => Math.abs(b.netCents) - Math.abs(a.netCents))
-  }, [settlementRecords, treasurerId, myPlayerId, enrichedPlayers])
 
   if (loadError) {
     return (
@@ -864,8 +820,8 @@ export function SettleUp({ roundId, userId, eventId, onDone, onContinue }: Props
 
         {/* ── You Owe / You Collect Summary (moved to top) ── */}
         {settlementRecords.length > 0 && userId && (() => {
-          const myPlayerId = Array.from(participantMap.entries()).find(([, uid]) => uid === userId)?.[0]
-            ?? (treasurerId && (userId === round?.createdBy) ? treasurerId : null)
+          // Use the canonical resolver (handles self-created guest rounds) so this
+          // shows the viewer's own result instead of the impersonal fallback.
           if (!myPlayerId) {
             const totalOwed = owedSettlements.reduce((s, r) => s + r.amountCents, 0)
             return (
@@ -916,83 +872,6 @@ export function SettleUp({ roundId, userId, eventId, onDone, onContinue }: Props
             </section>
           )
         })()}
-
-        {/* Collection Checklist — treasurer's aggregated view */}
-        {isTreasurer && collectionChecklist.length > 0 && (
-          <section className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm p-4 space-y-3">
-            <div>
-              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Collection Checklist</p>
-              {(() => {
-                const totalItems = collectionChecklist.reduce((s, c) => s + c.totalCount, 0)
-                const paidItems = collectionChecklist.reduce((s, c) => s + c.paidCount, 0)
-                const pct = totalItems > 0 ? Math.round((paidItems / totalItems) * 100) : 0
-                return (
-                  <div className="mt-2">
-                    <div className="flex items-center justify-between text-xs text-gray-500 mb-1">
-                      <span>{paidItems} of {totalItems} settled</span>
-                      <span>{pct}%</span>
-                    </div>
-                    <div className="w-full h-2 bg-gray-100 dark:bg-gray-700 rounded-full overflow-hidden">
-                      <div className="h-full bg-green-500 rounded-full transition-all" style={{ width: `${pct}%` }} />
-                    </div>
-                  </div>
-                )
-              })()}
-            </div>
-            <div className="space-y-2">
-              {collectionChecklist.map(item => {
-                const pref = item.player ? getPreferredPayment(item.player) : null
-                return (
-                  <div key={item.playerId} className="p-3 rounded-xl bg-gray-50 dark:bg-gray-700 space-y-2">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="font-semibold text-gray-800 dark:text-gray-100 text-sm">
-                          {item.isDirect ? item.directLabel : item.netCents > 0
-                            ? `Collect ${fmt(item.netCents)} from ${item.playerName}`
-                            : item.netCents < 0
-                            ? `Pay ${fmt(Math.abs(item.netCents))} to ${item.playerName}`
-                            : `Settle with ${item.playerName}`}
-                        </p>
-                        {pref && !item.isDirect && (
-                          <p className="text-xs text-blue-600 dark:text-blue-400 mt-0.5">via {pref.method} {pref.handle}</p>
-                        )}
-                      </div>
-                      <p className={`text-2xl font-bold ${item.netCents > 0 ? 'text-green-600' : item.netCents < 0 ? 'text-red-600' : 'text-gray-500'}`}>
-                        {item.isDirect ? fmt(item.netCents) : fmt(Math.abs(item.netCents))}
-                      </p>
-                    </div>
-                    {/* Show if any settlements in this group have been player-reported */}
-                    {(() => {
-                      const reportedSettlements = item.owedIds
-                        .map(id => settlementRecords.find(s => s.id === id))
-                        .filter(s => s?.playerReportedAt)
-                      if (reportedSettlements.length === 0) return null
-                      return (
-                        <div className="bg-amber-50 border border-amber-200 rounded-lg p-2">
-                          <p className="text-xs text-amber-700 font-semibold">
-                            {reportedSettlements.length === 1
-                              ? `${playerById(reportedSettlements[0]!.fromPlayerId)?.name ?? 'Player'} reported paying via ${reportedSettlements[0]!.reportedMethod ?? 'cash'}`
-                              : `${reportedSettlements.length} player${reportedSettlements.length !== 1 ? 's' : ''} reported paying`
-                            }
-                          </p>
-                        </div>
-                      )
-                    })()}
-                    {!item.isDirect && item.player && item.netCents < 0 && (
-                      <PaymentButtons toPlayer={item.player} amountCents={toPayCents(Math.abs(item.netCents))} note={`${snapshot.courseName} · ${gameLabel}`} />
-                    )}
-                    <button
-                      onClick={() => markPlayerSettled(item.owedIds)}
-                      className="w-full h-10 bg-green-600 text-white text-sm font-semibold rounded-xl active:bg-green-700 transition-colors"
-                    >
-                      Mark {item.owedIds.length === 1 ? 'Paid' : `All ${item.owedIds.length} Paid`}
-                    </button>
-                  </div>
-                )
-              })}
-            </div>
-          </section>
-        )}
 
         {buyIns.length > 0 && (() => {
           const allBuyInsPaid = unpaidBuyIns.length === 0
@@ -1107,12 +986,13 @@ export function SettleUp({ roundId, userId, eventId, onDone, onContinue }: Props
               <p className={`text-xl font-bold ${isHighRoller ? 'text-white' : 'text-gray-800'}`}>{players.length}</p>
             </div>
             <div className={`rounded-xl p-3 ${isHighRoller ? 'bg-black/30' : 'bg-gray-50'}`}>
-              <p className={`text-xs ${isHighRoller ? 'text-amber-400' : 'text-gray-500'}`}>{isPoints ? 'Entry' : 'Buy-in'}</p>
+              <p className={`text-xs ${isHighRoller ? 'text-amber-400' : 'text-gray-500'}`}>{unitNet ? 'Per unit' : isPoints ? 'Entry' : 'Buy-in'}</p>
               <p className={`text-xl font-bold ${isHighRoller ? 'text-white' : 'text-gray-800'}`}>{fmt(game.buyInCents)}</p>
             </div>
             <div className={`rounded-xl p-3 ${isHighRoller ? 'bg-amber-900/40' : 'bg-green-50'}`}>
-              <p className={`text-xs ${isHighRoller ? 'text-amber-400' : 'text-gray-500'}`}>{isPoints ? 'Total points' : 'Total pot'}</p>
-              <p className={`text-xl font-bold ${isHighRoller ? 'text-amber-400' : 'text-green-800'}`}>{fmt(potCents)}</p>
+              {/* Unit games have no pot — show total points that actually changed hands. */}
+              <p className={`text-xs ${isHighRoller ? 'text-amber-400' : 'text-gray-500'}`}>{unitNet ? 'Total won' : isPoints ? 'Total points' : 'Total pot'}</p>
+              <p className={`text-xl font-bold ${isHighRoller ? 'text-amber-400' : 'text-green-800'}`}>{fmt(unitTotalWon ?? potCents)}</p>
             </div>
           </div>
           {treasurer && (
@@ -1445,30 +1325,12 @@ export function SettleUp({ roundId, userId, eventId, onDone, onContinue }: Props
           </section>
         )}
 
-        {/* ── Winners / Payouts ── */}
-        {payouts.length > 0 && (
-          <section className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm p-4 space-y-3">
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Winners</p>
-            <div className="space-y-2">
-              {payouts.map(payout => {
-                const winner = playerById(payout.playerId)
-                return (
-                  <div key={payout.playerId} className="bg-green-50 rounded-xl p-3 flex items-center justify-between">
-                    <div><p className="font-bold text-gray-800 dark:text-gray-100">{winner?.name}</p><p className="text-xs text-gray-500">{payout.reason}</p></div>
-                    <p className="text-2xl font-bold text-green-700">{fmt(payout.amountCents)}</p>
-                  </div>
-                )
-              })}
-            </div>
-          </section>
-        )}
-
         {/* ── Unified Settlements (game + junk) with Mark Paid ── */}
         {settlementRecords.length > 0 && (
           <section className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm p-4 space-y-4">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Settlements</p>
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Settle Up</p>
                 <p className="text-sm text-gray-500 mt-1">
                   {allSettled
                     ? <span className="text-green-600 font-semibold">All settled!</span>
@@ -1499,6 +1361,23 @@ export function SettleUp({ roundId, userId, eventId, onDone, onContinue }: Props
                 </div>
               )}
             </div>
+            {/* Progress bar (consolidated from the old Collection Checklist). */}
+            {(() => {
+              const total = settlementRecords.length
+              const paid = paidSettlements.length
+              const pct = total > 0 ? Math.round((paid / total) * 100) : 0
+              return (
+                <div>
+                  <div className="flex items-center justify-between text-xs text-gray-500 mb-1">
+                    <span>{paid} of {total} settled</span>
+                    <span>{pct}%</span>
+                  </div>
+                  <div className="w-full h-2 bg-gray-100 dark:bg-gray-700 rounded-full overflow-hidden">
+                    <div className="h-full bg-green-500 rounded-full transition-all" style={{ width: `${pct}%` }} />
+                  </div>
+                </div>
+              )
+            })()}
             {showMarkAllSettlementsConfirm && (
               <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 space-y-3">
                 <p className="text-sm font-semibold text-amber-900">Mark all {owedSettlements.length} settlements as paid?</p>

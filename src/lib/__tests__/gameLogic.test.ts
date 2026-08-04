@@ -26,6 +26,7 @@ import {
   buildUnifiedSettlements,
   netFromPayouts,
   isUnitGame,
+  unitGameNet,
   calculateSideBetSettlements,
   fmtMoney,
   fmtAmount,
@@ -657,14 +658,27 @@ function assertDirectSettlementSound(settlements: DirectSettlement[], trueNet: R
 }
 
 describe('single settlement engine — direct (points) soundness', () => {
-  it('classifies hammer + dots as unit games; pot games are not', () => {
+  it('classifies hammer/dots/wolf/banker as unit games; pot games are not', () => {
     expect(isUnitGame('hammer')).toBe(true)
     expect(isUnitGame('dots')).toBe(true)
+    expect(isUnitGame('wolf')).toBe(true)
+    expect(isUnitGame('banker')).toBe(true)
     expect(isUnitGame('skins')).toBe(false)
     expect(isUnitGame('best_ball')).toBe(false)
     expect(isUnitGame('nassau')).toBe(false)
-    expect(isUnitGame('wolf')).toBe(false) // deferred to PR-B (unit value TBD)
     expect(isUnitGame('bingo_bango_bongo')).toBe(false)
+    expect(isUnitGame('stableford')).toBe(false)
+    expect(isUnitGame('quota')).toBe(false)
+  })
+
+  it('unitGameNet: wolf/banker scale signed units by the per-unit stake; hammer/dots pass through', () => {
+    // wolf: units live in netUnits, scaled by buy-in (per-unit stake)
+    expect(unitGameNet('wolf', 100, { netUnits: { p1: 2, p2: 1, p3: -3 } })).toEqual({ p1: 200, p2: 100, p3: -300 })
+    // banker: units live in netCents (misnamed), scaled by buy-in
+    expect(unitGameNet('banker', 50, { netCents: { p1: 3, p2: -1, p3: -2 } })).toEqual({ p1: 150, p2: -50, p3: -100 })
+    // hammer/dots: netCents already in cents → unscaled
+    expect(unitGameNet('hammer', 0, { netCents: { p1: 300, p2: -300 } })).toEqual({ p1: 300, p2: -300 })
+    expect(unitGameNet('dots', 0, { netCents: { p1: 400, p2: -100, p3: -300 } })).toEqual({ p1: 400, p2: -100, p3: -300 })
   })
 
   it('POT game (skins): net = payout − buy-in, losers pay winners, reconstructs', () => {
@@ -706,5 +720,27 @@ describe('single settlement engine — direct (points) soundness', () => {
     const combined: Record<string, number> = {}
     ;[...players].forEach(p => (combined[p.id] = (trueGameNet as any)[p.id] + junkResult.netCents[p.id]))
     assertDirectSettlementSound(out, combined)
+  })
+
+  it('UNIT game (wolf): stake per unit is honored — a lone-wolf swing pays proportionally, not flattened', () => {
+    // netUnits {p1:+2, p2:+1, p3:-3} at 100/unit → p3 owes 300 total (was flattened to a flat buy-in before).
+    const wolfResult = { netUnits: { p1: 2, p2: 1, p3: -3 }, holeResults: [] } as any
+    const trueNet = unitGameNet('wolf', 100, wolfResult)
+    expect(trueNet).toEqual({ p1: 200, p2: 100, p3: -300 })
+    const out = buildDirectSettlements(trueNet, null)
+    assertDirectSettlementSound(out, trueNet)
+    expect(out.every(s => s.fromId === 'p3')).toBe(true) // the −3 pays everyone
+    expect(out.reduce((s, x) => s + x.amountCents, 0)).toBe(300)
+  })
+
+  it('UNIT game (banker): asymmetric per-hole units settle by magnitude', () => {
+    // netCents holds ±1-per-hole units: p1 +4, p2 −3, p3 −1 at 25/unit.
+    const bankerResult = { netCents: { p1: 4, p2: -3, p3: -1 }, holeResults: [] } as any
+    const trueNet = unitGameNet('banker', 25, bankerResult)
+    expect(trueNet).toEqual({ p1: 100, p2: -75, p3: -25 })
+    const out = buildDirectSettlements(trueNet, null)
+    assertDirectSettlementSound(out, trueNet)
+    expect(out.find(s => s.fromId === 'p2')?.amountCents).toBe(75) // −3 pays 3× the −1
+    expect(out.find(s => s.fromId === 'p3')?.amountCents).toBe(25)
   })
 })
