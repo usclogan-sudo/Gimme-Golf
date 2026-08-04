@@ -1560,20 +1560,41 @@ export function buildUnifiedSettlements(
 
 /**
  * Games classified as *unit* (variable / asymmetric / buy-in-less) settle from a
- * signed, zero-sum per-player net rather than a shared pot. Their calc result
- * already carries that net in real cents (buy-in is 0), so it feeds settlement
- * directly — no winner-only pot conversion. Pot games (everything else) still net
- * to zero via `netFromPayouts` (payout − buy-in).
+ * signed, zero-sum per-player net rather than a shared pot. There is no pot or
+ * treasurer for a unit game — each player's net is settled head-to-head — so they
+ * route through `buildDirectSettlements` in BOTH points and money mode. Pot games
+ * (everything else) still net to zero via `netFromPayouts` (payout − buy-in) and
+ * keep the treasurer hub in money mode.
  *
- * PR-A ships hammer + dots (unambiguous: buy-in 0, `netCents` are real cents).
- * banker + wolf are also unit games but their nets are *units* needing a per-unit
- * cash value — deferred to PR-B (see docs/GAMEPLAY-QA-FINDINGS.md). Both are gated
- * off (SHOW_EXTRA_GAMES) so deferring has no live impact.
+ * Per the product model, a point is an abstract unit worth whatever players agree
+ * outside the app, so `buyInCents` is simply the value of ONE unit:
+ *   - hammer, dots: `netCents` is already the real per-player net (buy-in is 0).
+ *   - wolf, banker:  the calc carries signed *units*; net = units × `buyInCents`.
+ * See `unitGameNet`.
  */
-const UNIT_GAMES: GameType[] = ['hammer', 'dots']
+const UNIT_GAMES: GameType[] = ['hammer', 'dots', 'wolf', 'banker']
 
 export function isUnitGame(gameType: GameType): boolean {
   return UNIT_GAMES.includes(gameType)
+}
+
+/**
+ * Signed per-player cash net (points/cents) for a *unit* game's head-to-head
+ * settlement. Wolf's units live in `netUnits`; banker's in `netCents` (misnamed —
+ * they're ±1-per-hole units); both scale by the per-unit stake (`buyInCents`).
+ * Hammer/dots carry real cents already, so they pass through unscaled. Zero-sum in,
+ * zero-sum out.
+ */
+export function unitGameNet(
+  gameType: GameType,
+  buyInCents: number,
+  raw: { netCents?: Record<string, number>; netUnits?: Record<string, number> },
+): Record<string, number> {
+  const source = gameType === 'wolf' ? raw.netUnits ?? {} : raw.netCents ?? {}
+  const scale = gameType === 'wolf' || gameType === 'banker' ? buyInCents : 1
+  const out: Record<string, number> = {}
+  for (const [id, v] of Object.entries(source)) out[id] = v * scale
+  return out
 }
 
 /**
