@@ -143,6 +143,7 @@ function CoursePicker({
   const [selecting, setSelecting] = useState<string | null>(null)
   const [savedCourses, setSavedCourses] = useState<Course[]>([])
   const [sharedCourses, setSharedCourses] = useState<Course[]>([])
+  const [recentNames, setRecentNames] = useState<string[]>([])
   const [loading, setLoading] = useState(true)
   const headerClass = stakesMode === 'high_roller' ? 'hr-header' : 'app-header'
 
@@ -150,12 +151,22 @@ function CoursePicker({
     Promise.all([
       supabase.from('courses').select('*').order('name'),
       supabase.from('shared_courses').select('*').order('name').limit(500),
-    ]).then(([coursesRes, sharedRes]) => {
+      // Recently-played courses (most recent first) so the usual spots are one tap.
+      supabase.from('rounds').select('course_snapshot').eq('user_id', userId).order('date', { ascending: false }).limit(20),
+    ]).then(([coursesRes, sharedRes, roundsRes]) => {
       if (coursesRes.data) setSavedCourses(coursesRes.data.map(rowToCourse))
       if (sharedRes.data) setSharedCourses(sharedRes.data.map(rowToSharedCourse))
+      if (roundsRes.data) {
+        const names: string[] = []
+        for (const r of roundsRes.data as any[]) {
+          const n = r.course_snapshot?.courseName
+          if (n && !names.includes(n)) names.push(n)
+        }
+        setRecentNames(names.slice(0, 3))
+      }
       setLoading(false)
     })
-  }, [])
+  }, [userId])
 
   // Merge saved courses with shared + catalog, deduplicating by name
   const savedNames = new Set(savedCourses.map(c => c.name))
@@ -199,6 +210,11 @@ function CoursePicker({
         (c.city ?? '').toLowerCase().includes(query.toLowerCase())
       )
     : allCourses
+
+  // Recently-played courses (in recency order) for a one-tap quick-pick. Hidden while searching.
+  const recentCourses: CourseItem[] = query.trim()
+    ? []
+    : recentNames.map(n => allCourses.find(c => c.name === n)).filter((c): c is CourseItem => !!c)
 
   const handleSelect = async (item: CourseItem) => {
     if (selecting) return
@@ -258,6 +274,29 @@ function CoursePicker({
 
       <div className="px-4 py-4 max-w-2xl mx-auto space-y-3">
         <NearMeCourses onAddCourse={onAddCourse} />
+
+        {/* Recently played — one-tap quick-pick so you don't re-search your usual courses. */}
+        {recentCourses.length > 0 && (
+          <div className="space-y-2">
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Recent</p>
+            {recentCourses.map(course => (
+              <button
+                key={`recent-${course.id}`}
+                onClick={() => handleSelect(course)}
+                disabled={!!selecting}
+                className="w-full bg-amber-50 dark:bg-amber-900/20 rounded-2xl p-4 shadow-sm border border-amber-200 dark:border-amber-800 text-left active:bg-amber-100 disabled:opacity-60 flex items-center justify-between"
+              >
+                <div>
+                  <p className="font-semibold text-gray-800 dark:text-gray-100">🕘 {course.name}</p>
+                  <p className="text-sm text-gray-500 mt-0.5">Par {course.par} · {course.tees}</p>
+                </div>
+                {selecting === course.id && (
+                  <div className="w-5 h-5 border-2 border-amber-500 border-t-transparent rounded-full animate-spin flex-shrink-0" />
+                )}
+              </button>
+            ))}
+          </div>
+        )}
 
         <input
           type="text"
@@ -1349,6 +1388,11 @@ function GameSetup({
           >
             {showAllGames ? 'Hide extra games' : `More Games (${SHOW_EXTRA_GAMES ? (SHOW_DOTS ? 8 : 7) : 3} more)`}
           </button>
+          {/* Hammer is greyed at ≠2 players — a disabled button can't be selected, so
+              surface the reason here instead of only when it's the active type. */}
+          {SHOW_EXTRA_GAMES && showAllGames && !hammerAllowed && (
+            <p className="text-sm text-gray-400">🔨 Hammer is a 2-player game.</p>
+          )}
           {!bestBallAllowed && type === 'best_ball' && (
             <p className="text-sm text-gray-400">Best Ball requires an even number of players (2, 4, 6…).</p>
           )}
