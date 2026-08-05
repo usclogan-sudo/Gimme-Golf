@@ -147,26 +147,42 @@ export function LeaderboardTab({
 
   return (
     <div className="px-4 py-4 max-w-2xl mx-auto">
-      {/* BBB is a points game — lead with the points standings; strokes are secondary. */}
-      {game?.type === 'bingo_bango_bongo' && bbbResult && (() => {
-        const ranked = players.slice().sort((a, b) => (bbbResult.pointsWon[b.id] ?? 0) - (bbbResult.pointsWon[a.id] ?? 0))
+      {/* Points/net games lead with their own standings; strokes are secondary. */}
+      {game && ['bingo_bango_bongo', 'stableford', 'quota', 'banker'].includes(game.type) && (() => {
+        const gt = game.type
+        const result = gt === 'bingo_bango_bongo' ? bbbResult : gt === 'stableford' ? stablefordResult : gt === 'quota' ? quotaResult : bankerResult
+        if (!result) return null
+        const valueOf = (id: string) =>
+          gt === 'bingo_bango_bongo' ? (bbbResult?.pointsWon[id] ?? 0)
+          : gt === 'stableford' ? (stablefordResult?.points[id] ?? 0)
+          : gt === 'quota' ? (quotaResult?.netPoints[id] ?? 0)
+          : (bankerResult?.netCents[id] ?? 0)
+        const fmtVal = (v: number) =>
+          gt === 'quota' ? `${v > 0 ? '+' : ''}${v}`
+          : gt === 'banker' ? `${v > 0 ? '+' : ''}${v} unit${Math.abs(v) !== 1 ? 's' : ''}`
+          : `${v} pt${v !== 1 ? 's' : ''}`
+        const title =
+          gt === 'bingo_bango_bongo' ? '⭐ Bingo Bango Bongo · Points'
+          : gt === 'stableford' ? '🎯 Stableford · Points'
+          : gt === 'quota' ? '🎯 Quota · vs Target'
+          : '🏦 Banker · Units'
+        const ranked = players.slice().sort((a, b) => valueOf(b.id) - valueOf(a.id))
         const pos: number[] = []
         ranked.forEach((p, i) => {
-          const pts = bbbResult.pointsWon[p.id] ?? 0
-          pos.push(i > 0 && pts === (bbbResult.pointsWon[ranked[i - 1].id] ?? 0) ? pos[i - 1] : i + 1)
+          pos.push(i > 0 && valueOf(p.id) === valueOf(ranked[i - 1].id) ? pos[i - 1] : i + 1)
         })
         return (
           <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm p-4 mb-3">
-            <p className="text-xs font-semibold text-gray-500 uppercase mb-2">⭐ Bingo Bango Bongo · Points</p>
+            <p className="text-xs font-semibold text-gray-500 uppercase mb-2">{title}</p>
             <table className="w-full text-sm">
               <tbody>
                 {ranked.map((p, i) => {
-                  const pts = bbbResult.pointsWon[p.id] ?? 0
+                  const v = valueOf(p.id)
                   return (
                     <tr key={p.id} className={`border-b border-gray-50 ${pos[i] === 1 ? 'bg-amber-50' : ''}`}>
                       <td className={`py-2.5 px-1 font-bold w-8 ${pos[i] === 1 ? 'text-amber-600' : 'text-gray-500'}`}>{pos[i]}</td>
                       <td className="py-2.5 px-1 font-semibold text-gray-800 dark:text-gray-100">{p.name}</td>
-                      <td className="py-2.5 px-1 text-right font-bold text-purple-600 text-lg">{pts} pt{pts !== 1 ? 's' : ''}</td>
+                      <td className={`py-2.5 px-1 text-right font-bold text-lg ${gt === 'quota' && v < 0 ? 'text-red-500' : gt === 'banker' && v < 0 ? 'text-red-500' : 'text-purple-600'}`}>{fmtVal(v)}</td>
                     </tr>
                   )
                 })}
@@ -176,7 +192,7 @@ export function LeaderboardTab({
         )
       })()}
       <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm p-4">
-        {game?.type === 'bingo_bango_bongo' && (
+        {game && ['bingo_bango_bongo', 'stableford', 'quota', 'banker'].includes(game.type) && (
           <p className="text-xs font-medium text-gray-400 uppercase mb-2">Golf scores (reference)</p>
         )}
         <table className="w-full text-sm">
