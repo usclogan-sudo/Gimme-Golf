@@ -169,6 +169,9 @@ function Home({
 }) {
   const [courses, setCourses] = useState<Course[]>([])
   const [activeRounds, setActiveRounds] = useState<Round[]>([])
+  const [showAllActive, setShowAllActive] = useState(false)
+  const [confirmingDiscardId, setConfirmingDiscardId] = useState<string | null>(null)
+  const [discardingId, setDiscardingId] = useState<string | null>(null)
   const [participantRounds, setParticipantRounds] = useState<Round[]>([])
   const [roundCount, setRoundCount] = useState<number | null>(null)
   const [joinCode, setJoinCode] = useState('')
@@ -445,7 +448,7 @@ function Home({
 
         {activeRounds.length > 0 && (
           <section className="space-y-3">
-            {activeRounds.map(round => (
+            {(showAllActive ? activeRounds : activeRounds.slice(0, 2)).map(round => (
               <div key={round.id} className="rounded-2xl overflow-hidden shadow-lg">
                 <button onClick={() => onResumeRound(round.id)}
                   className="w-full active:scale-[0.98] transition-transform">
@@ -469,28 +472,63 @@ function Home({
                     </div>
                   </div>
                 </button>
-                <div className="bg-amber-100 px-5 py-2 flex justify-between">
-                  {SHOW_PROP_BETS ? (
-                    <button
-                      onClick={(e) => { e.stopPropagation(); onViewProps?.(round.id) }}
-                      className="text-purple-600 text-sm font-semibold hover:text-purple-800 transition-colors"
-                    >
-                      Props
-                    </button>
-                  ) : (
-                    <span />
-                  )}
-                  {onEndRound && (
-                    <button
-                      onClick={(e) => { e.stopPropagation(); onEndRound(round.id) }}
-                      className="text-red-600 text-sm font-semibold hover:text-red-800 transition-colors"
-                    >
-                      End Round
-                    </button>
-                  )}
-                </div>
+                {confirmingDiscardId === round.id ? (
+                  <div className="bg-amber-100 px-5 py-2.5 flex items-center justify-between gap-2">
+                    <span className="text-red-700 text-sm font-semibold">Discard this round permanently?</span>
+                    <div className="flex gap-2 flex-shrink-0">
+                      <button onClick={() => setConfirmingDiscardId(null)} className="text-gray-600 text-sm font-semibold px-2">Cancel</button>
+                      <button
+                        disabled={discardingId === round.id}
+                        onClick={async () => {
+                          setDiscardingId(round.id)
+                          const { error } = await supabase.rpc('delete_own_round', { p_round_id: round.id })
+                          setDiscardingId(null)
+                          setConfirmingDiscardId(null)
+                          if (!error) setActiveRounds(prev => prev.filter(r => r.id !== round.id))
+                        }}
+                        className="text-white bg-red-600 text-sm font-semibold rounded-lg px-3 py-1 active:bg-red-700 disabled:opacity-50"
+                      >
+                        {discardingId === round.id ? 'Deleting…' : 'Discard'}
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="bg-amber-100 px-5 py-2 flex justify-between items-center">
+                    {SHOW_PROP_BETS ? (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); onViewProps?.(round.id) }}
+                        className="text-purple-600 text-sm font-semibold hover:text-purple-800 transition-colors"
+                      >
+                        Props
+                      </button>
+                    ) : (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); setConfirmingDiscardId(round.id) }}
+                        className="text-gray-500 text-sm font-semibold hover:text-gray-700 transition-colors"
+                      >
+                        Discard
+                      </button>
+                    )}
+                    {onEndRound && (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); onEndRound(round.id) }}
+                        className="text-red-600 text-sm font-semibold hover:text-red-800 transition-colors"
+                      >
+                        End Round
+                      </button>
+                    )}
+                  </div>
+                )}
               </div>
             ))}
+            {activeRounds.length > 2 && (
+              <button
+                onClick={() => setShowAllActive(v => !v)}
+                className="w-full text-sm font-semibold text-gray-500 py-2 rounded-xl bg-gray-50 dark:bg-gray-800 active:bg-gray-100 transition-colors"
+              >
+                {showAllActive ? 'Show fewer' : `Show ${activeRounds.length - 2} more in progress`}
+              </button>
+            )}
           </section>
         )}
 
