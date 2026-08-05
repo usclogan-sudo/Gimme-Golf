@@ -236,27 +236,37 @@ export function SettleUp({ roundId, userId, eventId, onDone, onContinue }: Props
       if (pwRes?.data) setPropWagers(pwRes.data.map(rowToPropWager))
       if (settlRes.data) setSettlementRecords(settlRes.data.map(rowToSettlementRecord))
 
-      // Build participant map: playerId → userId
-      if (partRes.data) {
+      // Build player → user link map so a registered player's saved payment handles
+      // (Venmo/PayPal/Cash App) show up at settle-up. Two sources:
+      //  1. accepted join-flow participants (round_participants): player_id → user_id.
+      //  2. roster-added registered users, who never join/accept: a registered user's
+      //     player.id IS their auth user id (self-player convention), so link them to
+      //     their own profile. Previously these were skipped (accepted-participants
+      //     only), so a host-added winner's pay links never rendered. NOTE:
+      //     round_players.user_id is the round OWNER/creator (set for every row), not
+      //     the player's link — using it would wrongly map everyone to the creator.
+      {
         const pMap = new Map<string, string>()
-        for (const row of partRes.data) {
-          pMap.set(row.player_id, row.user_id)
+        if (partRes.data) {
+          for (const row of partRes.data) pMap.set(row.player_id, row.user_id)
         }
-        setParticipantMap(pMap)
-
-        // Fetch fresh user profiles for linked players
-        const userIds = [...new Set(partRes.data.map((r: any) => r.user_id))]
-        if (userIds.length > 0) {
-          supabase.from('user_profiles').select('*').in('user_id', userIds).then(({ data }) => {
-            if (data) {
-              const map = new Map<string, UserProfile>()
-              for (const row of data) {
-                map.set(row.user_id, rowToUserProfile(row))
-              }
-              setProfileMap(map)
-            }
-          })
-        }
+        const playerIds = (rpRes.data ?? []).map((r: any) => r.player_id as string)
+        // Candidate user ids: accepted-participant users + every round player id
+        // (a registered player's id equals their auth user id).
+        const candidateIds = [...new Set<string>([...pMap.values(), ...playerIds])]
+        void (async () => {
+          const profs = new Map<string, UserProfile>()
+          if (candidateIds.length > 0) {
+            const { data } = await supabase.from('user_profiles').select('*').in('user_id', candidateIds)
+            for (const row of data ?? []) profs.set(row.user_id, rowToUserProfile(row))
+          }
+          // A round player whose id is itself a registered user → link to their profile.
+          for (const pid of playerIds) {
+            if (!pMap.has(pid) && profs.has(pid)) pMap.set(pid, pid)
+          }
+          setParticipantMap(pMap)
+          setProfileMap(profs)
+        })()
       }
 
       setLoading(false)
