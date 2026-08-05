@@ -14,7 +14,6 @@ Re-run this sweep after UX changes; add rows as new friction surfaces.
 
 | # | Journey | Severity | What's rough | Suggested fix |
 |---|---------|----------|--------------|---------------|
-| O2 | Home | Med | Incomplete rounds **pile up** as "Round in Progress" cards with no bulk cleanup — each needs its own "End Round." After a few sessions the home screen is a stack of abandoned rounds. | Auto-archive stale in-progress rounds (e.g. >24h, 0–1 holes), or add "Discard" + a collapse/"show older" affordance. |
 | O3 | Create round | Low | Every new round re-walks **Course → Players → Game → (Stakes)**. "Play Again" exists on home, but starting *fresh* always restarts the full wizard even for your usual course/group. | Surface a "recent course" quick-pick at the top of Select Course, and remember last-used tee/group. |
 | O4 | Create round | Low | **Hammer** is greyed out at 3+ players with no inline reason; you have to already know it's 2-player only. | Add a one-line hint under the disabled button ("Hammer is 2 players only"), like the Best Ball even-count hint. |
 | O6 | Onboarding | Low | A brand-new guest isn't **auto-added as a player** in the round wizard until they finish profile setup — a first-time guest lands on Select Players with nobody pre-selected. | Auto-create a lightweight player from the guest's session (or prompt a quick name) so they're pre-selected, like a logged-in user's "YOU". |
@@ -26,7 +25,8 @@ Re-run this sweep after UX changes; add rows as new friction surfaces.
 
 | Journey | Was | Fix (PR) |
 |---------|-----|----------|
-| Onboarding (O1) | "Try it first — no account needed" dead-ended at an "Account Required" wall on Start New Round | Guests play real rounds (persist under the anon session, upgrade in place); banner nudges "Save" (#21) |
+| Onboarding (O1) | "Try it first — no account needed" dead-ended at an "Account Required" wall on Start New Round | Guests play real rounds (persist under the anon session, upgrade in place); banner nudges "Save" (#21); guest auto-added as "You" (#22) |
+| Home (O2) | Abandoned "Round in Progress" cards piled up, no bulk cleanup | Collapse to recent 2 + "Show N more"; per-card Discard (delete_own_round) (#23) |
 | BBB scorecard | Treated like stroke play — golf scores required + a "not all players have scores" nag, standings/leaderboard showed strokes not points | Golf entry optional/collapsed, nag suppressed, points-first standings + leaderboard (#20) |
 | Best Ball (Stroke Play) | Scoreboard showed holes-won while payout used total strokes — could contradict | All displays show total strokes in Stroke Play (#20) |
 | Settle Up | Impersonal "Total in play <pot>"; duplicate Winners/Checklist/Settlements sections; sprawl | Personal "You owe/collect" hero (always fires), one consolidated "Settle Up" section, deduped (#17) |
