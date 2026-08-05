@@ -73,6 +73,14 @@ export function Auth({ inviteCode, sessionExpired }: AuthProps = {}) {
   const handleGuestLogin = async () => {
     setLoading(true)
     setError(null)
+    // Never downgrade a real session to anonymous. If a (non-anonymous) session is
+    // somehow already present — e.g. a token that refreshed after this screen
+    // rendered — keep it instead of creating a guest account.
+    const { data: { session: existing } } = await supabase.auth.getSession()
+    if (existing?.user && existing.user.is_anonymous !== true) {
+      setLoading(false)
+      return
+    }
     const { error: err } = await supabase.auth.signInAnonymously()
     if (err) setError(friendlyError(err.message))
     setLoading(false)
@@ -184,15 +192,20 @@ export function Auth({ inviteCode, sessionExpired }: AuthProps = {}) {
             </button>
           </div>
 
-          <div className="text-center">
-            <button
-              onClick={handleGuestLogin}
-              disabled={loading}
-              className="text-gray-500 text-sm underline disabled:opacity-50"
-            >
-              {loading ? 'Loading...' : 'Try it first \u2014 no account needed'}
-            </button>
-          </div>
+          {/* Hide the guest path for a returning user whose session expired \u2014 going
+              anonymous here would strand them in a guest account ("You / HCP 0") and
+              hide their real rounds/ledger. They should sign back in. */}
+          {!sessionExpired && (
+            <div className="text-center">
+              <button
+                onClick={handleGuestLogin}
+                disabled={loading}
+                className="text-gray-500 text-sm underline disabled:opacity-50"
+              >
+                {loading ? 'Loading...' : 'Try it first \u2014 no account needed'}
+              </button>
+            </div>
+          )}
         </div>
       </div>
     )
