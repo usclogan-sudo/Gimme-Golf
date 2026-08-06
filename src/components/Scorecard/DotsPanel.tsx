@@ -3,6 +3,8 @@ import type { Player, DotType, JunkRecord, DotsConfig, StakesMode } from '../../
 
 interface Props {
   currentHole: number
+  /** Par of the current hole — Greenie only applies on par 3s. */
+  holePar?: number
   players: Player[]
   config: DotsConfig
   junkRecords: JunkRecord[]
@@ -20,9 +22,12 @@ interface Props {
  * as junk_records (junkType = DotType) — the same mechanism as junks — so it reuses
  * the Scorecard's toggle handler.
  */
-export function DotsPanel({ currentHole, players, config, junkRecords, toggleDot, netCents, stakesMode, readOnly }: Props) {
+export function DotsPanel({ currentHole, holePar, players, config, junkRecords, toggleDot, netCents, stakesMode, readOnly }: Props) {
   const holeDots = junkRecords.filter(jr => jr.holeNumber === currentHole)
   const hasNet = netCents && players.some(p => (netCents[p.id] ?? 0) !== 0)
+  // Greenie (green-in-regulation) is a par-3-only dot; hide it elsewhere so it can't
+  // be awarded on a hole where it doesn't apply.
+  const activeDots = config.activeDots.filter(dt => !(dt === 'greenie' && holePar != null && holePar !== 3))
 
   return (
     <div className="bg-rose-50 dark:bg-rose-900/30 border border-rose-200 dark:border-rose-700 rounded-xl p-3 space-y-3">
@@ -42,10 +47,10 @@ export function DotsPanel({ currentHole, players, config, junkRecords, toggleDot
           })}
         </div>
       )}
-      {config.activeDots.length === 0 && (
-        <p className="text-xs text-rose-600 dark:text-rose-400">No dot types configured for this round.</p>
+      {activeDots.length === 0 && (
+        <p className="text-xs text-rose-600 dark:text-rose-400">No dot types apply on this hole.</p>
       )}
-      {config.activeDots.map(dt => {
+      {activeDots.map(dt => {
         const info = DOT_LABELS[dt]
         const isSnake = dt === 'snake'
         return (
