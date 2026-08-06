@@ -197,11 +197,12 @@ function BestBallStatus({ result, scoring }: { result: BestBallResult; scoring: 
   }
   const { holesWon } = result
   const diff = holesWon.A - holesWon.B
-  const label = diff === 0 ? 'All Square' : diff > 0 ? `Team A +${diff}` : `Team B +${Math.abs(diff)}`
+  const decided = holesWon.A + holesWon.tied + holesWon.B
+  const label = diff === 0 ? 'All Square' : `Team ${diff > 0 ? 'A' : 'B'} ${Math.abs(diff)} UP`
   return (
     <div className="bg-blue-50 border border-blue-200 rounded-xl px-3 py-2">
       <span className="text-blue-700 font-bold text-sm">{label}</span>
-      <span className="text-blue-500 text-xs ml-2">({holesWon.A}W · {holesWon.tied}T · {holesWon.B}W)</span>
+      <span className="text-blue-500 text-xs ml-2">thru {decided}</span>
     </div>
   )
 }
@@ -2190,11 +2191,20 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
                     </div>
                   ) : (
                     <div className="space-y-2">
-                      <p className="text-xs text-orange-600">
-                        {hState
-                          ? `${holderName} threw the hammer (×${hState.presses}) — ${receiverName} to respond`
-                          : `${holderName} holds the hammer`}
-                      </p>
+                      {(() => {
+                        const holeScored = players.every(p => holeScores.some(s => s.playerId === p.id && s.holeNumber === currentHole))
+                        const holdVerb = holderName === 'You' ? 'hold' : 'holds'
+                        const respondVerb = receiverName === 'You' ? 'respond' : 'responds'
+                        return (
+                          <p className="text-xs text-orange-600">
+                            {!hState
+                              ? `${holderName} ${holdVerb} the hammer — throw it to double the stakes`
+                              : holeScored
+                                ? `Hammer settled at ${fmtAmount(holeValue, game?.stakesMode)} for the hole`
+                                : `${holderName} threw the hammer (×${hState.presses}) — ${receiverName} ${respondVerb}: play on to accept, or Decline`}
+                          </p>
+                        )
+                      })()}
                       {!readOnly && (
                         <div className="flex gap-2">
                           <button
@@ -2303,6 +2313,7 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
             {game?.type === 'dots' && (
               <DotsPanel
                 currentHole={currentHole}
+                holePar={snapshot?.holes.find(h => h.number === currentHole)?.par}
                 players={players}
                 config={game.config as DotsConfig}
                 junkRecords={junkRecords}

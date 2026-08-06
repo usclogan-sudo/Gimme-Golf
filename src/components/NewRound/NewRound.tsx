@@ -985,8 +985,9 @@ function GameSetup({
   const [type, setType] = useState<GameType>(initialGame?.type ?? 'skins')
   const PRIMARY_GAMES: GameType[] = ['skins', 'best_ball']
   const [showAllGames, setShowAllGames] = useState(() => {
-    // Auto-show all if initial game is not a primary type
-    if (initialGame && !['skins', 'best_ball'].includes(initialGame.type)) return true
+    // The five headline games are always visible; only auto-expand the extras drawer
+    // when the pre-selected game lives in it (Hammer/Stableford/Dots/Banker/Quota).
+    if (initialGame && !['skins', 'best_ball', 'nassau', 'wolf', 'bingo_bango_bongo'].includes(initialGame.type)) return true
     return false
   })
   const [buyInDollars, setBuyInDollars] = useState(
@@ -1239,18 +1240,20 @@ function GameSetup({
     gameType,
     label,
     disabled = false,
+    disabledReason,
     fullWidth = false,
   }: {
     gameType: GameType
     label: string
     disabled?: boolean
+    disabledReason?: string
     fullWidth?: boolean
   }) => (
     <div className={`relative ${fullWidth ? 'col-span-2' : ''}`}>
       <button
         onClick={() => !disabled && setType(gameType)}
         disabled={disabled}
-        className={`w-full h-14 rounded-xl font-semibold text-sm disabled:opacity-40 transition-colors ${
+        className={`w-full h-14 rounded-xl font-semibold text-sm disabled:opacity-50 transition-colors flex flex-col items-center justify-center leading-tight ${
           type === gameType
             ? stakesMode === 'high_roller'
               ? 'text-black'
@@ -1261,7 +1264,10 @@ function GameSetup({
           ? { background: 'linear-gradient(135deg,#d97706,#fbbf24)' }
           : undefined}
       >
-        {label}
+        <span>{label}</span>
+        {disabled && disabledReason && (
+          <span className="text-[10px] font-medium text-gray-500 mt-0.5">{disabledReason}</span>
+        )}
       </button>
       <button
         onClick={(e) => { e.stopPropagation(); setRulesModalType(gameType) }}
@@ -1361,37 +1367,31 @@ function GameSetup({
         {/* Game Type */}
         <section className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm p-4 space-y-3">
           <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Game Type</p>
+          {/* The five headline games are always visible; the rest live behind More Games. */}
           <div className="grid grid-cols-2 gap-2">
             <GameButton gameType="skins" label="⛳ Skins" />
-            <GameButton gameType="best_ball" label="🤝 Best Ball" disabled={!bestBallAllowed} />
+            <GameButton gameType="best_ball" label="🤝 Best Ball" disabled={!bestBallAllowed} disabledReason="Needs even teams" />
+            <GameButton gameType="nassau" label="🏳️ Nassau" />
+            <GameButton gameType="wolf" label="🐺 Wolf" disabled={!wolfAllowed} disabledReason="Needs 3+ players" />
+            <GameButton gameType="bingo_bango_bongo" label="⭐ BBB" fullWidth />
           </div>
-          {showAllGames && (
+          {/* Extra games hidden at launch pending the settlement rework — see featureFlags. */}
+          {SHOW_EXTRA_GAMES && showAllGames && (
             <div className="grid grid-cols-2 gap-2 mt-2">
-              <GameButton gameType="nassau" label="🏳️ Nassau" />
-              <GameButton gameType="wolf" label="🐺 Wolf" disabled={!wolfAllowed} />
-              <GameButton gameType="bingo_bango_bongo" label="⭐ BBB" />
-              {/* Extra games hidden at launch pending the settlement rework — see featureFlags. */}
-              {SHOW_EXTRA_GAMES && (
-                <>
-                  <GameButton gameType="hammer" label="🔨 Hammer" disabled={!hammerAllowed} />
-                  <GameButton gameType="stableford" label="📊 Stableford" />
-                  {SHOW_DOTS && <GameButton gameType="dots" label="🔴 Dots" />}
-                  <GameButton gameType="banker" label="🏦 Banker" disabled={!bankerAllowed} />
-                  <GameButton gameType="quota" label="📋 Quota" />
-                </>
-              )}
+              <GameButton gameType="hammer" label="🔨 Hammer" disabled={!hammerAllowed} disabledReason="2 players only" />
+              <GameButton gameType="stableford" label="📊 Stableford" />
+              {SHOW_DOTS && <GameButton gameType="dots" label="🔴 Dots" />}
+              <GameButton gameType="banker" label="🏦 Banker" disabled={!bankerAllowed} disabledReason="Needs 3+ players" />
+              <GameButton gameType="quota" label="📋 Quota" />
             </div>
           )}
-          <button
-            onClick={() => setShowAllGames(v => !v)}
-            className="w-full text-sm font-semibold text-gray-500 py-2 rounded-xl bg-gray-50 active:bg-gray-100 transition-colors"
-          >
-            {showAllGames ? 'Hide extra games' : `More Games (${SHOW_EXTRA_GAMES ? (SHOW_DOTS ? 8 : 7) : 3} more)`}
-          </button>
-          {/* Hammer is greyed at ≠2 players — a disabled button can't be selected, so
-              surface the reason here instead of only when it's the active type. */}
-          {SHOW_EXTRA_GAMES && showAllGames && !hammerAllowed && (
-            <p className="text-sm text-gray-400">🔨 Hammer is a 2-player game.</p>
+          {SHOW_EXTRA_GAMES && (
+            <button
+              onClick={() => setShowAllGames(v => !v)}
+              className="w-full text-sm font-semibold text-gray-500 py-2 rounded-xl bg-gray-50 active:bg-gray-100 transition-colors"
+            >
+              {showAllGames ? 'Hide extra games' : `More Games (${SHOW_DOTS ? 5 : 4} more)`}
+            </button>
           )}
           {!bestBallAllowed && type === 'best_ball' && (
             <p className="text-sm text-gray-400">Best Ball requires an even number of players (2, 4, 6…).</p>
@@ -1499,7 +1499,7 @@ function GameSetup({
           <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
             {stakesMode === 'points'
               ? 'Points Per Player'
-              : <><Tooltip term="Buy-in">Buy-in Per Player</Tooltip>{type === 'nassau' ? ' (covers all 3 bets)' : ''}</>}
+              : <><Tooltip term="Buy-in">Buy-in Per Player</Tooltip>{type === 'nassau' ? ' (covers all 3 legs)' : ''}</>}
           </p>
 
           <div className="flex items-center gap-2">
@@ -1524,7 +1524,7 @@ function GameSetup({
 
           {type === 'nassau' && stakesMode !== 'points' && (
             <p className="text-xs text-gray-500">
-              = {fmtMoney(Math.floor(buyInCents / 3))} per bet × 3 bets (Front 9, Back 9, Total)
+              = {fmtMoney(Math.floor(buyInCents / 3))} per leg × 3 legs (Front 9, Back 9, Total)
             </p>
           )}
         </section>
@@ -1606,7 +1606,7 @@ function GameSetup({
           <section className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm p-4 space-y-3">
             <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Nassau Options</p>
             <div className="bg-teal-50 rounded-xl p-3 text-sm text-teal-700 space-y-1">
-              <p className="font-semibold">3 separate bets:</p>
+              <p className="font-semibold">3 separate legs:</p>
               <p>• Front 9 — lowest total strokes wins</p>
               <p>• Back 9 — lowest total strokes wins</p>
               <p>• Full round — lowest total strokes wins</p>
@@ -1705,7 +1705,7 @@ function GameSetup({
                         : 'bg-gray-100 text-gray-700'
                     }`}
                   >
-                    {mp === null ? 'No limit' : `${mp}×`}
+                    {mp == null ? 'No limit' : `${mp}×`}
                   </button>
                 ))}
               </div>
@@ -1713,7 +1713,7 @@ function GameSetup({
             <div className="bg-orange-50 rounded-xl p-3 text-sm text-orange-700 space-y-1">
               <p className="font-semibold">How Hammer works:</p>
               <p>• Each hole starts at {stakesMode === 'points'
-                ? `${Math.max(1, parsePointsValue(hammerBaseValueDollars))} pts`
+                ? (() => { const n = Math.max(1, parsePointsValue(hammerBaseValueDollars)); return `${n} pt${n !== 1 ? 's' : ''}` })()
                 : fmtMoney(Math.max(1, parseDollarsToCents(hammerBaseValueDollars)))}</p>
               <p>• The hammer holder can "throw" the hammer to double the stakes</p>
               <p>• Opponent must accept (value doubles) or decline (lose current value)</p>
