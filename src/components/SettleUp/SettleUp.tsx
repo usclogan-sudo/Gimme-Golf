@@ -41,6 +41,7 @@ import {
   isUnitGame,
   unitGameNet,
   JUNK_LABELS,
+  DOT_LABELS,
   fmtAmount,
 } from '../../lib/gameLogic'
 import type { PlayerPayout, JunkResult, SideBetSettlement, PropSettlement, HammerResult } from '../../lib/gameLogic'
@@ -1280,6 +1281,116 @@ export function SettleUp({ roundId, userId, eventId, onDone, onContinue }: Props
                       <span className={`font-bold ${net > 0 ? 'text-green-700' : net < 0 ? 'text-red-600' : 'text-gray-400'}`}>
                         {net > 0 ? '+' : ''}{fmt(Math.abs(net))}
                       </span>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </section>
+        )}
+
+        {stablefordResult && (
+          <section className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm overflow-hidden">
+            <button onClick={() => toggleSection('stableford')} className="w-full flex items-center justify-between p-4 active:bg-gray-50 dark:active:bg-gray-700">
+              <span className="text-sm font-semibold text-gray-700 dark:text-gray-200">🎯 Stableford · {stablefordResult.winner ? `${playerById(stablefordResult.winner)?.name} wins` : 'Tied'}</span>
+              <span className="text-gray-400 text-sm">{expandedSections.has('stableford') ? '▾' : '▸'}</span>
+            </button>
+            {expandedSections.has('stableford') && (
+              <div className="px-4 pb-4 space-y-2">
+                <p className="text-xs text-gray-500 dark:text-gray-400">Most points wins. Eagle 4 · Birdie 3 · Par 2 · Bogey 1 · worse 0.</p>
+                {players.slice().sort((a, b) => (stablefordResult.points[b.id] ?? 0) - (stablefordResult.points[a.id] ?? 0)).map(p => {
+                  const pts = stablefordResult.points[p.id] ?? 0
+                  const isWinner = stablefordResult.winner === p.id
+                  return (
+                    <div key={p.id} className={`flex items-center justify-between p-3 rounded-xl ${isWinner ? 'bg-emerald-50' : 'bg-gray-50'}`}>
+                      <span className="font-semibold text-gray-800 dark:text-gray-100">{isWinner ? '🏆 ' : ''}{p.name}</span>
+                      <span className={`font-bold ${isWinner ? 'text-emerald-700' : 'text-gray-500'}`}>{pts} point{pts !== 1 ? 's' : ''}</span>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </section>
+        )}
+
+        {quotaResult && (
+          <section className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm overflow-hidden">
+            <button onClick={() => toggleSection('quota')} className="w-full flex items-center justify-between p-4 active:bg-gray-50 dark:active:bg-gray-700">
+              <span className="text-sm font-semibold text-gray-700 dark:text-gray-200">🎯 Quota · {quotaResult.winner ? `${playerById(quotaResult.winner)?.name} wins` : 'Tied'}</span>
+              <span className="text-gray-400 text-sm">{expandedSections.has('quota') ? '▾' : '▸'}</span>
+            </button>
+            {expandedSections.has('quota') && (
+              <div className="px-4 pb-4 space-y-2">
+                <p className="text-xs text-gray-500 dark:text-gray-400">Stableford points minus each player's quota. Most over quota wins.</p>
+                {players.slice().sort((a, b) => (quotaResult.netPoints[b.id] ?? 0) - (quotaResult.netPoints[a.id] ?? 0)).map(p => {
+                  const net = quotaResult.netPoints[p.id] ?? 0
+                  const pts = quotaResult.stablefordPoints[p.id] ?? 0
+                  const quota = quotaResult.quotas[p.id] ?? 0
+                  const isWinner = quotaResult.winner === p.id
+                  return (
+                    <div key={p.id} className={`flex items-center justify-between p-3 rounded-xl ${isWinner ? 'bg-emerald-50' : net < 0 ? 'bg-red-50' : 'bg-gray-50'}`}>
+                      <div>
+                        <span className="font-semibold text-gray-800 dark:text-gray-100">{isWinner ? '🏆 ' : ''}{p.name}</span>
+                        <span className="text-xs text-gray-400 ml-2">{pts} pts − {quota} quota</span>
+                      </div>
+                      <span className={`font-bold ${net > 0 ? 'text-emerald-700' : net < 0 ? 'text-red-600' : 'text-gray-500'}`}>{net > 0 ? '+' : ''}{net}</span>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </section>
+        )}
+
+        {bankerResult && (
+          <section className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm overflow-hidden">
+            <button onClick={() => toggleSection('banker')} className="w-full flex items-center justify-between p-4 active:bg-gray-50 dark:active:bg-gray-700">
+              <span className="text-sm font-semibold text-gray-700 dark:text-gray-200">🏦 Banker · {bankerResult.holeResults.filter(h => Object.values(h.netCents).some(v => v !== 0)).length} holes</span>
+              <span className="text-gray-400 text-sm">{expandedSections.has('banker') ? '▾' : '▸'}</span>
+            </button>
+            {expandedSections.has('banker') && (
+              <div className="px-4 pb-4 space-y-2">
+                <p className="text-xs text-gray-500 dark:text-gray-400">Each hole one player banks against the field, head-to-head. Net is holes won − holes lost, at {fmt(perUnitCents)}/hole.</p>
+                {players.slice().sort((a, b) => (bankerResult.netCents[b.id] ?? 0) - (bankerResult.netCents[a.id] ?? 0)).map(p => {
+                  const units = bankerResult.netCents[p.id] ?? 0
+                  const money = unitNet?.[p.id] ?? 0
+                  return (
+                    <div key={p.id} className={`flex items-center justify-between p-3 rounded-xl ${money > 0 ? 'bg-green-50' : money < 0 ? 'bg-red-50' : 'bg-gray-50'}`}>
+                      <div>
+                        <span className="font-semibold text-gray-800 dark:text-gray-100">{p.name}</span>
+                        <span className="text-xs text-gray-400 ml-2">{units > 0 ? '+' : ''}{units} unit{Math.abs(units) !== 1 ? 's' : ''}</span>
+                      </div>
+                      <span className={`font-bold ${money > 0 ? 'text-green-700' : money < 0 ? 'text-red-600' : 'text-gray-400'}`}>{money > 0 ? '+' : money < 0 ? '−' : ''}{fmt(Math.abs(money))}</span>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </section>
+        )}
+
+        {dotsResult && (
+          <section className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm overflow-hidden">
+            <button onClick={() => toggleSection('dots')} className="w-full flex items-center justify-between p-4 active:bg-gray-50 dark:active:bg-gray-700">
+              <span className="text-sm font-semibold text-gray-700 dark:text-gray-200">🎯 Dots · {fmt(perUnitCents)}/dot</span>
+              <span className="text-gray-400 text-sm">{expandedSections.has('dots') ? '▾' : '▸'}</span>
+            </button>
+            {expandedSections.has('dots') && (
+              <div className="px-4 pb-4 space-y-2">
+                <p className="text-xs text-gray-500 dark:text-gray-400">Each dot pays the others; a 🐍 snake (3-putt) is a penalty you pay. Net is dots earned − dots conceded − snakes.</p>
+                {players.slice().sort((a, b) => (dotsResult.netCents[b.id] ?? 0) - (dotsResult.netCents[a.id] ?? 0)).map(p => {
+                  const net = dotsResult.netCents[p.id] ?? 0
+                  const tallies = dotsResult.tallies[p.id]
+                  const dotDetails = tallies
+                    ? Object.keys(tallies).filter(dt => tallies[dt as keyof typeof tallies] > 0).map(dt => `${DOT_LABELS[dt as keyof typeof DOT_LABELS].emoji}${tallies[dt as keyof typeof tallies]}`).join(' ')
+                    : ''
+                  return (
+                    <div key={p.id} className={`flex items-center justify-between p-3 rounded-xl ${net > 0 ? 'bg-green-50' : net < 0 ? 'bg-red-50' : 'bg-gray-50'}`}>
+                      <div>
+                        <span className="font-semibold text-gray-800 dark:text-gray-100">{p.name}</span>
+                        {dotDetails && <span className="text-xs ml-2">{dotDetails}</span>}
+                      </div>
+                      <span className={`font-bold ${net > 0 ? 'text-green-700' : net < 0 ? 'text-red-600' : 'text-gray-400'}`}>{net > 0 ? '+' : net < 0 ? '−' : ''}{fmt(Math.abs(net))}</span>
                     </div>
                   )
                 })}

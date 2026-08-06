@@ -1197,8 +1197,14 @@ export function calculateQuotaPayouts(
   const positiveNet = Object.values(result.netPoints).filter(n => n > 0)
   const totalPositive = positiveNet.reduce((s, n) => s + n, 0)
 
+  // Nobody beat their quota. There's still a game to settle: the player closest to
+  // quota (highest net, least under) takes the pot — that matches the winner the
+  // engine names. Only a genuine tie for that top spot refunds evenly.
   if (totalPositive === 0) {
-    return refundEvenly(players, totalPot, 'Quota — no one over quota, refund')
+    if (result.winner) {
+      return [{ playerId: result.winner, amountCents: totalPot, reason: 'Quota — closest to target' }]
+    }
+    return refundEvenly(players, totalPot, 'Quota — tied, refund')
   }
 
   let remainder = totalPot

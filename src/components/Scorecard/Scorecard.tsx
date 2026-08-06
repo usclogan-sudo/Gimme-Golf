@@ -1254,8 +1254,14 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
   const miniBoard = useMemo(() => {
     if (!playableSnapshot) return []
     const pSnap = playableSnapshot
-    // BBB is a points game — rank by points, not strokes.
-    const isBBB = game?.type === 'bingo_bango_bongo'
+    const gt = game?.type
+    // Points/net games rank by their own metric, not strokes: BBB & Stableford by
+    // points, Quota by points-over-quota, Banker by holes-won units.
+    const rankBy: 'points' | 'quota' | 'banker' | 'strokes' =
+      gt === 'bingo_bango_bongo' || gt === 'stableford' ? 'points'
+      : gt === 'quota' ? 'quota'
+      : gt === 'banker' ? 'banker'
+      : 'strokes'
     const board = players.map(p => {
       const pScores = holeScores.filter(s => s.playerId === p.id && playableHoleNums.includes(s.holeNumber))
       const gross = pScores.reduce((s, hs) => s + hs.grossScore, 0)
@@ -1270,19 +1276,26 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
         return s + (hole?.par ?? 0)
       }, 0)
       const vsPar = gross - scoredPar
-      const points = bbbResult?.pointsWon[p.id] ?? 0
-      return { player: p, gross, net, vsPar, thru: pScores.length, points }
-    }).sort((a, b) => (isBBB ? b.points - a.points : a.net - b.net))
+      const points =
+        gt === 'stableford' ? (stablefordResult?.points[p.id] ?? 0)
+        : gt === 'quota' ? (quotaResult?.netPoints[p.id] ?? 0)
+        : (bbbResult?.pointsWon[p.id] ?? 0)
+      const bankerUnits = bankerResult?.netCents[p.id] ?? 0
+      return { player: p, gross, net, vsPar, thru: pScores.length, points, bankerUnits }
+    })
+    // Higher is better for points/quota/banker; lower net is better for strokes.
+    const metric = (e: typeof board[number]) => rankBy === 'banker' ? e.bankerUnits : e.points
+    board.sort((a, b) => rankBy === 'strokes' ? a.net - b.net : metric(b) - metric(a))
     const positions: number[] = []
     board.forEach((entry, idx) => {
       if (idx === 0) positions.push(1)
       else {
-        const tied = isBBB ? entry.points === board[idx - 1].points : entry.net === board[idx - 1].net
+        const tied = rankBy === 'strokes' ? entry.net === board[idx - 1].net : metric(entry) === metric(board[idx - 1])
         positions.push(tied ? positions[idx - 1] : idx + 1)
       }
     })
-    return board.map((entry, idx) => ({ ...entry, pos: positions[idx] }))
-  }, [players, holeScores, playableSnapshot, playableHoleNums, courseHcps, game, bbbResult])
+    return board.map((entry, idx) => ({ ...entry, pos: positions[idx], rankBy }))
+  }, [players, holeScores, playableSnapshot, playableHoleNums, courseHcps, game, bbbResult, stablefordResult, quotaResult, bankerResult])
 
   const headerClass = game?.stakesMode === 'high_roller' ? 'hr-header' : 'app-header'
 
@@ -1705,8 +1718,12 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
                     <span key={e.player.id}>
                       {i > 0 && <span className="text-gray-300 mx-0.5">·</span>}
                       {e.pos}. {e.player.name}{' '}
-                      {game?.type === 'bingo_bango_bongo' ? (
+                      {e.rankBy === 'points' ? (
                         <span className="text-purple-600 font-bold">{e.points}pt</span>
+                      ) : e.rankBy === 'quota' ? (
+                        <span className={e.points > 0 ? 'text-green-600 font-bold' : e.points < 0 ? 'text-red-500 font-bold' : 'text-gray-400 font-bold'}>{e.points > 0 ? '+' : ''}{e.points}</span>
+                      ) : e.rankBy === 'banker' ? (
+                        <span className={e.bankerUnits > 0 ? 'text-green-600 font-bold' : e.bankerUnits < 0 ? 'text-red-500 font-bold' : 'text-gray-400 font-bold'}>{e.bankerUnits > 0 ? '+' : ''}{e.bankerUnits}u</span>
                       ) : (
                         <span className={e.vsPar > 0 ? 'text-red-500' : e.vsPar < 0 ? 'text-green-600' : 'text-gray-400'}>
                           ({e.thru > 0 ? `${e.vsPar > 0 ? '+' : ''}${e.vsPar === 0 ? 'E' : e.vsPar}` : '—'})
@@ -1725,8 +1742,12 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
                     <tr className="text-xs text-gray-400 uppercase">
                       <th className="text-left py-1 px-1 font-medium w-6">Pos</th>
                       <th className="text-left py-1 px-1 font-medium">Player</th>
-                      {game?.type === 'bingo_bango_bongo' ? (
+                      {game?.type === 'bingo_bango_bongo' || game?.type === 'stableford' ? (
                         <th className="text-center py-1 px-1 font-medium">Points</th>
+                      ) : game?.type === 'quota' ? (
+                        <th className="text-center py-1 px-1 font-medium">vs Quota</th>
+                      ) : game?.type === 'banker' ? (
+                        <th className="text-center py-1 px-1 font-medium">Units</th>
                       ) : (
                         <>
                           <th className="text-center py-1 px-1 font-medium"><Tooltip term="Net">Net</Tooltip></th>
@@ -1740,8 +1761,12 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
                       <tr key={e.player.id} className={e.pos === 1 ? 'bg-amber-50' : ''}>
                         <td className={`py-1 px-1 font-bold text-sm ${e.pos === 1 ? 'text-amber-600' : 'text-gray-500'}`}>{e.pos}</td>
                         <td className="py-1 px-1 font-semibold text-gray-800 text-sm">{e.player.name}</td>
-                        {game?.type === 'bingo_bango_bongo' ? (
+                        {game?.type === 'bingo_bango_bongo' || game?.type === 'stableford' ? (
                           <td className="py-1 px-1 text-center font-bold text-purple-600 text-sm">{e.points} pt</td>
+                        ) : game?.type === 'quota' ? (
+                          <td className={`py-1 px-1 text-center font-bold text-sm ${e.points > 0 ? 'text-green-600' : e.points < 0 ? 'text-red-600' : 'text-gray-400'}`}>{e.points > 0 ? '+' : ''}{e.thru > 0 ? e.points : '—'}</td>
+                        ) : game?.type === 'banker' ? (
+                          <td className={`py-1 px-1 text-center font-bold text-sm ${e.bankerUnits > 0 ? 'text-green-600' : e.bankerUnits < 0 ? 'text-red-600' : 'text-gray-400'}`}>{e.bankerUnits > 0 ? '+' : ''}{e.bankerUnits}</td>
                         ) : (
                           <>
                             <td className="py-1 px-1 text-center font-semibold text-gray-700 text-sm">{e.net || '—'}</td>
@@ -1812,6 +1837,33 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
                         .map(p => `${p.name} ${bbbResult.pointsWon[p.id] ?? 0}`).join(', ')}
                     </p>
                   )}
+                  {stablefordResult && (
+                    <p className="text-xs text-gray-500">
+                      <span className="font-semibold">Stableford:</span>{' '}
+                      {players.slice().sort((a, b) => (stablefordResult.points[b.id] ?? 0) - (stablefordResult.points[a.id] ?? 0))
+                        .map(p => `${p.name} ${stablefordResult.points[p.id] ?? 0}pt`).join(', ')}
+                    </p>
+                  )}
+                  {quotaResult && (
+                    <p className="text-xs text-gray-500">
+                      <span className="font-semibold">Quota:</span>{' '}
+                      {players.slice().sort((a, b) => (quotaResult.netPoints[b.id] ?? 0) - (quotaResult.netPoints[a.id] ?? 0))
+                        .map(p => { const n = quotaResult.netPoints[p.id] ?? 0; return `${p.name} ${n > 0 ? '+' : ''}${n}` }).join(', ')}
+                    </p>
+                  )}
+                  {bankerResult && game && (() => {
+                    const order = (game.config as BankerConfig).bankerOrder
+                    const bankerId = order.length ? order[(currentHole - 1) % order.length] : null
+                    const bankerName = bankerId ? players.find(p => p.id === bankerId)?.name : null
+                    return (
+                      <p className="text-xs text-gray-500">
+                        <span className="font-semibold">Banker:</span>{' '}
+                        {bankerName ? `${bankerName} banks hole ${currentHole} · ` : ''}
+                        {players.slice().sort((a, b) => (bankerResult.netCents[b.id] ?? 0) - (bankerResult.netCents[a.id] ?? 0))
+                          .map(p => { const u = bankerResult.netCents[p.id] ?? 0; return `${p.name} ${u > 0 ? '+' : ''}${u}` }).join(', ')}
+                      </p>
+                    )
+                  })()}
                 </div>
               </div>
             )}
