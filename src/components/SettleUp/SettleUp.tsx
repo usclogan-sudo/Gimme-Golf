@@ -1191,7 +1191,7 @@ export function SettleUp({ roundId, userId, eventId, onDone, onContinue }: Props
         {nassauResult && (
           <section className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm overflow-hidden">
             <button onClick={() => toggleSection('nassau')} className="w-full flex items-center justify-between p-4 active:bg-gray-50 dark:active:bg-gray-700">
-              <span className="text-sm font-semibold text-gray-700 dark:text-gray-200">🏳️ Nassau · {nassauResult.total.winner ? playerById(nassauResult.total.winner)?.name : 'In Progress'}</span>
+              <span className="text-sm font-semibold text-gray-700 dark:text-gray-200">🏳️ Nassau · {nassauResult.total.winner ? `${playerById(nassauResult.total.winner)?.name} wins` : nassauResult.total.incomplete ? 'Ended early' : 'All square'}</span>
               <span className="text-gray-400 text-sm">{expandedSections.has('nassau') ? '▾' : '▸'}</span>
             </button>
             {expandedSections.has('nassau') && (
@@ -1214,6 +1214,11 @@ export function SettleUp({ roundId, userId, eventId, onDone, onContinue }: Props
                     </div>
                   )
                 })}
+                {(nassauResult.front.incomplete || nassauResult.back.incomplete || nassauResult.total.incomplete) && (
+                  <p className="text-xs text-gray-500 dark:text-gray-400">
+                    Round ended early — {isPoints ? 'entries' : 'buy-ins'} for any leg that wasn't completed are returned, so those legs are a wash.
+                  </p>
+                )}
               </div>
             )}
           </section>
@@ -1675,8 +1680,12 @@ export function SettleUp({ roundId, userId, eventId, onDone, onContinue }: Props
 
         {payouts.length === 0 && settlementRecords.length === 0 && (
           <section className="bg-gray-50 rounded-2xl p-4 text-center">
-            <p className="text-gray-600 font-semibold">No winners calculated yet</p>
-            <p className="text-gray-500 text-sm mt-1">Each player gets {fmt(game.buyInCents)} back from the treasurer.</p>
+            <p className="text-gray-600 font-semibold">Nothing to settle</p>
+            <p className="text-gray-500 text-sm mt-1">
+              {treasurerId
+                ? `No leg was completed — each player gets ${fmt(game.buyInCents)} back from the treasurer.`
+                : `No leg was completed — everyone keeps their ${isPoints ? 'entry' : 'buy-in'} (${fmt(game.buyInCents)}). No ${isPoints ? 'points' : 'money'} changes hands.`}
+            </p>
           </section>
         )}
 

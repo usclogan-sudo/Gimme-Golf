@@ -22,6 +22,9 @@ import {
   calculateSkinsPayouts,
   calculateBBBPayouts,
   calculateWolfPayouts,
+  calculateNassau,
+  calculateNassauPayouts,
+  nassauLive,
   buildDirectSettlements,
   buildSettlements,
   buildUnifiedSettlements,
@@ -315,6 +318,59 @@ describe('calculateQuota', () => {
     // netPoints = gross stableford − quota target
     expect(result.netPoints['p1']).toBe(0)
     expect(result.netPoints['p2']).toBe(18)
+  })
+})
+
+// ─── Nassau ───────────────────────────────────────────────────────────────────
+
+describe('calculateNassauPayouts (partial-round zero-sum)', () => {
+  const nassauPlayers = [players[0], players[1]] // Alice, Bob
+  const config = { mode: 'gross' as const, presses: [] }
+  const game = { id: 'g1', type: 'nassau', buyInCents: 2500, config } as unknown as Game
+  const courseHcps = { p1: 0, p2: 0 }
+
+  const netOf = (scores: HoleScore[]) => {
+    const result = calculateNassau(nassauPlayers, scores, snapshot, config, courseHcps)
+    const payouts = calculateNassauPayouts(result, game, nassauPlayers, scores, snapshot, courseHcps)
+    return netFromPayouts(payouts, nassauPlayers, game.buyInCents)
+  }
+
+  it('no leg completed → every entry returned, both net zero (was: both −buyIn)', () => {
+    // Only holes 1–4 posted; front (1–9), back, and total are all incomplete.
+    const scores: HoleScore[] = []
+    for (let h = 1; h <= 4; h++) { scores.push(hs('p1', h, 4)); scores.push(hs('p2', h, 5)) }
+    const net = netOf(scores)
+    expect(net['p1']).toBe(0)
+    expect(net['p2']).toBe(0)
+  })
+
+  it('front completed, back/total not → standings still sum to zero', () => {
+    // Alice wins the front nine (all pars vs Bob bogeys); back never played.
+    const scores: HoleScore[] = []
+    for (let h = 1; h <= 9; h++) { scores.push(hs('p1', h, 4)); scores.push(hs('p2', h, 5)) }
+    const net = netOf(scores)
+    expect(net['p1'] + net['p2']).toBe(0)   // zero-sum
+    expect(net['p1']).toBeGreaterThan(0)     // front winner is up
+    expect(net['p2']).toBeLessThan(0)
+  })
+})
+
+describe('nassauLive', () => {
+  const nassauPlayers = [players[0], players[1]]
+  const config = { mode: 'gross' as const, presses: [] }
+  const courseHcps = { p1: 0, p2: 0 }
+
+  it('reports the live leader and margin over holes played so far', () => {
+    // 4 of 9 front holes played; Alice 2 strokes better than Bob.
+    const scores: HoleScore[] = []
+    for (let h = 1; h <= 4; h++) { scores.push(hs('p1', h, 4)); scores.push(hs('p2', h, 4)) }
+    scores.push(hs('p1', 5, 4)); scores.push(hs('p2', 5, 6)) // Alice +2 ahead on hole 5
+    const live = nassauLive(nassauPlayers, scores, snapshot, config, courseHcps)
+    expect(live.front.started).toBe(true)
+    expect(live.front.holesPlayed).toBe(5)
+    expect(live.front.leaderId).toBe('p1')
+    expect(live.front.margin).toBe(2)
+    expect(live.back.started).toBe(false) // no back holes yet
   })
 })
 

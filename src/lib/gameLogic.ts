@@ -359,6 +359,67 @@ export function calculateNassau(
   }
 }
 
+export interface NassauLiveSegment {
+  holesPlayed: number
+  totalHoles: number
+  leaderId: string | null   // null = all square or nothing played
+  margin: number            // strokes the leader is ahead of the next player
+  started: boolean
+}
+
+/**
+ * Live leg status over the holes PLAYED so far in each segment — so a segment
+ * mid-nine reads "Test leads by 2 (thru 4)" instead of a blank "—". Uses the same
+ * lowest-total scoring as the final segment result, but only over holes everyone
+ * has a score for.
+ */
+export function nassauLive(
+  players: Player[],
+  holeScores: HoleScore[],
+  snapshot: CourseSnapshot,
+  config: NassauConfig,
+  courseHcps: Record<string, number>,
+): { front: NassauLiveSegment; back: NassauLiveSegment; total: NassauLiveSegment } {
+  const totalHoles = snapshot.holes.length
+  const { frontHoles, backHoles } = getFrontBackSplit(snapshot.holes)
+  const allHoles = snapshot.holes.map(h => h.number)
+
+  const segFor = (holeNums: number[]): NassauLiveSegment => {
+    // Only count holes where every player has posted a score.
+    const played = holeNums.filter(hn =>
+      players.every(p => holeScores.some(s => s.playerId === p.id && s.holeNumber === hn)),
+    )
+    if (played.length === 0) {
+      return { holesPlayed: 0, totalHoles: holeNums.length, leaderId: null, margin: 0, started: false }
+    }
+    const scores: Record<string, number> = {}
+    for (const p of players) {
+      let total = 0
+      for (const hn of played) {
+        const hole = snapshot.holes.find(h => h.number === hn)!
+        const hs = holeScores.find(s => s.playerId === p.id && s.holeNumber === hn)!
+        total += config.mode === 'net'
+          ? hs.grossScore - strokesOnHole(courseHcps[p.id] ?? 0, hole.strokeIndex, totalHoles)
+          : hs.grossScore
+      }
+      scores[p.id] = total
+    }
+    const sorted = Object.entries(scores).sort((a, b) => a[1] - b[1])
+    const [leaderId, low] = sorted[0]
+    const nextLow = sorted[1]?.[1] ?? low
+    const margin = nextLow - low
+    return {
+      holesPlayed: played.length,
+      totalHoles: holeNums.length,
+      leaderId: margin === 0 ? null : leaderId,
+      margin,
+      started: true,
+    }
+  }
+
+  return { front: segFor(frontHoles), back: segFor(backHoles), total: segFor(allHoles) }
+}
+
 export function calculateNassauPayouts(
   result: NassauResult,
   game: Game,
@@ -381,9 +442,14 @@ export function calculateNassauPayouts(
     { seg: result.total, label: `Total (${result.total.holeRange})` },
   ]
 
+  // Track how much of the base pot actually gets won. Every player is charged
+  // buyInCents up front (netFromPayouts subtracts it), so any segment pot that is
+  // NOT won — an incomplete leg on a round that ended early, or the floor remainder
+  // — must be refunded, or the standings won't sum to zero (the "both players at
+  // −25, all square" bug on a partial round).
+  let baseWon = 0
   for (const { seg, label } of segs) {
-    if (seg.incomplete) continue
-    const winners = seg.winner ? [seg.winner] : seg.tiedPlayers
+    const winners = seg.incomplete ? [] : seg.winner ? [seg.winner] : seg.tiedPlayers
     if (winners.length === 0) continue
     const perWinner = Math.floor(segPot / winners.length)
     let rem = segPot - perWinner * winners.length
@@ -391,7 +457,25 @@ export function calculateNassauPayouts(
       const extra = rem > 0 ? 1 : 0
       rem = Math.max(0, rem - extra)
       map[id].amount += perWinner + extra
+      baseWon += perWinner + extra
       map[id].reasons.push(winners.length > 1 ? `${label} (split)` : label)
+    }
+  }
+
+  // Refund the unwon base pot evenly so the base game is exactly zero-sum. When no
+  // leg completed at all this returns every player's full entry (net 0 each).
+  const baseRefund = totalPot - baseWon
+  if (baseRefund > 0) {
+    const per = Math.floor(baseRefund / players.length)
+    let rem = baseRefund - per * players.length
+    for (const p of players) {
+      const extra = rem > 0 ? 1 : 0
+      rem = Math.max(0, rem - extra)
+      const give = per + extra
+      if (give > 0) {
+        map[p.id].amount += give
+        map[p.id].reasons.push('Entry returned (leg not completed)')
+      }
     }
   }
 
