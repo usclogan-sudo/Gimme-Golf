@@ -28,6 +28,7 @@ import {
   calculateSkins,
   calculateBestBall,
   calculateNassau,
+  nassauLive,
   calculateWolf,
   calculateBBB,
   calculateHammer,
@@ -1145,6 +1146,11 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
     return calculateNassau(players, approvedScores, playableSnapshot, game.config as NassauConfig, courseHcps)
   }, [game, players, approvedScores, playableSnapshot, courseHcps])
 
+  const nassauLiveStatus = useMemo(() => {
+    if (!game || game.type !== 'nassau' || !playableSnapshot) return null
+    return nassauLive(players, approvedScores, playableSnapshot, game.config as NassauConfig, courseHcps)
+  }, [game, players, approvedScores, playableSnapshot, courseHcps])
+
   const wolfResult = useMemo(() => {
     if (!game || game.type !== 'wolf' || !playableSnapshot) return null
     return calculateWolf(players, approvedScores, playableSnapshot, game.config as WolfConfig, courseHcps)
@@ -1794,17 +1800,29 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
                   )}
                   {nassauResult && (() => {
                     const getName = (id: string | null) => id ? (players.find(p => p.id === id)?.name ?? '?') : null
+                    const firstName = (id: string | null) => (getName(id) ?? '').split(' ')[0] || '?'
                     const segs = [
-                      { label: 'F', seg: nassauResult.front },
-                      { label: 'B', seg: nassauResult.back },
-                      { label: 'T', seg: nassauResult.total },
+                      { label: 'F', seg: nassauResult.front, live: nassauLiveStatus?.front },
+                      { label: 'B', seg: nassauResult.back, live: nassauLiveStatus?.back },
+                      { label: 'T', seg: nassauResult.total, live: nassauLiveStatus?.total },
                     ]
                     return (
                       <p className="text-xs text-gray-500">
                         <span className="font-semibold">Nassau:</span>{' '}
-                        {segs.map(({ label, seg }) => {
-                          const leader = seg.incomplete ? 'In play' : seg.winner ? getName(seg.winner) : seg.tiedPlayers.length > 1 ? 'Tied' : '—'
-                          return `${label}: ${leader}`
+                        {segs.map(({ label, seg, live }) => {
+                          // Final result once a leg is complete; otherwise the live lead
+                          // over holes played so far ("Test by 2 thru 4") instead of "—".
+                          let status: string
+                          if (!seg.incomplete) {
+                            status = seg.winner ? `${firstName(seg.winner)} wins` : seg.tiedPlayers.length > 1 ? 'All square' : '—'
+                          } else if (!live || !live.started) {
+                            status = 'not started'
+                          } else if (live.leaderId) {
+                            status = `${firstName(live.leaderId)} by ${live.margin} thru ${live.holesPlayed}`
+                          } else {
+                            status = `all square thru ${live.holesPlayed}`
+                          }
+                          return `${label}: ${status}`
                         }).join(' · ')}
                       </p>
                     )
@@ -2045,30 +2063,34 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
             {/* Nassau status */}
             {showGameStatus && nassauResult && game && (() => {
               const getName = (id: string | null) => id ? (players.find(p => p.id === id)?.name ?? '?') : null
+              const firstName = (id: string | null) => (getName(id) ?? '').split(' ')[0] || '?'
               const pressCount = (game.config as any).presses?.length ?? 0
               const totalHoles = snapshot?.holes.length ?? 18
               const half = Math.ceil(totalHoles / 2)
               const segs = [
-                { label: `F${half}`, seg: nassauResult.front },
-                { label: `B${totalHoles - half}`, seg: nassauResult.back },
-                { label: `${totalHoles}`, seg: nassauResult.total },
+                { label: `F${half}`, seg: nassauResult.front, live: nassauLiveStatus?.front },
+                { label: `B${totalHoles - half}`, seg: nassauResult.back, live: nassauLiveStatus?.back },
+                { label: `${totalHoles}`, seg: nassauResult.total, live: nassauLiveStatus?.total },
               ]
               return (
                 <div className="flex items-center gap-2">
                   <div className="flex-1 bg-teal-50 border border-teal-200 rounded-xl px-3 py-2 flex items-center gap-2">
                     <span className="font-bold text-teal-700 text-sm mr-1">Nassau</span>
-                    {segs.map(({ label, seg }) => {
-                      const leaderName = seg.incomplete
-                        ? '—'
-                        : seg.winner
-                        ? getName(seg.winner)
-                        : seg.tiedPlayers.length > 1
-                        ? 'Tied'
-                        : '—'
+                    {segs.map(({ label, seg, live }) => {
+                      // Once a leg is done show the winner; while it's live show who's
+                      // ahead so far ("A-Aron +2") instead of a blank dash.
+                      let leaderName: string
+                      if (!seg.incomplete) {
+                        leaderName = seg.winner ? firstName(seg.winner) : seg.tiedPlayers.length > 1 ? 'Tied' : '—'
+                      } else if (live?.started) {
+                        leaderName = live.leaderId ? `${firstName(live.leaderId)} +${live.margin}` : `AS·${live.holesPlayed}`
+                      } else {
+                        leaderName = '—'
+                      }
                       return (
                         <div key={label} className="text-center px-2 border-l border-teal-200">
                           <p className="text-xs text-teal-500">{label}</p>
-                          <p className="text-xs font-semibold text-teal-800 truncate max-w-[64px]">{leaderName}</p>
+                          <p className="text-xs font-semibold text-teal-800 truncate max-w-[72px]">{leaderName}</p>
                         </div>
                       )
                     })}
