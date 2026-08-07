@@ -17,7 +17,6 @@ export function NotificationToast({ notification, onDismiss, onAction }: Props) 
 
   const icon = {
     unsettled_round: '💰',
-    score_update: '📝',
     round_invite: '🏌️',
     round_complete: '🏁',
     broadcast: '📣',

@@ -548,10 +548,33 @@ export function SettleUp({ roundId, userId, eventId, onDone, onContinue }: Props
         createdAt: new Date(),
       })
     }
-    if (debtorNotifications.length > 0) {
+    // Round-complete notification for participants who AREN'T debtors (winners /
+    // even players), so everyone gets exactly one push-worthy event: debtors get
+    // "you owe" (unsettled_round), everyone else gets "round complete". This is the
+    // first real writer of the round_complete type (previously dead).
+    const notifiedUserIds = new Set(debtorNotifications.map(n => n.userId))
+    const completeNotifications: AppNotification[] = []
+    for (const p of players) {
+      const uid = participantMap.get(p.id)
+      if (!uid || uid === userId || notifiedUserIds.has(uid)) continue
+      notifiedUserIds.add(uid)
+      completeNotifications.push({
+        id: uuidv4(),
+        userId: uid,
+        type: 'round_complete',
+        title: 'Round complete',
+        body: 'Your round results are in — tap to see the settle-up.',
+        roundId,
+        read: false,
+        createdAt: new Date(),
+      })
+    }
+
+    const allNotifications = [...debtorNotifications, ...completeNotifications]
+    if (allNotifications.length > 0) {
       safeWrite(supabase.from('notifications').insert(
-        debtorNotifications.map(n => notificationToRow(n, n.userId))
-      ), 'send settlement notifications')
+        allNotifications.map(n => notificationToRow(n, n.userId))
+      ), 'send round notifications')
     }
 
     setCalculatingSettlements(false)

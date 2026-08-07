@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js'
-import type { Course, Player, Round, RoundPlayer, HoleScore, BuyIn, BBBPoint, JunkRecord, JunkType, UserProfile, GamePreset, GameType, StakesMode, PinnedFriend, RoundParticipant, SettlementRecord, SettlementStatus, AppNotification, NotificationType, SideBet, SideBetStatus, Tournament, TournamentFormat, TournamentStatus, TournamentRound, TournamentMatchup, MatchupStatus, GolfEvent, EventStatus, EventParticipant, EventRole, PropBet, PropCategory, PropWagerModel, PropStatus, PropResolveType, PropWager, HolesMode } from '../types'
+import type { Course, Player, Round, RoundPlayer, HoleScore, BuyIn, BBBPoint, JunkRecord, JunkType, UserProfile, GamePreset, GameType, StakesMode, PinnedFriend, RoundParticipant, SettlementRecord, SettlementStatus, AppNotification, NotificationType, PushDeviceSubscription, PushPlatform, NotificationPreferences, SideBet, SideBetStatus, Tournament, TournamentFormat, TournamentStatus, TournamentRound, TournamentMatchup, MatchupStatus, GolfEvent, EventStatus, EventParticipant, EventRole, PropBet, PropCategory, PropWagerModel, PropStatus, PropResolveType, PropWager, HolesMode } from '../types'
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL?.trim()
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY?.trim()
@@ -438,6 +438,61 @@ export function notificationToRow(n: AppNotification, userId: string) {
     round_id: n.roundId ?? null,
     invite_code: n.inviteCode ?? null,
     read: n.read,
+  }
+}
+
+// ─── Push subscription + notification preference mappers ────────────────────
+
+export function rowToPushDeviceSubscription(row: any): PushDeviceSubscription {
+  return {
+    id: row.id,
+    userId: row.user_id,
+    platform: row.platform as PushPlatform,
+    endpoint: row.endpoint ?? undefined,
+    p256dh: row.p256dh ?? undefined,
+    auth: row.auth ?? undefined,
+    deviceToken: row.device_token ?? undefined,
+    userAgent: row.user_agent ?? undefined,
+    createdAt: new Date(row.created_at),
+    lastSeenAt: new Date(row.last_seen_at),
+  }
+}
+
+export function pushDeviceSubscriptionToRow(s: PushDeviceSubscription) {
+  return {
+    id: s.id,
+    user_id: s.userId,
+    platform: s.platform,
+    endpoint: s.endpoint ?? null,
+    p256dh: s.p256dh ?? null,
+    auth: s.auth ?? null,
+    device_token: s.deviceToken ?? null,
+    user_agent: s.userAgent ?? null,
+    last_seen_at: new Date().toISOString(),
+  }
+}
+
+export function rowToNotificationPreferences(row: any): NotificationPreferences {
+  return {
+    userId: row.user_id,
+    pushEnabled: row.push_enabled,
+    invites: row.invites,
+    settleUp: row.settle_up,
+    roundComplete: row.round_complete,
+    broadcasts: row.broadcasts,
+    updatedAt: new Date(row.updated_at),
+  }
+}
+
+export function notificationPreferencesToRow(p: NotificationPreferences) {
+  return {
+    user_id: p.userId,
+    push_enabled: p.pushEnabled,
+    invites: p.invites,
+    settle_up: p.settleUp,
+    round_complete: p.roundComplete,
+    broadcasts: p.broadcasts,
+    updated_at: new Date().toISOString(),
   }
 }
 

@@ -59,3 +59,16 @@ export const SHOW_PRESSES = true
  * is unchanged.
  */
 export const SHOW_BEST_BALL_STROKE_PLAY = true
+
+/**
+ * Web Push notifications. GROUNDWORK ONLY — leave false until the turn-on phase:
+ * generate a VAPID keypair, set VITE_VAPID_PUBLIC_KEY (client) + the private key as
+ * an Edge Function secret, deploy the sender + the notifications-INSERT webhook, and
+ * device-test on real phones (iOS needs an installed PWA / native APNs).
+ *
+ * When false: usePushRegistration is a no-op (never prompts for permission, never
+ * subscribes), so the storage layer (push_subscriptions, notification_preferences)
+ * and the sw.js push handler sit inert. Flipping true only makes sense once the
+ * server side above exists — otherwise the client would subscribe with no sender.
+ */
+export const WEB_PUSH_ENABLED = false
