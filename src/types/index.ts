@@ -360,7 +360,11 @@ export interface SettlementRecord {
 
 // ─── Notifications ──────────────────────────────────────────────────────────
 
-export type NotificationType = 'unsettled_round' | 'score_update' | 'round_invite' | 'round_complete' | 'broadcast'
+// Push-worthy event types. `score_update` was removed — it was in the enum and had
+// a toast icon but nothing ever wrote it. The remaining four are all real events:
+// round_invite (server RPC), unsettled_round (settle-up nudges), round_complete
+// (written for non-debtor participants when a round settles), broadcast (admin).
+export type NotificationType = 'unsettled_round' | 'round_invite' | 'round_complete' | 'broadcast'
 
 export interface AppNotification {
   id: string
@@ -372,6 +376,35 @@ export interface AppNotification {
   inviteCode?: string
   read: boolean
   createdAt: Date
+}
+
+// ─── Push (groundwork; nothing is sent until WEB_PUSH_ENABLED) ─────────────────
+
+export type PushPlatform = 'web' | 'ios' | 'android'
+
+/** One registered device. Web fills endpoint/p256dh/auth; native fills deviceToken. */
+export interface PushDeviceSubscription {
+  id: string
+  userId: string
+  platform: PushPlatform
+  endpoint?: string
+  p256dh?: string
+  auth?: string
+  deviceToken?: string
+  userAgent?: string
+  createdAt: Date
+  lastSeenAt: Date
+}
+
+/** Per-user notification preferences. Absence ⇒ push off, in-app categories on. */
+export interface NotificationPreferences {
+  userId: string
+  pushEnabled: boolean
+  invites: boolean
+  settleUp: boolean
+  roundComplete: boolean
+  broadcasts: boolean
+  updatedAt: Date
 }
 
 // ─── Side Bets ──────────────────────────────────────────────────────────────
