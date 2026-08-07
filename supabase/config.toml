@@ -380,6 +380,12 @@ deno_version = 2
 # [edge_runtime.secrets]
 # secret_key = "env(SECRET_VALUE)"
 
+# send-push is invoked by a Database Webhook on notifications INSERT, not by an
+# authenticated user, so it can't verify a user JWT. It gates on PUSH_WEBHOOK_SECRET
+# (x-webhook-secret header) instead. Inert until VAPID_* secrets are set + deployed.
+[functions.send-push]
+verify_jwt = false
+
 [analytics]
 enabled = true
 port = 54327

@@ -30,22 +30,30 @@ This doc is the map of what exists and the exact steps to turn it on.
 
 ## Turn-on checklist (the deferred phase)
 
+The **sender is already written** — `supabase/functions/send-push/index.ts` (reads a
+notification row → checks prefs → sends Web Push to the user's web subscriptions,
+prunes 404/410 dead ones). It's inert until deployed with secrets. Remaining steps:
+
 1. **Generate a VAPID keypair** (`npx web-push generate-vapid-keys`).
-   - Public key → `VITE_VAPID_PUBLIC_KEY` (client build env).
-   - Private key → Edge Function secret (never in the client).
-2. **Edge Function sender** (Supabase). Reads a `notifications` row, looks up the
-   recipient's `push_subscriptions` + `notification_preferences` (skip if
-   `push_enabled` false or the category is off), and sends a Web Push per web
-   subscription (signed with the VAPID private key) / APNs·FCM per native token.
-3. **Trigger.** A DB webhook / trigger on `notifications` INSERT → invoke the sender.
-   (Keep the client-side inserts; the trigger just fans them to devices.)
-4. **Settings UI.** A toggle that calls `usePushRegistration().subscribe()` and
-   writes `notification_preferences`. Only prompt for permission on an explicit tap.
-5. **Flip `WEB_PUSH_ENABLED = true`.**
+   - Public key → `VITE_VAPID_PUBLIC_KEY` (client build env, e.g. Vercel).
+   - Private key + public key → Supabase function secrets:
+     `supabase secrets set VAPID_PUBLIC_KEY=… VAPID_PRIVATE_KEY=… VAPID_SUBJECT=mailto:you@gimme.gg`
+   - Optional: `PUSH_WEBHOOK_SECRET=…` (the function checks it as `x-webhook-secret`).
+2. **Deploy the sender:** `supabase functions deploy send-push` (config already sets
+   `verify_jwt = false` since it's webhook-invoked).
+3. **Wire the trigger.** Add a **Database Webhook** (Dashboard → Database → Webhooks):
+   table `public.notifications`, event `INSERT`, type *Supabase Edge Function* →
+   `send-push`; add header `x-webhook-secret: <PUSH_WEBHOOK_SECRET>` if you set one.
+   (Client-side inserts stay as-is; the webhook just fans them out to devices.)
+4. **Settings UI.** A toggle that calls `usePushRegistration().subscribe()` (already
+   built, no-op while the flag is off) and writes `notification_preferences`. Only
+   request permission on an explicit tap.
+5. **Flip `WEB_PUSH_ENABLED = true`** and set `VITE_VAPID_PUBLIC_KEY`.
 6. **Device-test.** iOS Safari only supports Web Push for an **installed** PWA
    (iOS 16.4+). For the App Store (Capacitor) build, prefer **native APNs via the
    Capacitor Push Notifications plugin**, storing its token as `platform='ios'` in
-   the same `push_subscriptions` table so the sender stays single-source.
+   the same `push_subscriptions` table — the sender's native branch is the one TODO
+   left in `send-push` (web is done).
 
 ## Design choices worth remembering
 
