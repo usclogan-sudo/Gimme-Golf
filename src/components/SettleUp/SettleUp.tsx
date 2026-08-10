@@ -205,6 +205,13 @@ export function SettleUp({ roundId, userId, eventId, onDone, onContinue }: Props
   const [showMarkAllPaidConfirm, setShowMarkAllPaidConfirm] = useState(false)
   const [showMarkAllSettlementsConfirm, setShowMarkAllSettlementsConfirm] = useState(false)
   const { shareRef, sharing, shareImage } = useShareImage('gimme-results')
+  const [shareMsg, setShareMsg] = useState<string | null>(null)
+  const handleShare = async () => {
+    const r = await shareImage()
+    if (r === 'downloaded') setShareMsg('Saved to your photos.')
+    else if (r === 'copied') setShareMsg('Link copied.')
+    if (r) setTimeout(() => setShareMsg(null), 2500)
+  }
 
   const loadSettleUpData = () => {
     setLoadError(false)
@@ -1766,8 +1773,11 @@ export function SettleUp({ roundId, userId, eventId, onDone, onContinue }: Props
 
           return (
             <>
+              {shareMsg && (
+                <p className="text-center text-sm text-gray-500 dark:text-gray-400 mb-2">{shareMsg}</p>
+              )}
               <button
-                onClick={shareImage}
+                onClick={handleShare}
                 disabled={sharing}
                 className="w-full h-14 bg-emerald-600 text-white text-lg font-bold rounded-2xl active:bg-emerald-700 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
               >

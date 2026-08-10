@@ -3,8 +3,18 @@ import { createRoot } from 'react-dom/client'
 import { initSentry, Sentry } from './lib/sentry'
 import './index.css'
 import App from './App.tsx'
+import { RecoveryScreen } from './components/RecoveryScreen'
 
 initSentry()
+
+// Error boundaries don't catch promise rejections thrown from event handlers — which
+// is exactly what white-screened the app when navigator.share was denied. Log those
+// and suppress them so a failed share (or any stray async reject) can never take the
+// UI down. (UX Build Spec v2.0 §2a)
+window.addEventListener('unhandledrejection', (event) => {
+  Sentry.captureException(event.reason, { tags: { area: 'unhandled-rejection' } })
+  event.preventDefault()
+})
 
 // Brand QA preview — bypasses auth and renders the result-card scenarios.
 // Reachable at /golf-tracker/?preview=share-card. Removing the query param returns to the app.
@@ -15,14 +25,7 @@ const ShareCardPreview = previewParam === 'share-card'
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <Sentry.ErrorBoundary fallback={({ error }) => (
-      <div style={{ padding: 24, fontFamily: 'monospace' }}>
-        <h1 style={{ color: 'red' }}>App Error</h1>
-        <pre style={{ whiteSpace: 'pre-wrap', fontSize: 14 }}>{(error as Error)?.message}</pre>
-        <pre style={{ whiteSpace: 'pre-wrap', fontSize: 12, color: '#666', marginTop: 8 }}>{(error as Error)?.stack}</pre>
-        <button onClick={() => window.location.reload()} style={{ marginTop: 16, padding: '8px 16px' }}>Reload</button>
-      </div>
-    )}>
+    <Sentry.ErrorBoundary fallback={() => <RecoveryScreen />}>
       {ShareCardPreview ? (
         <Suspense fallback={<div style={{ minHeight: '100vh', background: '#16263B' }} />}>
           <ShareCardPreview />
