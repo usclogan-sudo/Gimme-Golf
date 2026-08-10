@@ -73,7 +73,6 @@ import type {
   PropWager,
   Game,
 } from '../../types'
-import { useShareImage } from '../ShareCard'
 import { reportSupabaseError } from '../../lib/sentry'
 import { SHOW_HOLE_BETS, SHOW_PROP_BETS, SHOW_PRESSES } from '../../lib/featureFlags'
 
@@ -278,7 +277,6 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
   const scoreToastTimerRef = useRef<ReturnType<typeof setTimeout>>()
   const roundRef = useRef(round)
   roundRef.current = round
-  const { shareRef, sharing, shareImage } = useShareImage('gimme-leaderboard')
   const [scoreToast, setScoreToast] = useState<{
     message: string
     type: 'info' | 'success' | 'error'
@@ -1969,9 +1967,6 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
           bankerResultAlt={bankerResultAlt}
           quotaResultAlt={quotaResultAlt}
           primaryMode={(game?.config as any)?.mode ?? 'net'}
-          shareRef={shareRef}
-          sharing={sharing}
-          shareImage={shareImage}
         />
       )}
 

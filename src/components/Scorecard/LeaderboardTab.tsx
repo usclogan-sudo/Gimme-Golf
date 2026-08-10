@@ -1,7 +1,8 @@
-import type { Ref, RefObject } from 'react'
+import { useState } from 'react'
 import { Tooltip } from '../ui/Tooltip'
-import { ShareCard } from '../ShareCard'
-import type { ShareCardStanding } from '../ShareCard/ShareCard'
+import { renderResultCardToBlob } from '../ResultCard'
+import type { ResultCardStanding } from '../ResultCard'
+import { shareCard } from '../../lib/share'
 import {
   strokesOnHole, fmtAmount,
   calculateSkinsPayouts, calculateBestBallPayouts, calculateNassauPayouts,
@@ -43,9 +44,6 @@ interface Props {
   bankerResultAlt?: BankerResult | null
   quotaResultAlt?: QuotaResult | null
   primaryMode?: 'net' | 'gross'
-  shareRef: RefObject<HTMLDivElement | null>
-  sharing: boolean
-  shareImage: () => void
 }
 
 const GAME_LABELS: Record<string, string> = {
@@ -61,8 +59,8 @@ export function LeaderboardTab({
   skinsResultAlt, bestBallResultAlt, nassauResultAlt, wolfResultAlt,
   vegasResultAlt, stablefordResultAlt, bankerResultAlt,
   primaryMode = 'net',
-  shareRef, sharing, shareImage,
 }: Props) {
+  const [sharing, setSharing] = useState(false)
   const primaryLabel = primaryMode === 'net' ? 'Net' : 'Gross'
   const altLabel = primaryMode === 'net' ? 'Gross' : 'Net'
 
@@ -91,7 +89,10 @@ export function LeaderboardTab({
   // - Pot-based games: every player implicitly pays buyInCents in; winners receive a slice
   //   of the pot via calculateXxxPayouts.
   // Net per player = (received from pot) − (buyInCents stake) + (direct-settlement netCents).
-  const shareStandings: ShareCardStanding[] = (() => {
+  // Points-only, like fmtAmount: points mode stores the point count; legacy money
+  // mode stores cents.
+  const toPoints = (cents: number) => (game?.stakesMode === 'points' ? cents : Math.round(cents / 100))
+  const cardStandings: ResultCardStanding[] = (() => {
     if (!game) return []
     const netByPlayer = new Map<string, number>()
     players.forEach(p => netByPlayer.set(p.id, 0))
@@ -138,12 +139,45 @@ export function LeaderboardTab({
     // Drop empty standings — keeps "All square." path for unscored rounds clean.
     const allZero = Array.from(netByPlayer.values()).every(v => v === 0)
     if (allZero) return []
-    return players
-      .map(p => ({ name: p.name, netCents: netByPlayer.get(p.id) ?? 0 }))
-      .sort((a, b) => b.netCents - a.netCents)
+    const ranked = players
+      .map(p => ({ playerId: p.id, displayName: p.name, net: toPoints(netByPlayer.get(p.id) ?? 0) }))
+      .sort((a, b) => b.net - a.net)
+    // Standard competition ranking: ties share a position, next distinct skips.
+    let pos = 0
+    let lastNet: number | null = null
+    return ranked.map((r, i) => {
+      if (lastNet === null || r.net !== lastNet) { pos = i + 1; lastNet = r.net }
+      return { ...r, position: pos }
+    })
   })()
 
   const gameLabel = game ? (GAME_LABELS[game.type] ?? game.type) : null
+
+  // Share the current standings as an in-progress ResultCard image. Uses the offscreen
+  // 1080-grid render (renderResultCardToBlob) — no html2canvas. Settlements stay empty
+  // mid-round; the card shows "{leader} leads." and a LIVE · THRU N eyebrow.
+  const onShareStandings = async () => {
+    if (sharing || cardStandings.length === 0) return
+    setSharing(true)
+    try {
+      const blob = await renderResultCardToBlob({
+        round: {
+          courseName: snapshot.courseName,
+          date: round?.date ?? new Date(),
+          formats: gameLabel ? [gameLabel] : [],
+          holesPlayed: new Set(holeScores.map(h => h.holeNumber)).size,
+        },
+        standings: cardStandings,
+        settlements: [],
+        roundId: round?.id,
+        inProgress: true,
+        ratio: 'story',
+      })
+      if (blob) await shareCard(blob, 'gimme-standings', window.location.origin)
+    } finally {
+      setSharing(false)
+    }
+  }
 
   return (
     <div className="px-4 py-4 max-w-2xl mx-auto">
@@ -481,40 +515,20 @@ export function LeaderboardTab({
         )}
       </div>
 
-      {/* Share Leaderboard */}
-      <button
-        onClick={shareImage}
-        disabled={sharing}
-        className="mt-4 w-full h-12 bg-emerald-600 text-white font-bold rounded-2xl active:bg-emerald-700 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
-      >
-        {sharing ? (
-          <span className="inline-block w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-        ) : (
-          <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
-          </svg>
-        )}
-        {sharing ? 'Creating image…' : 'Share Leaderboard'}
-      </button>
-      {/*
-        In-round leaderboard share: standings aggregated from in-flight game
-        results (Hammer/Banker netCents direct; pot-based games via the
-        calculateXxxPayouts dispatch + buyIn subtraction). Settlements stay
-        empty mid-round — the net-out graph is computed in SettleUp post-round.
-        When no game results exist yet, shareStandings is [] and the card
-        falls back to the "All square." path.
-      */}
-      <div style={{ position: 'absolute', left: -9999, top: 0 }}>
-        <ShareCard
-          ref={shareRef as Ref<HTMLDivElement>}
-          courseName={snapshot.courseName}
-          date={round!.date}
-          gameLabel={gameLabel}
-          standings={shareStandings}
-          settlements={[]}
-          isPoints={game?.stakesMode === 'points'}
-        />
-      </div>
+      {/* Share the standings — an in-progress ResultCard image (§22). Hidden until
+          there are game standings to show. */}
+      {cardStandings.length > 0 && (
+        <button
+          onClick={onShareStandings}
+          disabled={sharing}
+          className="mt-4 w-full h-12 bg-navy text-cream font-bold rounded-2xl active:opacity-90 transition disabled:opacity-50 flex items-center justify-center gap-2"
+        >
+          {sharing && (
+            <span className="inline-block w-5 h-5 border-2 border-cream/30 border-t-cream rounded-full animate-spin" />
+          )}
+          {sharing ? 'Creating image…' : 'Share the standings'}
+        </button>
+      )}
     </div>
   )
 }

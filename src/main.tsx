@@ -17,14 +17,12 @@ window.addEventListener('unhandledrejection', (event) => {
 })
 
 // Brand QA preview — bypasses auth and renders the result-card scenarios.
-// Reachable at /golf-tracker/?preview=share-card. Removing the query param returns to the app.
+// Reachable at /golf-tracker/?preview=result-card. Removing the query param returns to the app.
 const previewParam = new URLSearchParams(window.location.search).get('preview')
 const PreviewComponent =
-  previewParam === 'share-card'
-    ? lazy(() => import('./components/ShareCard/ShareCardPreview').then(m => ({ default: m.ShareCardPreview })))
-    : previewParam === 'result-card'
-      ? lazy(() => import('./components/ResultCard/ResultCardPreview').then(m => ({ default: m.ResultCardPreview })))
-      : null
+  previewParam === 'result-card'
+    ? lazy(() => import('./components/ResultCard/ResultCardPreview').then(m => ({ default: m.ResultCardPreview })))
+    : null
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

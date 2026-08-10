@@ -32,6 +32,17 @@ const SCENARIOS: Scn[] = [
     },
   },
   {
+    key: 'in-progress',
+    label: 'In progress (leaderboard share)',
+    note: 'Mid-round variant: "{leader} leads.", LIVE · THRU N eyebrow, no settle block.',
+    props: {
+      round: { courseName: 'Camarillo Springs', date: new Date('2026-08-10T17:00:00'), formats: ['Skins'], holesPlayed: 7 },
+      standings: [s('1', 'A-Aron', 30, 1), s('2', 'Admin', 10, 2), s('3', 'Test', -40, 3)],
+      settlements: [],
+      inProgress: true,
+    },
+  },
+  {
     key: 'blowout',
     label: 'Blowout',
     note: 'Winner margin > 50% of points in play → blowout sub-line bucket.',
