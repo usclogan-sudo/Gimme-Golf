@@ -788,14 +788,18 @@ function PlayerPicker({
 
       <div className="fixed bottom-0 inset-x-0 p-4 bg-white/95 dark:bg-gray-800/95 backdrop-blur-sm border-t border-gray-200 dark:border-gray-700">
         <div className="max-w-2xl mx-auto">
+          {/* Constraint is helper text; the button states the action. (UX v2.1 §8g/§22) */}
+          {selectedIds.size < 2 && (
+            <p className="text-center text-xs text-gray-500 dark:text-gray-400 mb-2">Select at least 2 players</p>
+          )}
           <button
             onClick={handleNext}
             disabled={selectedIds.size < 2}
             className="w-full h-14 bg-gray-800 text-white dark:bg-brass dark:text-navy text-lg font-bold rounded-2xl shadow-lg disabled:opacity-40 active:bg-gray-900 transition-colors"
           >
             {selectedIds.size < 2
-              ? 'Select at Least 2 Players'
-              : `Next · ${selectedIds.size} Player${selectedIds.size !== 1 ? 's' : ''}`}
+              ? 'Continue'
+              : `Continue · ${selectedIds.size} Player${selectedIds.size !== 1 ? 's' : ''}`}
           </button>
         </div>
       </div>
@@ -1543,7 +1547,7 @@ function GameSetup({
             </button>
             <p className="text-sm text-gray-500 bg-gray-50 rounded-xl p-3">
               Lowest score wins the hole.{' '}
-              {carryovers ? 'Ties carry the pot forward until someone wins it clean.' : 'Ties push — no carry.'}
+              {carryovers ? 'Ties carry forward until someone wins the hole clean.' : 'Ties push — no carry.'}
             </p>
           </section>
         )}
