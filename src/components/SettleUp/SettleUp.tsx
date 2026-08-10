@@ -73,8 +73,8 @@ import type {
   UserProfile,
   GolfEvent,
 } from '../../types'
-import { ShareCard, useShareImage } from '../ShareCard'
-import type { ShareCardStanding, ShareCardSettlement } from '../ShareCard'
+import { ResultCard, renderResultCardToBlob } from '../ResultCard'
+import { shareCard } from '../../lib/share'
 
 interface Props {
   roundId: string
@@ -204,14 +204,8 @@ export function SettleUp({ roundId, userId, eventId, onDone, onContinue }: Props
   const [pendingAction, setPendingAction] = useState<{ type: 'settlement' | 'buyin' | 'bulk_buyin' | 'bulk_settlement'; id: string; ids?: string[]; name: string; timer: ReturnType<typeof setTimeout>; prevBuyIns?: BuyIn[]; prevRecords?: SettlementRecord[] } | null>(null)
   const [showMarkAllPaidConfirm, setShowMarkAllPaidConfirm] = useState(false)
   const [showMarkAllSettlementsConfirm, setShowMarkAllSettlementsConfirm] = useState(false)
-  const { shareRef, sharing, shareImage } = useShareImage('gimme-results')
+  const [sharing, setSharing] = useState(false)
   const [shareMsg, setShareMsg] = useState<string | null>(null)
-  const handleShare = async () => {
-    const r = await shareImage()
-    if (r === 'downloaded') setShareMsg('Saved to your photos.')
-    else if (r === 'copied') setShareMsg('Link copied.')
-    if (r) setTimeout(() => setShareMsg(null), 2500)
-  }
 
   const loadSettleUpData = () => {
     setLoadError(false)
@@ -854,6 +848,85 @@ export function SettleUp({ roundId, userId, eventId, onDone, onContinue }: Props
   const paidSettlements = settlementRecords.filter(s => s.status === 'paid')
   const allSettled = settlementRecords.length > 0 && owedSettlements.length === 0
 
+  // ── ResultCard props (UX v2.0 §3 / v2.1 §4) ────────────────────────────────
+  // The card is pure/presentational and points-only. Convert stored cents→points
+  // the same way fmtAmount does (points mode already stores the point count).
+  const toPoints = (cents: number) => (isPoints ? cents : Math.round(cents / 100))
+  const cardNetByPlayer = new Map<string, number>()
+  players.forEach(p => cardNetByPlayer.set(p.id, 0))
+  if (settlementRecords.length > 0) {
+    settlementRecords.forEach(r => {
+      cardNetByPlayer.set(r.fromPlayerId, (cardNetByPlayer.get(r.fromPlayerId) ?? 0) - r.amountCents)
+      cardNetByPlayer.set(r.toPlayerId, (cardNetByPlayer.get(r.toPlayerId) ?? 0) + r.amountCents)
+    })
+  } else {
+    // Not yet settled — derive net from live payouts so the card matches the board.
+    const buyIn = game?.buyInCents ?? 0
+    players.forEach(p => {
+      const won = payouts.find(pay => pay.playerId === p.id)?.amountCents ?? 0
+      cardNetByPlayer.set(p.id, won - buyIn)
+    })
+  }
+  const rankedForCard = players
+    .map(p => ({ playerId: p.id, displayName: p.name, net: toPoints(cardNetByPlayer.get(p.id) ?? 0) }))
+    .sort((a, b) => b.net - a.net)
+  // Standard competition ranking: ties share a position, the next distinct net skips.
+  let cardPos = 0
+  let cardLastNet: number | null = null
+  const cardStandings = rankedForCard.map((p, i) => {
+    if (cardLastNet === null || p.net !== cardLastNet) { cardPos = i + 1; cardLastNet = p.net }
+    return { ...p, position: cardPos }
+  })
+  const cardSettlements = settlementRecords.map(r => ({
+    fromName: playerById(r.fromPlayerId)?.name ?? 'Player',
+    toName: playerById(r.toPlayerId)?.name ?? 'Player',
+    amount: toPoints(r.amountCents),
+  }))
+  const resultCardProps = {
+    round: {
+      courseName: snapshot.courseName,
+      date: round.date,
+      formats: [gameLabel],
+      holesPlayed: new Set(holeScores.map(h => h.holeNumber)).size,
+    },
+    standings: cardStandings,
+    settlements: cardSettlements,
+    roundId,
+  }
+
+  const onShareCard = async () => {
+    if (sharing) return
+    setSharing(true)
+    try {
+      const blob = await renderResultCardToBlob({ ...resultCardProps, ratio: 'story' })
+      if (!blob) { setShareMsg('Could not create the image.'); return }
+      const r = await shareCard(blob, 'gimme-results', window.location.origin)
+      if (r === 'downloaded') setShareMsg('Saved to your photos.')
+      else if (r === 'copied') setShareMsg('Link copied.')
+    } finally {
+      setSharing(false)
+      setTimeout(() => setShareMsg(null), 2500)
+    }
+  }
+  const onSaveImage = async () => {
+    if (sharing) return
+    setSharing(true)
+    try {
+      const blob = await renderResultCardToBlob({ ...resultCardProps, ratio: 'story' })
+      if (!blob) { setShareMsg('Could not create the image.'); return }
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = 'gimme-results.png'
+      a.click()
+      URL.revokeObjectURL(url)
+      setShareMsg('Saved to your photos.')
+    } finally {
+      setSharing(false)
+      setTimeout(() => setShareMsg(null), 2500)
+    }
+  }
+
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900 pb-32">
       {mutationError && (
@@ -881,6 +954,33 @@ export function SettleUp({ roundId, userId, eventId, onDone, onContinue }: Props
       </header>
 
       <div className="px-4 py-5 max-w-2xl mx-auto space-y-4">
+        {/* ── The ResultCard — the hero, above everything (UX v2.1 §4) ── */}
+        <div className="rounded-2xl overflow-hidden shadow-lg">
+          <ResultCard {...resultCardProps} variant="screen" ratio="story" />
+        </div>
+
+        {/* ── Share row: primary "Share the card", secondary "Save image" ── */}
+        <div className="space-y-1.5">
+          <button
+            onClick={onShareCard}
+            disabled={sharing}
+            className="w-full h-14 bg-navy text-cream text-lg font-bold rounded-2xl active:opacity-90 transition disabled:opacity-50 flex items-center justify-center gap-2"
+          >
+            {sharing ? (
+              <span className="inline-block w-5 h-5 border-2 border-cream/30 border-t-cream rounded-full animate-spin" />
+            ) : null}
+            {sharing ? 'Creating image…' : 'Share the card'}
+          </button>
+          <button
+            onClick={onSaveImage}
+            disabled={sharing}
+            className="w-full text-center text-sm font-semibold text-navy/70 dark:text-cream/70 py-1.5 disabled:opacity-50"
+          >
+            Save image
+          </button>
+          {shareMsg && <p className="text-center text-xs text-gray-500 dark:text-gray-400">{shareMsg}</p>}
+        </div>
+
         {/* Non-treasurer banner */}
         {!isTreasurer && treasurer && (
           <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3">
@@ -919,26 +1019,22 @@ export function SettleUp({ roundId, userId, eventId, onDone, onContinue }: Props
             }
           }
           const net = collectCents - oweCents
+          // One quiet row for all three states — no alert box, no red, no pink.
+          // Only the positive figure gets brass. (UX v2.1 §4.4)
           return (
-            <section className={`rounded-2xl p-4 text-center space-y-2 ${
-              net > 0 ? 'bg-green-50 border-2 border-green-200' :
-              net < 0 ? 'bg-red-50 border-2 border-red-200' :
-              'bg-gray-50 border border-gray-200'
-            }`}>
-              <p className={`text-2xl font-bold ${
-                net > 0 ? 'text-green-700' : net < 0 ? 'text-red-700' : 'text-gray-600'
-              }`}>
-                {net > 0 ? `You collect ${fmt(net)}` : net < 0 ? `You owe ${fmt(Math.abs(net))}` : "You're even"}
+            <section className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm px-4 py-3.5">
+              <p className="text-base font-semibold text-navy dark:text-cream">
+                {net > 0
+                  ? <>You&apos;re owed <span className="text-brass">{fmt(net)}</span>{collectFrom.length === 1 ? ` by ${collectFrom[0].name}` : ''}</>
+                  : net < 0
+                    ? <>You owe {oweTo.length === 1 ? `${oweTo[0].name} ` : ''}{fmt(Math.abs(net))}</>
+                    : "You're square."}
               </p>
-              {collectFrom.length > 0 && (
-                <p className="text-sm text-green-600">
-                  {collectFrom.map(c => `From ${c.name}: ${fmt(c.cents)}`).join(' · ')}
-                </p>
+              {net > 0 && collectFrom.length > 1 && (
+                <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">{collectFrom.map(c => `${c.name} ${fmt(c.cents)}`).join(' · ')}</p>
               )}
-              {oweTo.length > 0 && (
-                <p className="text-sm text-red-600">
-                  {oweTo.map(c => `To ${c.name}: ${fmt(c.cents)}`).join(' · ')}
-                </p>
+              {net < 0 && oweTo.length > 1 && (
+                <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">{oweTo.map(c => `${c.name} ${fmt(c.cents)}`).join(' · ')}</p>
               )}
             </section>
           )
@@ -1742,68 +1838,6 @@ export function SettleUp({ roundId, userId, eventId, onDone, onContinue }: Props
           </section>
         )}
 
-        {/* ── Share Results ── */}
-        {(() => {
-          const netByPlayer = new Map<string, number>()
-          players.forEach(p => netByPlayer.set(p.id, 0))
-          if (settlementRecords.length > 0) {
-            // Round already settled — use the persisted records.
-            settlementRecords.forEach(r => {
-              netByPlayer.set(r.fromPlayerId, (netByPlayer.get(r.fromPlayerId) ?? 0) - r.amountCents)
-              netByPlayer.set(r.toPlayerId, (netByPlayer.get(r.toPlayerId) ?? 0) + r.amountCents)
-            })
-          } else {
-            // Not yet marked paid — derive net from the live computed payouts
-            // (winnings − buy-in) so the share card matches the scoreboard instead
-            // of showing "all square".
-            const buyIn = game?.buyInCents ?? 0
-            players.forEach(p => {
-              const won = payouts.find(pay => pay.playerId === p.id)?.amountCents ?? 0
-              netByPlayer.set(p.id, won - buyIn)
-            })
-          }
-          const shareStandings: ShareCardStanding[] = players
-            .map(p => ({ name: p.name, netCents: netByPlayer.get(p.id) ?? 0 }))
-            .sort((a, b) => b.netCents - a.netCents)
-          const shareSettlements: ShareCardSettlement[] = settlementRecords.map(r => ({
-            fromName: playerById(r.fromPlayerId)?.name ?? 'Player',
-            toName: playerById(r.toPlayerId)?.name ?? 'Player',
-            amountCents: r.amountCents,
-          }))
-
-          return (
-            <>
-              {shareMsg && (
-                <p className="text-center text-sm text-gray-500 dark:text-gray-400 mb-2">{shareMsg}</p>
-              )}
-              <button
-                onClick={handleShare}
-                disabled={sharing}
-                className="w-full h-14 bg-emerald-600 text-white text-lg font-bold rounded-2xl active:bg-emerald-700 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
-              >
-                {sharing ? (
-                  <span className="inline-block w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                ) : (
-                  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
-                  </svg>
-                )}
-                {sharing ? 'Creating image…' : 'Share Results'}
-              </button>
-              <div style={{ position: 'absolute', left: -9999, top: 0 }}>
-                <ShareCard
-                  ref={shareRef}
-                  courseName={snapshot.courseName}
-                  date={round.date}
-                  gameLabel={gameLabel}
-                  standings={shareStandings}
-                  settlements={shareSettlements}
-                  isPoints={isPoints}
-                />
-              </div>
-            </>
-          )
-        })()}
 
       </div>
 
