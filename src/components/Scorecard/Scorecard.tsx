@@ -1400,9 +1400,23 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
                   {readOnly ? 'Spectating' : isEventRound ? (isScoreMaster ? 'Score Master' : isGroupScorekeeper ? `Scorekeeper · G${myEventGroupNumber}` : groupHasActiveScorekeeper ? 'View Only' : 'Self-Entry') : selfEntryOnly ? 'Self-Entry' : 'Live'}
                 </span>
               </p>
-              <h1 className="text-xl font-bold flex items-center gap-2">
-                Hole {currentHole}
-                <span className="text-gray-300 font-normal text-base">Par {par} · <Tooltip term="SI">SI {strokeIndex}</Tooltip></span>
+              {/* One hole header — stepper chevrons merged in; the duplicate row below
+                  is gone, recovering ~56px of vertical space. (§7a) */}
+              <h1 className="text-xl font-bold flex items-center gap-1">
+                <button
+                  onClick={() => { const idx = playableHoleNums.indexOf(currentHole); if (idx > 0) goToHole(playableHoleNums[idx - 1]) }}
+                  disabled={playableHoleNums.indexOf(currentHole) <= 0}
+                  className="w-7 h-7 flex items-center justify-center rounded-full text-gray-300 hover:bg-black/20 disabled:opacity-30"
+                  aria-label="Previous hole"
+                >‹</button>
+                <button onClick={() => setShowHoleGrid(v => !v)} className="active:opacity-80" aria-label="Choose hole">Hole {currentHole}</button>
+                <button
+                  onClick={() => { const idx = playableHoleNums.indexOf(currentHole); if (idx < playableHoleNums.length - 1) goToHole(playableHoleNums[idx + 1]) }}
+                  disabled={playableHoleNums.indexOf(currentHole) >= playableHoleNums.length - 1}
+                  className="w-7 h-7 flex items-center justify-center rounded-full text-gray-300 hover:bg-black/20 disabled:opacity-30"
+                  aria-label="Next hole"
+                >›</button>
+                <span className="text-gray-300 font-normal text-base ml-1">Par {par} · <Tooltip term="SI">SI {strokeIndex}</Tooltip></span>
                 {game?.stakesMode === 'high_roller' && (
                   <span className="text-xs font-bold px-2 py-0.5 rounded-full"
                     style={{ background: 'linear-gradient(135deg,#d97706,#fbbf24)', color: '#000' }}>
@@ -1544,32 +1558,6 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
             )}
           </div>
         </div>
-        <div className="max-w-2xl mx-auto mt-2 flex items-center justify-center gap-3">
-          <button
-            onClick={() => {
-              const idx = playableHoleNums.indexOf(currentHole)
-              if (idx > 0) goToHole(playableHoleNums[idx - 1])
-            }}
-            disabled={playableHoleNums.indexOf(currentHole) <= 0}
-            className="min-w-[44px] min-h-[44px] rounded-full bg-gray-700/40 text-gray-300 font-bold text-lg disabled:opacity-30"
-          >‹</button>
-          <button
-            onClick={() => setShowHoleGrid(!showHoleGrid)}
-            className="text-white font-bold text-sm px-3 py-1.5 rounded-lg active:bg-gray-600 transition-colors"
-          >
-            Hole {currentHole} · Par {par}
-            {round?.holesMode === 'front_9' ? ' · Front 9' : round?.holesMode === 'back_9' ? ' · Back 9' : ''}
-            {(round?.startingHole ?? 1) > 1 && round?.holesMode !== 'front_9' && round?.holesMode !== 'back_9' ? ` · Shotgun ${round?.startingHole}` : ''}
-          </button>
-          <button
-            onClick={() => {
-              const idx = playableHoleNums.indexOf(currentHole)
-              if (idx < playableHoleNums.length - 1) goToHole(playableHoleNums[idx + 1])
-            }}
-            disabled={playableHoleNums.indexOf(currentHole) >= playableHoleNums.length - 1}
-            className="min-w-[44px] min-h-[44px] rounded-full bg-gray-700/40 text-gray-300 font-bold text-lg disabled:opacity-30"
-          >›</button>
-        </div>
         {showHoleGrid && (
           <div ref={holeNavRef} className="max-w-2xl mx-auto mt-2 flex gap-1.5 overflow-x-auto pb-1">
             {playableHoleNums.map(n => {
@@ -1586,7 +1574,7 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
       </header>
 
       {/* Scores / Leaderboard tab toggle */}
-      <div className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 px-4 py-2 sticky top-[calc(5.5rem+2rem)] z-[6]">
+      <div className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 px-4 py-2 sticky top-[5.5rem] z-[6]">
         <div className="max-w-2xl mx-auto flex gap-1">
           <button
             onClick={() => setScoreTab('scores')}
@@ -1910,7 +1898,7 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
         const groupNums = [...new Set(Object.values(round.groups))].sort((a, b) => a - b)
         if (groupNums.length <= 1) return null
         return (
-          <div className="bg-white border-b border-gray-200 px-4 py-2 sticky top-[calc(5.5rem+2rem)] z-[5]">
+          <div className="bg-white border-b border-gray-200 px-4 py-2 sticky top-[5.5rem] z-[5]">
             <div className="max-w-2xl mx-auto flex gap-1 overflow-x-auto">
               {groupNums.map(gn => (
                 <button
