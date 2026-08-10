@@ -217,6 +217,10 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
   const [propBets, setPropBets] = useState<PropBet[]>([])
   const [propWagers, setPropWagers] = useState<PropWager[]>([])
   const [roundParticipants, setRoundParticipants] = useState<RoundParticipant[]>([])
+  // Player-ids of invitees who haven't accepted yet — roundParticipants above only
+  // holds ACCEPTED members, so pending invitees are tracked separately for the
+  // "INVITED" badge on the scoring card (UX M2).
+  const [pendingInviteeIds, setPendingInviteeIds] = useState<Set<string>>(new Set())
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState(false)
   const [inviteToast, setInviteToast] = useState<string | null>(null)
@@ -304,7 +308,8 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
       supabase.from('buy_ins').select('*').eq('round_id', roundId),
       supabase.from('prop_bets').select('*').eq('round_id', roundId),
       supabase.from('prop_wagers').select('*').eq('round_id', roundId),
-    ]).then(([roundRes, rpRes, hsRes, bbbRes, junkRes, sbRes, partRes, biRes, pbRes, pwRes]) => {
+      supabase.from('round_participants').select('player_id').eq('round_id', roundId).eq('status', 'pending'),
+    ]).then(([roundRes, rpRes, hsRes, bbbRes, junkRes, sbRes, partRes, biRes, pbRes, pwRes, pendingRes]) => {
       if (cancelled()) return
       if (roundRes.error || !roundRes.data) {
         setLoadError(true)
@@ -318,6 +323,7 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
       if (junkRes.data) setJunkRecords(junkRes.data.map(rowToJunkRecord))
       if (sbRes.data) setSideBets(sbRes.data.map(rowToSideBet))
       if (partRes.data) setRoundParticipants(partRes.data.map(rowToRoundParticipant))
+      setPendingInviteeIds(new Set((pendingRes?.data ?? []).map((r: any) => r.player_id as string)))
       if (biRes.data) setBuyIns(biRes.data.map(rowToBuyIn))
       if (pbRes?.data) setPropBets(pbRes.data.map(rowToPropBet))
       if (pwRes?.data) setPropWagers(pwRes.data.map(rowToPropWager))
@@ -2635,6 +2641,14 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
                 <div>
                   <div className="flex items-center gap-2">
                     <p className="font-bold text-gray-800 text-lg">{player.name}</p>
+                    {pendingInviteeIds.has(player.id) && (
+                      <span
+                        className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-100 text-amber-700"
+                        title="Invited — hasn't joined on their phone yet"
+                      >
+                        INVITED
+                      </span>
+                    )}
                     {isPending && (
                       <span className="relative inline-flex">
                         <button
@@ -2899,7 +2913,12 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
           currentUserId={userId}
           existingPlayerIds={players.map((p: any) => p.id)}
           onClose={() => setShowInviteModal(false)}
-          onInvited={name => { setInviteToast(`Invited ${name}`); setTimeout(() => setInviteToast(null), 3000) }}
+          onInvited={name => {
+            setInviteToast(`Invited ${name}`); setTimeout(() => setInviteToast(null), 3000)
+            // Refresh so the newly-added player appears on the card immediately —
+            // otherwise the host sees no change until a manual reload (UX M3).
+            loadScorecardData()
+          }}
         />
       )}
 
