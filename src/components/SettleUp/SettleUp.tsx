@@ -320,10 +320,17 @@ export function SettleUp({ roundId, userId, eventId, onDone, onContinue }: Props
     return buildCourseHandicaps(players, roundPlayers, snapshot, round?.holesMode)
   }, [players, roundPlayers, snapshot, round?.holesMode])
 
+  // Player-id → the hole they joined mid-round (Option A). Absent ⇒ round start.
+  const startHoles = useMemo((): Record<string, number> => {
+    const m: Record<string, number> = {}
+    for (const rp of roundPlayers) if (rp.startHole) m[rp.playerId] = rp.startHole
+    return m
+  }, [roundPlayers])
+
   const skinsResult = useMemo(() => {
     if (!game || game.type !== 'skins' || !playableSnapshot) return null
-    return calculateSkins(players, holeScores, playableSnapshot, game.config as SkinsConfig, courseHcps)
-  }, [game, players, holeScores, playableSnapshot, courseHcps])
+    return calculateSkins(players, holeScores, playableSnapshot, game.config as SkinsConfig, courseHcps, startHoles)
+  }, [game, players, holeScores, playableSnapshot, courseHcps, startHoles])
 
   const bestBallResult = useMemo(() => {
     if (!game || game.type !== 'best_ball' || !playableSnapshot) return null
@@ -432,12 +439,6 @@ export function SettleUp({ roundId, userId, eventId, onDone, onContinue }: Props
     return []
   }, [game, players, playableSnapshot, skinsResult, bestBallResult, nassauResult, wolfResult, bbbResult, hammerResult, vegasResult, stablefordResult, dotsResult, bankerResult, quotaResult])
 
-  // Player-id → the hole they joined mid-round (Option A). Absent ⇒ round start.
-  const startHoles = useMemo((): Record<string, number> => {
-    const m: Record<string, number> = {}
-    for (const rp of roundPlayers) if (rp.startHole) m[rp.playerId] = rp.startHole
-    return m
-  }, [roundPlayers])
   // Skins with a genuine mid-round joiner can't use the uniform-ante pot model (a
   // late joiner pays a prorated ante), so it settles from a signed net like the unit
   // games — calculateSkinsNet. No joiner ⇒ null, and the pot path is used untouched.
