@@ -1410,6 +1410,17 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
             </button>
             {showHeaderMenu && (
               <div className="absolute right-0 top-full mt-1 bg-gray-800 rounded-xl shadow-2xl border border-gray-600 min-w-[180px] z-50 py-1 overflow-hidden">
+                {/* Primary path: the clear search-and-add modal comes first. The
+                    share-a-link path (which just fires the OS share sheet / copies a
+                    link) is demoted below it, since on desktop it reads as a no-op. */}
+                {isScoremasterRole && (
+                  <button
+                    onClick={() => { setShowHeaderMenu(false); setShowInviteModal(true) }}
+                    className="w-full px-4 py-3 text-left text-sm font-medium text-cyan-300 hover:bg-gray-700 active:bg-gray-700"
+                  >
+                    👤 Add players
+                  </button>
+                )}
                 {isScoremasterRole && (
                   <button
                     onClick={async () => {
@@ -1434,20 +1445,12 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
                       } else {
                         await navigator.clipboard.writeText(url)
                       }
-                      setInviteToast(`Link copied! Code: ${code}`)
-                      setTimeout(() => setInviteToast(null), 3000)
+                      setInviteToast(`Join link copied · code ${code}`)
+                      setTimeout(() => setInviteToast(null), 5000)
                     }}
                     className="w-full px-4 py-3 text-left text-sm font-medium text-cyan-300 hover:bg-gray-700 active:bg-gray-700"
                   >
-                    Invite Players
-                  </button>
-                )}
-                {isScoremasterRole && (
-                  <button
-                    onClick={() => { setShowHeaderMenu(false); setShowInviteModal(true) }}
-                    className="w-full px-4 py-3 text-left text-sm font-medium text-cyan-300 hover:bg-gray-700 active:bg-gray-700"
-                  >
-                    Invite by name
+                    🔗 Share join link
                   </button>
                 )}
                 {isScoremasterRole && (
@@ -1468,7 +1471,7 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
                     }}
                     className="w-full px-4 py-3 text-left text-sm font-medium text-cyan-300 hover:bg-gray-700 active:bg-gray-700"
                   >
-                    QR Code
+                    📷 QR code
                   </button>
                 )}
                 {!readOnly && (

@@ -59,7 +59,7 @@ export function InvitePlayerModal({ roundId, eventId, currentUserId, existingPla
   return (
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={onClose}>
       <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl max-w-sm w-full p-6 space-y-4" onClick={e => e.stopPropagation()}>
-        <h3 className="font-display font-bold text-lg text-gray-900 dark:text-gray-100">Invite a player</h3>
+        <h3 className="font-display font-bold text-lg text-gray-900 dark:text-gray-100">Add a player</h3>
         <input
           value={search}
           onChange={e => setSearch(e.target.value)}
