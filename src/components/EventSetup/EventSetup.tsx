@@ -814,7 +814,7 @@ export function EventSetup({ userId, onStart, onCancel, onAddCourse }: Props) {
                   onClick={() => setTreasurerId(p.id)}
                   className={`w-full p-3 rounded-xl border-2 text-left font-semibold text-sm transition-colors ${
                     treasurerId === p.id
-                      ? 'border-amber-500 bg-amber-50 text-gray-900'
+                      ? 'border-amber-500 bg-amber-50 text-gray-900 dark:text-gray-100'
                       : 'border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300'
                   }`}
                 >

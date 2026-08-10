@@ -144,7 +144,7 @@ export function TournamentDetail({ tournamentId, onBack, onStartRound }: Props) 
         {isComplete && tournamentWinner && (
           <div className="bg-gradient-to-r from-amber-400 to-yellow-300 rounded-2xl p-4 text-center">
             <p className="text-3xl mb-1">🏆</p>
-            <p className="text-xl font-bold text-gray-900">{playerName(tournamentWinner)}</p>
+            <p className="text-xl font-bold text-gray-900 dark:text-gray-100">{playerName(tournamentWinner)}</p>
             <p className="text-sm text-amber-900">Tournament Champion!</p>
           </div>
         )}

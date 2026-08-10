@@ -318,7 +318,7 @@ function CoursePicker({
               <div className="flex items-center justify-between">
                 <div>
                   <div className="flex items-center gap-2">
-                    <p className="font-semibold text-gray-800">{course.name}</p>
+                    <p className="font-semibold text-gray-800 dark:text-gray-100">{course.name}</p>
                     {course.source === 'shared' && (
                       <span className="text-[10px] font-bold uppercase px-1.5 py-0.5 rounded bg-blue-100 text-blue-700">Shared</span>
                     )}
@@ -698,7 +698,7 @@ function PlayerPicker({
                     {selected && <span className="text-white text-xs font-bold">✓</span>}
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="font-semibold text-gray-800">
+                    <p className="font-semibold text-gray-800 dark:text-gray-100">
                       {player.name}
                       {badge && (
                         <span className="ml-2 text-[10px] font-bold uppercase px-1.5 py-0.5 rounded bg-amber-100 text-amber-700">{badge}</span>
@@ -906,7 +906,7 @@ function GroupAssignment({
           return (
             <div key={gn} className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 p-4 space-y-2">
               <div className="flex items-center justify-between">
-                <p className="font-bold text-gray-800">Group {gn}</p>
+                <p className="font-bold text-gray-800 dark:text-gray-100">Group {gn}</p>
                 <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${
                   groupPlayers.length > MAX_PER_GROUP_CONST ? 'bg-red-100 text-red-600' :
                   groupPlayers.length === 0 ? 'bg-red-100 text-red-600' :
@@ -918,7 +918,7 @@ function GroupAssignment({
               {groupPlayers.map(player => (
                 <div key={player.id} className="flex items-center justify-between bg-gray-50 rounded-xl px-3 py-2">
                   <div>
-                    <p className="font-medium text-gray-800 text-sm">{player.name}</p>
+                    <p className="font-medium text-gray-800 dark:text-gray-100 text-sm">{player.name}</p>
                     <p className="text-xs text-gray-500">HCP {player.handicapIndex}</p>
                   </div>
                   <div className="flex gap-1">
@@ -1316,7 +1316,7 @@ function GameSetup({
                 <button
                   key={preset.id}
                   onClick={() => applyPreset(preset)}
-                  className="flex-shrink-0 px-4 py-2 rounded-xl bg-amber-50 border border-amber-200 text-gray-800 text-sm font-semibold active:bg-amber-100 transition-colors"
+                  className="flex-shrink-0 px-4 py-2 rounded-xl bg-amber-50 border border-amber-200 text-gray-800 dark:text-gray-100 text-sm font-semibold active:bg-amber-100 transition-colors"
                 >
                   {preset.name}
                 </button>
@@ -1453,7 +1453,7 @@ function GameSetup({
                       onClick={() => toggleJunkType(jt)}
                       className={`px-3 py-2 rounded-xl text-sm font-semibold transition-colors ${
                         active
-                          ? jt === 'snake' ? 'bg-red-100 border-2 border-red-300 text-red-700' : 'bg-amber-100 border-2 border-amber-300 text-gray-800'
+                          ? jt === 'snake' ? 'bg-red-100 border-2 border-red-300 text-red-700' : 'bg-amber-100 border-2 border-amber-300 text-gray-800 dark:text-gray-100'
                           : 'bg-gray-100 border-2 border-transparent text-gray-500'
                       }`}
                     >
@@ -1517,7 +1517,7 @@ function GameSetup({
 
           <div className="bg-amber-50 rounded-xl px-4 py-3 flex items-center justify-between">
             <span className="text-sm text-gray-600">{stakesMode === 'points' ? 'Total points' : 'Total pot'}</span>
-            <span className="font-bold text-gray-800 text-lg">
+            <span className="font-bold text-gray-800 dark:text-gray-100 text-lg">
               {stakesMode === 'points' ? `${buyInCents * players.length} pts` : fmtMoney(buyInCents * players.length)}
             </span>
           </div>
@@ -1536,7 +1536,7 @@ function GameSetup({
             <button
               onClick={() => setCarryovers((v: boolean) => !v)}
               className={`w-full h-12 rounded-xl font-semibold border-2 ${
-                carryovers ? 'bg-amber-50 border-amber-300 text-gray-800' : 'bg-gray-50 border-gray-200 text-gray-600'
+                carryovers ? 'bg-amber-50 border-amber-300 text-gray-800 dark:text-gray-100' : 'bg-gray-50 border-gray-200 text-gray-600'
               }`}
             >
               Carryovers: {carryovers ? 'ON ✓ (recommended)' : 'OFF'}
@@ -1629,7 +1629,7 @@ function GameSetup({
                       <span className="w-6 h-6 rounded-full bg-purple-600 text-white text-xs font-bold flex items-center justify-center flex-shrink-0">
                         {index + 1}
                       </span>
-                      <span className="flex-1 font-medium text-gray-800">{player?.name}</span>
+                      <span className="flex-1 font-medium text-gray-800 dark:text-gray-100">{player?.name}</span>
                       <div className="flex gap-1">
                         <button
                           onClick={() => moveWolfPlayer(index, -1)}
@@ -1846,7 +1846,7 @@ function GameSetup({
                       <span className="w-6 h-6 rounded-full bg-emerald-600 text-white text-xs font-bold flex items-center justify-center flex-shrink-0">
                         {index + 1}
                       </span>
-                      <span className="flex-1 font-medium text-gray-800">{player?.name}</span>
+                      <span className="flex-1 font-medium text-gray-800 dark:text-gray-100">{player?.name}</span>
                       <div className="flex gap-1">
                         <button
                           onClick={() => moveBankerPlayer(index, -1)}
@@ -1888,7 +1888,7 @@ function GameSetup({
                 return (
                   <div key={p.id} className="flex items-center justify-between text-sm">
                     <span className="text-gray-700 font-medium">{p.name}</span>
-                    <span className="text-gray-500">Target: <strong className="text-gray-800">{quota} pts</strong> (HCP {p.handicapIndex})</span>
+                    <span className="text-gray-500">Target: <strong className="text-gray-800 dark:text-gray-100">{quota} pts</strong> (HCP {p.handicapIndex})</span>
                   </div>
                 )
               })}
@@ -2107,7 +2107,7 @@ function TreasurerAndBuyIns({
                 onClick={() => setTreasurerId(p.id)}
                 className={`w-full p-4 rounded-2xl border-2 text-left font-semibold transition-colors ${
                   treasurerId === p.id
-                    ? 'border-amber-500 bg-amber-50 text-gray-900'
+                    ? 'border-amber-500 bg-amber-50 text-gray-900 dark:text-gray-100'
                     : 'border-gray-200 bg-white text-gray-700'
                 }`}
               >
@@ -2160,7 +2160,7 @@ function TreasurerAndBuyIns({
                 onClick={() => setGameMasterId(p.id)}
                 className={`w-full p-4 rounded-2xl border-2 text-left font-semibold transition-colors ${
                   gameMasterId === p.id
-                    ? 'border-amber-500 bg-amber-50 text-gray-900'
+                    ? 'border-amber-500 bg-amber-50 text-gray-900 dark:text-gray-100'
                     : 'border-gray-200 bg-white text-gray-700'
                 }`}
               >
@@ -2195,7 +2195,7 @@ function TreasurerAndBuyIns({
                   paid[p.id] ? 'border-amber-400 bg-amber-50' : 'border-gray-200 bg-white'
                 }`}
               >
-                <span className="font-semibold text-gray-800">{p.name}</span>
+                <span className="font-semibold text-gray-800 dark:text-gray-100">{p.name}</span>
                 <span
                   className={`text-sm font-bold px-3 py-1.5 rounded-full ${
                     paid[p.id] ? 'bg-amber-600 text-white' : 'bg-red-100 text-red-600'

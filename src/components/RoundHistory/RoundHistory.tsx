@@ -151,7 +151,7 @@ export function RoundHistory({ userId, onBack, onViewSettlements, onPlayAgain }:
               >
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="font-semibold text-gray-900 flex items-center gap-2">
+                    <p className="font-semibold text-gray-900 dark:text-gray-100 flex items-center gap-2">
                       {snapshot?.courseName ?? 'Unknown Course'}
                       {sStatus && sStatus.owed === 0 && sStatus.paid > 0 && (
                         <span className="text-xs font-semibold text-green-700 bg-green-100 px-1.5 py-0.5 rounded-full">All Settled</span>
@@ -217,7 +217,7 @@ export function RoundHistory({ userId, onBack, onViewSettlements, onPlayAgain }:
                             {board.map(({ player, gross, net, vsPar, hasScores }, i) => (
                               <tr key={player.id} className="border-b border-gray-50">
                                 <td className="py-1.5 px-2 text-gray-400 font-semibold">{i + 1}</td>
-                                <td className="py-1.5 px-2 font-semibold text-gray-800">{player.name}</td>
+                                <td className="py-1.5 px-2 font-semibold text-gray-800 dark:text-gray-100">{player.name}</td>
                                 {hasScores ? (
                                   <>
                                     <td className="py-1.5 px-2 text-center text-gray-700">{gross}</td>

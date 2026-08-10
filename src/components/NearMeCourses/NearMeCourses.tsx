@@ -85,12 +85,12 @@ export function NearMeCourses({ onAddCourse }: Props) {
   if (state === 'idle') {
     return (
       <section>
-        <h2 className="font-display font-semibold text-gray-800 text-base mb-3">Courses Near You</h2>
+        <h2 className="font-display font-semibold text-gray-800 dark:text-gray-100 text-base mb-3">Courses Near You</h2>
         <button onClick={requestLocation}
           className="w-full bg-white border border-gray-200 rounded-2xl px-5 py-4 flex items-center gap-4 shadow-sm active:bg-gray-50">
           <div className="w-12 h-12 bg-amber-50 rounded-xl flex items-center justify-center text-2xl flex-shrink-0">📍</div>
           <div className="text-left">
-            <p className="font-semibold text-gray-800">Find courses near me</p>
+            <p className="font-semibold text-gray-800 dark:text-gray-100">Find courses near me</p>
             <p className="text-sm text-gray-500 mt-0.5">Shows golf courses within 25 miles</p>
           </div>
         </button>
@@ -101,7 +101,7 @@ export function NearMeCourses({ onAddCourse }: Props) {
   if (state === 'requesting' || state === 'loading') {
     return (
       <section>
-        <h2 className="font-display font-semibold text-gray-800 text-base mb-3">Courses Near You</h2>
+        <h2 className="font-display font-semibold text-gray-800 dark:text-gray-100 text-base mb-3">Courses Near You</h2>
         <div className="bg-white border border-gray-200 rounded-2xl px-5 py-6 text-center shadow-sm">
           <div className="w-8 h-8 border-2 border-amber-500 border-t-transparent rounded-full animate-spin mx-auto mb-3" />
           <p className="text-gray-600 font-medium">{state === 'requesting' ? 'Getting your location…' : 'Finding nearby courses…'}</p>
@@ -113,7 +113,7 @@ export function NearMeCourses({ onAddCourse }: Props) {
   if (state === 'denied') {
     return (
       <section>
-        <h2 className="font-display font-semibold text-gray-800 text-base mb-3">Courses Near You</h2>
+        <h2 className="font-display font-semibold text-gray-800 dark:text-gray-100 text-base mb-3">Courses Near You</h2>
         <div className="bg-amber-50 border border-amber-200 rounded-2xl px-5 py-4">
           <p className="font-semibold text-amber-800">Location access denied</p>
           <p className="text-amber-700 text-sm mt-1">
@@ -128,7 +128,7 @@ export function NearMeCourses({ onAddCourse }: Props) {
   if (state === 'error') {
     return (
       <section>
-        <h2 className="font-display font-semibold text-gray-800 text-base mb-3">Courses Near You</h2>
+        <h2 className="font-display font-semibold text-gray-800 dark:text-gray-100 text-base mb-3">Courses Near You</h2>
         <div className="bg-gray-100 border border-gray-200 rounded-2xl px-5 py-4">
           <p className="font-semibold text-gray-700">Couldn't load nearby courses</p>
           <p className="text-gray-500 text-sm mt-1">
@@ -143,7 +143,7 @@ export function NearMeCourses({ onAddCourse }: Props) {
   if (state === 'done' && courses.length === 0) {
     return (
       <section>
-        <h2 className="font-display font-semibold text-gray-800 text-base mb-3">Courses Near You</h2>
+        <h2 className="font-display font-semibold text-gray-800 dark:text-gray-100 text-base mb-3">Courses Near You</h2>
         <div className="bg-white border border-gray-200 rounded-2xl px-5 py-5 text-center shadow-sm">
           <p className="text-gray-500">No courses found within 25 miles.</p>
           <button onClick={() => onAddCourse()} className="mt-3 text-amber-600 font-semibold text-sm underline">Add a course manually</button>
@@ -155,7 +155,7 @@ export function NearMeCourses({ onAddCourse }: Props) {
   return (
     <section>
       <div className="flex items-center justify-between mb-3">
-        <h2 className="font-display font-semibold text-gray-800 text-base">
+        <h2 className="font-display font-semibold text-gray-800 dark:text-gray-100 text-base">
           Courses Near You
           <span className="ml-2 text-xs font-normal text-gray-400 bg-gray-100 rounded-full px-2 py-0.5">{courses.length}</span>
         </h2>
@@ -174,7 +174,7 @@ export function NearMeCourses({ onAddCourse }: Props) {
               </div>
             </div>
             <div className="px-3 py-3">
-              <p className="font-display font-semibold text-gray-900 text-sm leading-tight line-clamp-2">{course.name}</p>
+              <p className="font-display font-semibold text-gray-900 dark:text-gray-100 text-sm leading-tight line-clamp-2">{course.name}</p>
               <p className="text-xs text-gray-500 mt-1">{course.holes ? `${course.holes} holes · ` : ''}Tap to add</p>
             </div>
           </button>

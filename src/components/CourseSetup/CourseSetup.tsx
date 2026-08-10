@@ -274,13 +274,13 @@ export function CourseSetup({ userId, course: editCourse, onSave, onCancel, init
                       <td className="py-0.5 text-center">In</td><td className="py-0.5 text-center">{backPar}</td><td />
                       {namedTees.map(t => <td key={t.name} className="py-0.5 text-center">{sumYards(holes, t.name, half) || '—'}</td>)}
                     </tr>
-                    <tr className="border-t border-gray-200 text-sm font-bold text-gray-800">
+                    <tr className="border-t border-gray-200 text-sm font-bold text-gray-800 dark:text-gray-100">
                       <td className="pt-2 text-center">Tot</td><td className="pt-2 text-center">{frontPar + backPar}</td><td />
                       {namedTees.map(t => <td key={t.name} className="pt-2 text-center">{sumYards(holes, t.name) || '—'}</td>)}
                     </tr>
                   </>
                 ) : (
-                  <tr className="text-sm font-bold text-gray-800">
+                  <tr className="text-sm font-bold text-gray-800 dark:text-gray-100">
                     <td className="pt-2 text-center">Tot</td><td className="pt-2 text-center">{frontPar}</td><td />
                     {namedTees.map(t => <td key={t.name} className="pt-2 text-center">{sumYards(holes, t.name) || '—'}</td>)}
                   </tr>

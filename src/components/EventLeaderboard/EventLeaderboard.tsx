@@ -430,7 +430,7 @@ export function EventLeaderboard({ userId, eventId, onBack }: Props) {
                   return (
                     <div key={score.id} className="flex items-center justify-between bg-white rounded-lg p-2.5">
                       <div>
-                        <p className="text-sm font-semibold text-gray-800">
+                        <p className="text-sm font-semibold text-gray-800 dark:text-gray-100">
                           {player?.name ?? 'Unknown'}
                           {groupNum && groupNumbers.length > 1 && (
                             <span className="ml-1.5 text-[10px] font-bold px-1 py-0.5 rounded bg-gray-100 text-gray-500">G{groupNum}</span>

@@ -1580,7 +1580,7 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
               return (
                 <button key={n} data-hole={n} onClick={() => { goToHole(n); setShowHoleGrid(false) }}
                   className={`min-w-[44px] min-h-[44px] w-11 h-11 rounded-full text-sm font-bold flex-shrink-0 transition-colors flex items-center justify-center ${
-                    n === currentHole ? 'bg-white text-gray-800 ring-2 ring-amber-400' : hasScore ? 'bg-amber-500 text-white' : 'bg-gray-700/40 text-gray-400 border border-gray-500/30'
+                    n === currentHole ? 'bg-white text-gray-800 dark:text-gray-100 ring-2 ring-amber-400' : hasScore ? 'bg-amber-500 text-white' : 'bg-gray-700/40 text-gray-400 border border-gray-500/30'
                   }`}>{n}</button>
               )
             })}
@@ -1677,13 +1677,13 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
                 className="absolute top-3 right-3 text-amber-400 text-lg font-bold"
               >&times;</button>
               <div className="text-center">
-                <p className="text-2xl font-bold text-gray-900">Round Complete!</p>
+                <p className="text-2xl font-bold text-gray-900 dark:text-gray-100">Round Complete!</p>
                 <p className="text-amber-700 text-sm font-medium mt-1">{snapshot.courseName}</p>
               </div>
               <div className="grid grid-cols-3 gap-2 text-center">
                 <div className="bg-white/70 rounded-xl p-2">
                   <p className="text-xs text-gray-500">Total</p>
-                  <p className="text-xl font-bold text-gray-900">{totalScore}</p>
+                  <p className="text-xl font-bold text-gray-900 dark:text-gray-100">{totalScore}</p>
                 </div>
                 <div className="bg-white/70 rounded-xl p-2">
                   <p className="text-xs text-gray-500">vs Par</p>
@@ -1693,7 +1693,7 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
                 </div>
                 <div className="bg-white/70 rounded-xl p-2">
                   <p className="text-xs text-gray-500">Holes</p>
-                  <p className="text-xl font-bold text-gray-900">{totalHoles}</p>
+                  <p className="text-xl font-bold text-gray-900 dark:text-gray-100">{totalHoles}</p>
                 </div>
               </div>
               <div className="flex gap-2 text-center">
@@ -1785,7 +1785,7 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
                     {miniBoard.map(e => (
                       <tr key={e.player.id} className={e.pos === 1 ? 'bg-amber-50' : ''}>
                         <td className={`py-1 px-1 font-bold text-sm ${e.pos === 1 ? 'text-amber-600' : 'text-gray-500'}`}>{e.pos}</td>
-                        <td className="py-1 px-1 font-semibold text-gray-800 text-sm">{e.player.name}</td>
+                        <td className="py-1 px-1 font-semibold text-gray-800 dark:text-gray-100 text-sm">{e.player.name}</td>
                         {game?.type === 'bingo_bango_bongo' || game?.type === 'stableford' ? (
                           <td className="py-1 px-1 text-center font-bold text-purple-600 text-sm">{e.points} pt</td>
                         ) : game?.type === 'quota' ? (
@@ -2376,7 +2376,7 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
                       return (
                         <div key={score.id} className="flex items-center justify-between bg-white rounded-lg p-2.5">
                           <div>
-                            <p className="text-sm font-semibold text-gray-800">{player?.name ?? 'Unknown'}</p>
+                            <p className="text-sm font-semibold text-gray-800 dark:text-gray-100">{player?.name ?? 'Unknown'}</p>
                             <p className="text-xs text-gray-500">
                               Hole {score.holeNumber} · Par {hole?.par ?? '?'} · Shot {score.grossScore}
                             </p>
@@ -2624,7 +2624,7 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
             return (
               <div key={player.id} className={`bg-white rounded-xl shadow-sm border px-4 py-2.5 flex items-center justify-between ${isPending ? 'border-yellow-300 bg-yellow-50/50' : isRejected ? 'border-red-300 bg-red-50/50' : 'border-gray-100'}`}>
                 <div className="flex items-center gap-2">
-                  <p className={`font-semibold text-sm ${isRejected ? 'text-gray-400 line-through' : isPending ? 'text-gray-600' : 'text-gray-800'}`}>{player.name}</p>
+                  <p className={`font-semibold text-sm ${isRejected ? 'text-gray-400 line-through' : isPending ? 'text-gray-600' : 'text-gray-800 dark:text-gray-100'}`}>{player.name}</p>
                   {hasGroups && groupNums.length > 1 && (
                     <span className="text-[10px] font-bold uppercase px-1.5 py-0.5 rounded bg-gray-100 text-gray-500">G{playerGroup}</span>
                   )}
@@ -2670,7 +2670,7 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
               <div className="flex items-start justify-between mb-3">
                 <div>
                   <div className="flex items-center gap-2">
-                    <p className="font-bold text-gray-800 text-lg">{player.name}</p>
+                    <p className="font-bold text-gray-800 dark:text-gray-100 text-lg">{player.name}</p>
                     {pendingInviteeIds.has(player.id) && (
                       <span
                         className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-100 text-amber-700"
@@ -2708,7 +2708,7 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
                         max="54"
                         value={editingHcpValue}
                         onChange={e => setEditingHcpValue(e.target.value)}
-                        className="w-16 h-8 px-2 rounded-lg border border-amber-300 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-amber-500"
+                        className="w-16 h-8 px-2 rounded-lg border border-amber-300 text-sm text-gray-800 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-amber-500"
                         autoFocus
                         onKeyDown={e => { if (e.key === 'Enter') saveHandicapEdit(); if (e.key === 'Escape') setEditingHcpPlayerId(null) }}
                       />
@@ -2761,7 +2761,7 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
           const winner = players.find(p => p.id === hr.winnerId)
           return (
             <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-center">
-              <p className="text-gray-800 font-bold">🏆 {winner?.name} wins {hr.skinsInPlay} skin{hr.skinsInPlay !== 1 ? 's' : ''}</p>
+              <p className="text-gray-800 dark:text-gray-100 font-bold">🏆 {winner?.name} wins {hr.skinsInPlay} skin{hr.skinsInPlay !== 1 ? 's' : ''}</p>
             </div>
           )
         })()}
@@ -2820,8 +2820,8 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
                   const isAssumed = !hs
                   return (
                     <div key={p.id} className={`flex items-center justify-between px-3 py-1.5 rounded-lg ${isAssumed ? 'bg-amber-50 border border-amber-200' : 'bg-white'}`}>
-                      <span className="text-sm font-medium text-gray-800">{p.name}</span>
-                      <span className={`text-sm font-bold ${isAssumed ? 'text-amber-600' : 'text-gray-800'}`}>
+                      <span className="text-sm font-medium text-gray-800 dark:text-gray-100">{p.name}</span>
+                      <span className={`text-sm font-bold ${isAssumed ? 'text-amber-600' : 'text-gray-800 dark:text-gray-100'}`}>
                         {score} {isAssumed && <span className="text-xs font-normal">(par assumed)</span>}
                       </span>
                     </div>
