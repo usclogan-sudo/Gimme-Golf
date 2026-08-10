@@ -1068,15 +1068,15 @@ export function SettleUp({ roundId, userId, eventId, onDone, onContinue }: Props
             {isExpanded && (
               <>
                 {isTreasurer && unpaidBuyIns.length > 0 && (
-                  <div className="bg-red-50 border border-red-200 rounded-xl p-3 space-y-2">
-                    <p className="text-red-700 text-sm font-semibold">
+                  <div className="bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-xl p-3 space-y-2">
+                    <p className="text-navy dark:text-cream text-sm font-semibold">
                       {unpaidBuyIns.length} unpaid — collect {fmt(unpaidBuyIns.length * game.buyInCents)} before distributing
                     </p>
                     <button
                       onClick={() => setShowMarkAllPaidConfirm(true)}
-                      className="w-full h-10 bg-green-600 text-white text-sm font-semibold rounded-xl active:bg-green-700"
+                      className="text-sm font-semibold text-navy/70 dark:text-cream/70 active:text-navy dark:active:text-cream"
                     >
-                      Mark All {unpaidBuyIns.length} Paid
+                      Mark all as paid
                     </button>
                   </div>
                 )}
@@ -1095,7 +1095,7 @@ export function SettleUp({ roundId, userId, eventId, onDone, onContinue }: Props
                     const isPaid = b.status === 'marked_paid'
                     const playerReported = b.playerReportedAt && b.status === 'unpaid'
                     return (
-                      <div key={b.id} className={`flex items-center justify-between p-3 rounded-xl ${isPaid ? 'bg-green-50' : playerReported ? 'bg-amber-50' : 'bg-red-50'}`}>
+                      <div key={b.id} className={`flex items-center justify-between p-3 rounded-xl ${playerReported ? 'bg-amber-50' : 'bg-gray-50 dark:bg-gray-700'}`}>
                         <div>
                           <p className="font-semibold text-gray-800 text-sm">{p?.name ?? 'Unknown'}</p>
                           <p className="text-xs text-gray-500">
@@ -1121,14 +1121,14 @@ export function SettleUp({ roundId, userId, eventId, onDone, onContinue }: Props
                               onClick={() => toggleBuyInPaid(b)}
                               className={`px-4 py-2 rounded-xl text-sm font-semibold transition-colors ${
                                 isPaid
-                                  ? 'bg-green-600 text-white active:bg-gray-800'
-                                  : 'bg-red-100 text-red-700 active:bg-red-200'
+                                  ? 'bg-gray-100 text-gray-500 dark:bg-gray-600 dark:text-gray-200 active:bg-gray-200'
+                                  : 'bg-navy text-cream active:opacity-90'
                               }`}
                             >
                               {isPaid ? 'Paid' : 'Mark Paid'}
                             </button>
                           ) : (
-                            <span className={`px-3 py-1.5 rounded-xl text-sm font-semibold ${isPaid ? 'text-green-600' : 'text-red-500'}`}>
+                            <span className={`px-3 py-1.5 rounded-xl text-sm font-semibold ${isPaid ? 'text-brass' : 'text-gray-500'}`}>
                               {isPaid ? 'Paid' : 'Unpaid'}
                             </span>
                           )}
@@ -1252,13 +1252,14 @@ export function SettleUp({ roundId, userId, eventId, onDone, onContinue }: Props
                     {board.sort((a, b) => a.net - b.net).map(({ player, gross, net, vsPar }) => (
                       <tr key={player.id} className="border-b border-gray-50 dark:border-gray-700">
                         <td className="py-2 px-2 font-semibold text-gray-800 dark:text-gray-100">{player.name}</td>
-                        <td className={`py-2 px-2 text-center font-semibold ${gross === bestGross ? 'text-green-700' : 'text-gray-700 dark:text-gray-300'}`}>
+                        <td className={`py-2 px-2 text-center font-semibold ${gross === bestGross ? 'text-brass' : 'text-gray-700 dark:text-gray-300'}`}>
                           {gross}{gross === bestGross ? ' *' : ''}
                         </td>
-                        <td className={`py-2 px-2 text-center font-semibold ${net === bestNet ? 'text-green-700' : 'text-gray-700 dark:text-gray-300'}`}>
+                        <td className={`py-2 px-2 text-center font-semibold ${net === bestNet ? 'text-brass' : 'text-gray-700 dark:text-gray-300'}`}>
                           {net}{net === bestNet ? ' *' : ''}
                         </td>
-                        <td className={`py-2 px-2 text-center font-semibold ${vsPar > 0 ? 'text-red-600' : vsPar < 0 ? 'text-green-600' : 'text-gray-500'}`}>
+                        {/* Over par is muted, not an error; under par is brass; level is neutral. (UX v2.1 §4) */}
+                        <td className={`py-2 px-2 text-center font-semibold ${vsPar > 0 ? 'text-gray-400' : vsPar < 0 ? 'text-brass' : 'text-gray-500'}`}>
                           {vsPar > 0 ? '+' : ''}{vsPar}
                         </td>
                       </tr>
@@ -1623,32 +1624,21 @@ export function SettleUp({ roundId, userId, eventId, onDone, onContinue }: Props
                 <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Settle Up</p>
                 <p className="text-sm text-gray-500 mt-1">
                   {allSettled
-                    ? <span className="text-green-600 font-semibold">All settled!</span>
+                    ? <span className="text-brass font-semibold">All settled!</span>
                     : <span>{owedSettlements.length} remaining{paidSettlements.length > 0 ? ` · ${paidSettlements.length} paid` : ''}</span>
                   }
                 </p>
               </div>
-              {isTreasurer && (
-                <div className="flex items-center gap-2">
-                  {owedSettlements.length > 1 && (
-                    <button
-                      onClick={() => setShowMarkAllSettlementsConfirm(true)}
-                      className="text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 px-3 py-1.5 rounded-lg font-semibold active:bg-emerald-100"
-                    >
-                      Mark all {owedSettlements.length} paid
-                    </button>
-                  )}
-                  <button
-                    onClick={async () => {
-                      await safeWrite(supabase.from('settlements').delete().eq('round_id', roundId), 'recalculate settlements')
-                      setSettlementRecords([])
-                      setSettlementsInitialized(false)
-                    }}
-                    className="text-xs text-gray-500 border border-gray-200 px-3 py-1.5 rounded-lg font-semibold active:bg-gray-100"
-                  >
-                    Recalculate
-                  </button>
-                </div>
+              {/* Mark-all is an administrative shortcut → a quiet text action, not a
+                  filled button. Recalculate removed from the UI: a visible recalc on a
+                  settlement screen implies the math might be wrong. (UX v2.1 §4) */}
+              {isTreasurer && owedSettlements.length > 1 && (
+                <button
+                  onClick={() => setShowMarkAllSettlementsConfirm(true)}
+                  className="text-xs text-navy/70 dark:text-cream/70 font-semibold active:text-navy dark:active:text-cream px-1 py-1.5"
+                >
+                  Mark all as settled
+                </button>
               )}
             </div>
             {/* Progress bar (consolidated from the old Collection Checklist). */}
@@ -1663,7 +1653,7 @@ export function SettleUp({ roundId, userId, eventId, onDone, onContinue }: Props
                     <span>{pct}%</span>
                   </div>
                   <div className="w-full h-2 bg-gray-100 dark:bg-gray-700 rounded-full overflow-hidden">
-                    <div className="h-full bg-green-500 rounded-full transition-all" style={{ width: `${pct}%` }} />
+                    <div className="h-full bg-brass rounded-full transition-all" style={{ width: `${pct}%` }} />
                   </div>
                 </div>
               )
@@ -1720,13 +1710,13 @@ export function SettleUp({ roundId, userId, eventId, onDone, onContinue }: Props
                       })()}
                     </div>
                     <div className="flex items-center gap-2">
-                      <p className={`text-2xl font-bold ${isPaid ? 'text-green-700' : 'text-gray-800'}`}>{fmt(s.amountCents)}</p>
+                      <p className={`text-2xl font-bold ${isPaid ? 'text-brass' : 'text-gray-800 dark:text-gray-100'}`}>{fmt(s.amountCents)}</p>
                       {isTreasurer ? (
                         <button
                           onClick={() => toggleSettlementPaid(s)}
                           className={`px-3 py-1.5 rounded-xl text-sm font-semibold transition-colors ${
                             isPaid
-                              ? 'bg-green-600 text-white active:bg-gray-800'
+                              ? 'bg-gray-100 text-gray-500 dark:bg-gray-600 dark:text-gray-200 active:bg-gray-200'
                               : playerReported
                               ? 'bg-amber-500 text-white active:bg-amber-600'
                               : 'bg-amber-100 text-amber-700 active:bg-amber-200'
@@ -1735,7 +1725,7 @@ export function SettleUp({ roundId, userId, eventId, onDone, onContinue }: Props
                           {isPaid ? 'Paid' : playerReported ? 'Confirm' : 'Mark Paid'}
                         </button>
                       ) : (
-                        <span className={`px-2 py-1 rounded-xl text-xs font-semibold ${isPaid ? 'text-green-600' : playerReported ? 'text-amber-600' : 'text-red-500'}`}>
+                        <span className={`px-2 py-1 rounded-xl text-xs font-semibold ${isPaid ? 'text-brass' : playerReported ? 'text-amber-600' : 'text-gray-500'}`}>
                           {isPaid ? 'Paid' : playerReported ? 'Reported' : 'Owed'}
                         </span>
                       )}
