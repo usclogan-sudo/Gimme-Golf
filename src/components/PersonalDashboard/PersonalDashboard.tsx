@@ -34,7 +34,10 @@ const GAME_LABELS: Record<GameType, string> = {
 function fmtSigned(cents: number): string {
   const abs = Math.abs(cents)
   const str = `${abs} pts`
-  return cents < 0 ? `-${str}` : cents > 0 ? `+${str}` : '$0'
+  // Gimme surfaces points only — never a currency symbol. The zero case used to
+  // return a literal '$0', which leaked a dollar sign into a points-mode UI
+  // (surfaced as "$0" on My Stats → Game Breakdown → Nassau). (UX v2.1 §13)
+  return cents < 0 ? `-${str}` : cents > 0 ? `+${str}` : '0 pts'
 }
 
 interface DashboardData {
