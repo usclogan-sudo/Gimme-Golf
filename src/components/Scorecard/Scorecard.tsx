@@ -95,15 +95,6 @@ function getScoreClass(score: number, par: number): string {
   return 'score-worse'
 }
 
-function scoreBtnClass(score: number, par: number): string {
-  const diff = score - par
-  if (score === 1 || diff <= -2) return 'bg-gradient-to-br from-amber-500 to-yellow-400 text-white border-amber-500'
-  if (diff === -1) return 'bg-gradient-to-br from-blue-600 to-blue-400 text-white border-blue-500'
-  if (diff === 0) return 'bg-emerald-500 text-white border-emerald-500'
-  if (diff === 1) return 'bg-orange-400 text-white border-orange-400'
-  if (diff === 2) return 'bg-red-400 text-white border-red-400'
-  return 'bg-red-600 text-white border-red-600'
-}
 
 function InlineScorePad({
   value,
@@ -135,13 +126,18 @@ function InlineScorePad({
             key={n}
             onClick={() => !readOnly && onChange(n)}
             disabled={readOnly}
-            className={`h-12 rounded-xl font-bold text-lg flex items-center justify-center border-2 transition-all active:scale-95 ${
+            // One selected state — navy fill (brass in dark), cream numeral. No rainbow.
+            // Par chip gets a brass underline at rest so the eye lands on it. (§7c/§7d)
+            className={`relative h-12 rounded-xl font-bold text-lg flex items-center justify-center border-2 transition-all active:scale-95 ${
               selected
-                ? `${scoreBtnClass(n, par)} shadow-md ring-2 ring-offset-1 ring-gray-900 dark:ring-white`
-                : 'bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-200 border-gray-200 dark:border-gray-600 active:bg-gray-50 dark:active:bg-gray-600'
+                ? 'bg-navy text-cream border-navy dark:bg-brass dark:text-navy dark:border-brass shadow-md'
+                : `bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-200 active:bg-gray-50 dark:active:bg-gray-600 border-gray-200 dark:border-gray-600 ${n === par ? 'border-b-brass' : ''}`
             }`}
             aria-label={`Score ${n}`}
           >
+            {/* Under-par is marked by a brass dot, not a colour — restraint reads as
+                confidence. (§7d) */}
+            {selected && n < par && <span className="absolute top-1 left-1/2 -translate-x-1/2 w-1.5 h-1.5 rounded-full bg-brass dark:bg-navy" />}
             {n}
           </button>
         )
@@ -149,13 +145,14 @@ function InlineScorePad({
       <button
         onClick={() => !readOnly && onMore()}
         disabled={readOnly}
-        className={`h-12 rounded-xl font-bold text-lg flex items-center justify-center border-2 transition-all active:scale-95 ${
+        className={`relative h-12 rounded-xl font-bold text-lg flex items-center justify-center border-2 transition-all active:scale-95 ${
           moreHighlight
-            ? `${scoreBtnClass(value, par)} shadow-md ring-2 ring-offset-1 ring-gray-900 dark:ring-white`
+            ? 'bg-navy text-cream border-navy dark:bg-brass dark:text-navy dark:border-brass shadow-md'
             : 'bg-white dark:bg-gray-700 text-gray-500 dark:text-gray-300 border-gray-200 dark:border-gray-600 active:bg-gray-50 dark:active:bg-gray-600'
         }`}
         aria-label="More score options"
       >
+        {moreHighlight && value < par && <span className="absolute top-1 left-1/2 -translate-x-1/2 w-1.5 h-1.5 rounded-full bg-brass dark:bg-navy" />}
         {moreHighlight ? value : '···'}
       </button>
     </div>
@@ -2561,13 +2558,6 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
           const courseHcp = courseHcps[player.id] ?? 0
           const strokesGiven = strokesOnHole(courseHcp, strokeIndex)
           const netScore = grossScore - strokesGiven
-          let scoreBadge = ''
-          if (grossScore < par - 1) scoreBadge = '🦅 Eagle'
-          else if (grossScore === par - 1) scoreBadge = '🐦 Birdie'
-          else if (grossScore === par) scoreBadge = '— Par'
-          else if (grossScore === par + 1) scoreBadge = 'Bogey'
-          else if (grossScore === par + 2) scoreBadge = 'Double'
-          else if (grossScore > par + 2) scoreBadge = `+${grossScore - par}`
 
           // Running total through current hole
           const scoredHoles = holeScores.filter(s => s.playerId === player.id)
@@ -2729,14 +2719,10 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
                     </p>
                   )}
                 </div>
+                {/* §7b: badges deleted (outcome lives in the selected chip); the cryptic
+                    "Thru N: G (±P)" line dropped — the Leaderboard tab answers it. */}
                 <div className="text-right">
-                  <span className={`inline-block text-xs font-bold px-2 py-0.5 rounded-full ${getScoreClass(grossScore, par)}`}>{scoreBadge}</span>
-                  {strokesGiven > 0 && <p className="text-sm font-semibold text-amber-600 mt-0.5">Net {netScore}</p>}
-                  {holesPlayed > 0 && (
-                    <p className={`text-xs font-semibold mt-0.5 ${runningVsPar > 0 ? 'text-red-500' : runningVsPar < 0 ? 'text-green-600' : 'text-gray-400'}`}>
-                      Thru {holesPlayed}: {runningGross} ({runningVsPar > 0 ? '+' : ''}{runningVsPar})
-                    </p>
-                  )}
+                  {strokesGiven > 0 && <p className="text-sm font-semibold text-amber-600 dark:text-amber-400 mt-0.5">Net {netScore}</p>}
                 </div>
               </div>
               <InlineScorePad
