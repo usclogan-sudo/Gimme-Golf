@@ -170,9 +170,10 @@ function SkinsStatus({ carry, potCents, stakesMode }: { carry: number; potCents:
     )
   }
   return (
-    <div className="bg-yellow-50 border border-yellow-200 rounded-xl px-3 py-2 flex items-center gap-2">
-      <Tooltip term="Carry"><span className="text-yellow-600 font-bold text-sm">🔥 Carry ×{carry + 1}</span></Tooltip>
-      <span className="text-yellow-700 text-sm">{fmtAmount(valueCents, stakesMode)} on the line</span>
+    // Carry is a live state — brass tokens, no flame. (§7f)
+    <div className="rounded-xl px-3 py-2 flex items-center gap-2 border border-brass/30" style={{ background: 'var(--state-live-bg)' }}>
+      <Tooltip term="Carry"><span className="text-brass font-bold text-sm">Carry ×{carry + 1}</span></Tooltip>
+      <span className="text-brass/80 text-sm">{fmtAmount(valueCents, stakesMode)} on the line</span>
     </div>
   )
 }
@@ -2042,7 +2043,7 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
                 {SHOW_PRESSES && !readOnly && (
                   <button
                     onClick={handlePress}
-                    className="px-3 py-2 bg-orange-500 text-white text-xs font-bold rounded-xl active:bg-orange-600 flex-shrink-0"
+                    className="px-3 py-2 bg-navy text-cream dark:bg-brass dark:text-navy text-xs font-bold rounded-xl active:opacity-90 flex-shrink-0"
                   >
                     Press{(game.config as any).presses?.length ? ` (${(game.config as any).presses.length})` : ''}
                   </button>
@@ -2099,7 +2100,7 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
                   {SHOW_PRESSES && !readOnly && (
                     <button
                       onClick={handlePress}
-                      className="px-3 py-2 bg-orange-500 text-white text-xs font-bold rounded-xl active:bg-orange-600 flex-shrink-0"
+                      className="px-3 py-2 bg-navy text-cream dark:bg-brass dark:text-navy text-xs font-bold rounded-xl active:opacity-90 flex-shrink-0"
                     >
                       Press{pressCount ? ` (${pressCount})` : ''}
                     </button>
@@ -2734,8 +2735,11 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
           if (!hr || hr.winnerId === null) return null
           const winner = players.find(p => p.id === hr.winnerId)
           return (
-            <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-center">
-              <p className="text-gray-800 dark:text-gray-100 font-bold">🏆 {winner?.name} wins {hr.skinsInPlay} skin{hr.skinsInPlay !== 1 ? 's' : ''}</p>
+            // The per-hole reward moment — brass, and it flashes when the hole (and so
+            // the outcome) changes. key={} re-triggers the animation; motion-safe
+            // respects prefers-reduced-motion. (§7e)
+            <div key={currentHole} className="bg-navy dark:bg-gray-800 border border-brass/40 rounded-2xl px-4 py-3 text-center shadow-sm motion-safe:animate-[brass-flash_0.45s_ease-out]">
+              <p className="font-bold text-brass">{winner?.name} wins {hr.skinsInPlay} skin{hr.skinsInPlay !== 1 ? 's' : ''}</p>
             </div>
           )
         })()}

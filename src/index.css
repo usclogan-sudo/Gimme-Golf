@@ -154,6 +154,11 @@
   from { transform: scale(0.95); opacity: 0; }
   to   { transform: scale(1); opacity: 1; }
 }
+/* Per-hole reward flash — a brass ring pulse when the hole outcome changes. (§7e) */
+@keyframes brass-flash {
+  0%   { box-shadow: 0 0 0 3px rgba(194, 162, 76, 0.55); }
+  100% { box-shadow: 0 0 0 0 rgba(194, 162, 76, 0); }
+}
 
 /* Safe area padding for iPhone notch/home indicator */
 @supports (padding-top: env(safe-area-inset-top)) {
