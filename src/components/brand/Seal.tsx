@@ -11,12 +11,16 @@ export function Seal({
   inner = BRASS,
   letter = CREAM,
   className,
+  style,
 }: {
   size?: number
   outer?: string
   inner?: string
   letter?: string
   className?: string
+  /** Overrides width/height — the ResultCard passes calc() units so the seal
+      scales with --card-scale instead of a fixed pixel size. */
+  style?: React.CSSProperties
 }) {
   // Oval signet: viewBox is taller than wide (a ring, not a coin).
   const w = size
@@ -30,6 +34,7 @@ export function Seal({
       role="img"
       aria-label="Gimme"
       className={className}
+      style={style}
     >
       <ellipse cx="50" cy="61" rx="47" ry="58" stroke={outer} strokeWidth="2.5" />
       <ellipse cx="50" cy="61" rx="40.5" ry="51.5" stroke={inner} strokeWidth="1.5" />
