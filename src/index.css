@@ -3,11 +3,63 @@
 @tailwind utilities;
 
 :root {
-  /* Brand tokens — Gimme Brand Update v1.0 (May 31, 2026) */
-  --navy:  #16263B;  /* primary base */
-  --cream: #F2ECDD;  /* primary light, text on navy */
-  --brass: #C2A24C;  /* metallic accent */
-  --slate: #2E4257;  /* secondary/support, hairlines */
+  /* ── Layer 1 — brand primitives (UX Build Spec v2.0 §1) ──────────────────────
+     Never referenced directly by components; components use the Layer 2 semantic
+     tokens below. --volt is apparel-only and intentionally absent. */
+  --brand-navy:        #16263B;
+  --brand-navy-deep:   #0F1B2B;  /* card depth + scrims */
+  --brand-slate:       #2E4257;
+  --brand-slate-soft:  #4A5F77;  /* hairlines on navy */
+  --brand-cream:       #F2ECDD;
+  --brand-cream-dim:   #D9D2C2;  /* muted text on navy */
+  --brand-brass:       #C2A24C;
+  --brand-brass-lo:    #9A7F36;  /* brass text on cream (AA) */
+  --brand-brass-hi:    #E0C579;  /* brass on navy highlight */
+  --brand-paper:       #FBF9F4;  /* app background */
+
+  /* Functional only. Not brand. True system states only. */
+  --sys-danger:        #A3382F;  /* destructive confirm only */
+  --sys-danger-bg:     #F7EAE8;
+
+  /* ── Layer 2 — semantic tokens (the only layer components reference) ────────── */
+  /* Surfaces */
+  --surface-app:        var(--brand-paper);
+  --surface-raised:     #FFFFFF;
+  --surface-inverse:    var(--brand-navy);
+  --surface-sunken:     #F1EDE4;
+  /* Text */
+  --text-primary:       var(--brand-navy);
+  --text-secondary:     var(--brand-slate);
+  --text-muted:         #6B7A8C;
+  --text-on-inverse:    var(--brand-cream);
+  --text-on-inverse-dim: var(--brand-cream-dim);
+  /* Lines */
+  --line-hairline:      rgba(46, 66, 87, 0.14);
+  --line-hairline-inv:  rgba(242, 236, 221, 0.20);
+  --line-brass:         var(--brand-brass);
+  /* Interactive */
+  --action-primary-bg:   var(--brand-navy);
+  --action-primary-fg:   var(--brand-cream);
+  --action-secondary-bg: transparent;
+  --action-secondary-fg: var(--brand-navy);
+  --action-secondary-br: var(--line-hairline);
+  --action-disabled-bg:  #E3DED3;
+  --action-disabled-fg:  #9AA4B0;
+  /* Outcome language — the only place value judgment is encoded. Behind is NOT red. */
+  --outcome-win:        var(--brand-brass);
+  --outcome-win-inv:    var(--brand-brass-hi);
+  --outcome-neutral:    var(--text-secondary);
+  --outcome-behind:     var(--text-muted);
+  /* Live / in-progress */
+  --state-live:         var(--brand-brass);
+  --state-live-bg:      rgba(194, 162, 76, 0.12);
+
+  /* Legacy short aliases — kept so existing var(--navy) usage doesn't break while
+     the app migrates to the semantic tokens above. Do not add new references. */
+  --navy:  var(--brand-navy);
+  --cream: var(--brand-cream);
+  --brass: var(--brand-brass);
+  --slate: var(--brand-slate);
 }
 
 @layer base {
