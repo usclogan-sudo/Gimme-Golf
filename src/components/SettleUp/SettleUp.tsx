@@ -21,6 +21,7 @@ import {
   calculateBanker,
   calculateQuota,
   calculateSkinsPayouts,
+  calculateSkinsNet,
   calculateBestBallPayouts,
   calculateNassauPayouts,
   calculateWolfPayouts,
@@ -431,11 +432,27 @@ export function SettleUp({ roundId, userId, eventId, onDone, onContinue }: Props
     return []
   }, [game, players, playableSnapshot, skinsResult, bestBallResult, nassauResult, wolfResult, bbbResult, hammerResult, vegasResult, stablefordResult, dotsResult, bankerResult, quotaResult])
 
+  // Player-id → the hole they joined mid-round (Option A). Absent ⇒ round start.
+  const startHoles = useMemo((): Record<string, number> => {
+    const m: Record<string, number> = {}
+    for (const rp of roundPlayers) if (rp.startHole) m[rp.playerId] = rp.startHole
+    return m
+  }, [roundPlayers])
+  // Skins with a genuine mid-round joiner can't use the uniform-ante pot model (a
+  // late joiner pays a prorated ante), so it settles from a signed net like the unit
+  // games — calculateSkinsNet. No joiner ⇒ null, and the pot path is used untouched.
+  const skinsNet = useMemo((): Record<string, number> | null => {
+    if (!game || game.type !== 'skins' || !skinsResult) return null
+    if (!Object.values(startHoles).some(h => h > 1)) return null
+    return calculateSkinsNet(skinsResult, game, players, startHoles)
+  }, [game, skinsResult, players, startHoles])
+
   // Unit games (wolf/banker/hammer/dots) settle from a signed net, not a pot, so
   // the pot-model "Winners" payout and "Total pot" (buyIn × N) would contradict the
   // actual settlement. Compute the real signed net here and drive the display from
-  // it for unit games. Null for pot games (they keep the pot display).
+  // it for unit games — and for skins-with-a-joiner. Null for plain pot games.
   const unitNet = useMemo((): Record<string, number> | null => {
+    if (skinsNet) return skinsNet
     if (!game || !isUnitGame(game.type)) return null
     const raw =
       game.type === 'wolf' ? wolfResult
@@ -445,7 +462,7 @@ export function SettleUp({ roundId, userId, eventId, onDone, onContinue }: Props
       : null
     if (!raw) return null
     return unitGameNet(game.type, game.buyInCents, raw)
-  }, [game, wolfResult, bankerResult, hammerResult, dotsResult])
+  }, [game, wolfResult, bankerResult, hammerResult, dotsResult, skinsNet])
   const unitTotalWon = unitNet
     ? Object.values(unitNet).filter(n => n > 0).reduce((s, n) => s + n, 0)
     : null
@@ -496,10 +513,15 @@ export function SettleUp({ roundId, userId, eventId, onDone, onContinue }: Props
       : game?.type === 'hammer' ? hammerResult ?? undefined
       : game?.type === 'dots' ? dotsResult ?? undefined
       : undefined
-    const gameNet = isUnit && game && unitRaw
-      ? unitGameNet(game.type, game.buyInCents, unitRaw)
-      : netFromPayouts(payouts, players, game?.buyInCents ?? 0)
-    const unified = isUnit
+    // Skins-with-a-joiner settles from its prorated signed net (Option A), head-to-
+    // head like a unit game — never through the treasurer/pot path.
+    const settleDirect = isUnit || skinsNet != null
+    const gameNet = skinsNet
+      ? skinsNet
+      : isUnit && game && unitRaw
+        ? unitGameNet(game.type, game.buyInCents, unitRaw)
+        : netFromPayouts(payouts, players, game?.buyInCents ?? 0)
+    const unified = settleDirect
       ? buildDirectSettlements(gameNet, junkResult, sideBetSettlements, propSettlements)
       : treasurerId
         ? buildUnifiedSettlements(payouts, treasurerId, junkResult, sideBetSettlements, propSettlements)
@@ -578,7 +600,7 @@ export function SettleUp({ roundId, userId, eventId, onDone, onContinue }: Props
     }
 
     setCalculatingSettlements(false)
-  }, [treasurerId, userId, settlementsInitialized, settlementRecords.length, payouts, junkResult, sideBetSettlements, propSettlements, resolvedPropBets, propBets, roundId, participantMap, players, game, hammerResult, dotsResult, wolfResult, bankerResult])
+  }, [treasurerId, userId, settlementsInitialized, settlementRecords.length, payouts, junkResult, sideBetSettlements, propSettlements, resolvedPropBets, propBets, roundId, participantMap, players, game, hammerResult, dotsResult, wolfResult, bankerResult, skinsNet])
 
   useEffect(() => {
     if (!loading && round && game && snapshot) {
