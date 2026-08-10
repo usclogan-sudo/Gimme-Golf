@@ -6,18 +6,21 @@ interface Props {
   onClose: () => void
 }
 
-const GAME_EMOJI: Record<GameType, string> = {
-  skins: '🎰',
-  best_ball: '🤝',
-  nassau: '🏳️',
-  wolf: '🐺',
-  bingo_bango_bongo: '⭐',
-  hammer: '🔨',
-  vegas: '🎲',
-  stableford: '📊',
-  dots: '🔴',
-  banker: '🏦',
-  quota: '📋',
+// Typographic monograms, not icons — a tracked two-letter mark in brass inside a
+// hairline circle. Replaces the emoji (incl. a slot-machine + bank glyph, which read
+// as casino/gambling). Cheaper than clip-art and extends to any new format. (§6/§11)
+const GAME_MONOGRAM: Record<GameType, string> = {
+  skins: 'SK',
+  best_ball: 'BB',
+  nassau: 'NA',
+  wolf: 'WF',
+  bingo_bango_bongo: 'B3',
+  hammer: 'HM',
+  vegas: 'VG',
+  stableford: 'ST',
+  dots: 'DT',
+  banker: 'BK',
+  quota: 'QT',
 }
 
 export function GameRulesModal({ gameType, onClose }: Props) {
@@ -25,13 +28,13 @@ export function GameRulesModal({ gameType, onClose }: Props) {
   if (!rules) return null
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col">
+    <div className="fixed inset-0 z-50 flex flex-col items-center">
       <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative flex-1 flex flex-col bg-white dark:bg-gray-800 mt-12 rounded-t-3xl shadow-2xl overflow-hidden animate-[slide-up_0.2s_ease-out]">
+      <div className="relative flex-1 flex flex-col w-full max-w-[560px] bg-white dark:bg-gray-800 mt-12 rounded-t-3xl shadow-2xl overflow-hidden animate-[slide-up_0.2s_ease-out]">
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 dark:border-gray-700">
           <div className="flex items-center gap-2">
-            <span className="text-2xl">{GAME_EMOJI[gameType]}</span>
+            <span className="inline-flex items-center justify-center w-8 h-8 rounded-full border border-brass text-brass text-xs font-bold tracking-wider">{GAME_MONOGRAM[gameType]}</span>
             <h2 className="font-display text-xl font-bold text-gray-900 dark:text-gray-100">{rules.title}</h2>
           </div>
           <button

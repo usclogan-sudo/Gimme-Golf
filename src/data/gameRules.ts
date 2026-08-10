@@ -13,29 +13,29 @@ export const GAME_RULES: Record<GameType, GameRuleEntry> = {
     title: 'Skins',
     summary: 'Each hole is worth one "skin." Win the hole outright (lowest score) and you win the skin. Ties carry the skin to the next hole.',
     howToPlay: [
-      'Each hole has one skin up for grabs.',
+      'Each hole has one skin.',
       'The player with the lowest score on the hole wins the skin.',
       'If two or more players tie, the skin carries over to the next hole (if carryovers are on).',
       'Carryover skins accumulate, making later holes worth more.',
-      'Optional presses let players double down mid-round.',
+      'Optional presses let a player raise the value mid-round.',
     ],
     scoring: [
-      'Total pot = buy-in x number of players.',
-      'Each skin is worth an equal share of the pot.',
+      'Total points = entry x number of players.',
+      'Each skin is worth an equal share of the total.',
       'If carryovers stack, a single hole can be worth multiple skins.',
-      'Press bets multiply the value from the press hole onward.',
+      'A press multiplies the value from the press hole onward.',
       'Gross mode: raw scores. Net mode: handicap strokes applied.',
     ],
     tips: [
-      'Carryovers make the game more exciting — a tied hole 17 means hole 18 could be worth a fortune.',
-      'Press when you are down to create a new side bet.',
+      'Carryovers make the game more exciting — a tied hole 17 means hole 18 could be worth several skins.',
+      'Press when you are down to raise the value from that hole on.',
       'Net skins levels the playing field for mixed-handicap groups.',
     ],
   },
 
   best_ball: {
     title: 'Best Ball (2v2)',
-    summary: 'Two teams of two compete. On each hole, the best (lowest) score from each team counts. The team that wins more holes (or has the lower total) wins the pot.',
+    summary: 'Two teams of two compete. On each hole, the best (lowest) score from each team counts. The team that wins more holes (or has the lower total) wins the round.',
     howToPlay: [
       'Players are split into Team A and Team B (2 per team).',
       'On each hole, both players on a team play their own ball.',
@@ -43,9 +43,9 @@ export const GAME_RULES: Record<GameType, GameRuleEntry> = {
       'Match scoring: team with more holes won wins. Total scoring: lowest cumulative team score wins.',
     ],
     scoring: [
-      'Match play: count holes won per team; most holes wins the pot.',
+      'Match play: count holes won per team; most holes wins the round.',
       'Total play: sum each team\'s best-ball scores across all holes; lowest total wins.',
-      'Ties result in a pot split / refund.',
+      'Ties split the total (or refund entries).',
       'Gross or net scoring available.',
     ],
     tips: [
@@ -57,18 +57,18 @@ export const GAME_RULES: Record<GameType, GameRuleEntry> = {
 
   nassau: {
     title: 'Nassau',
-    summary: 'Three bets in one: front 9, back 9, and overall 18. Win any segment to collect that portion of the pot. The most popular golf betting format.',
+    summary: 'Three segments in one: front 9, back 9, and overall 18. Win any segment to collect that portion of the total. The most popular golf format.',
     howToPlay: [
-      'The bet is split into three segments: front 9, back 9, and total 18.',
-      'Each segment is a separate bet worth 1/3 of the total pot.',
-      'The player with the lowest total strokes in each segment wins that bet.',
-      'Optional presses: when losing, a player can "press" to start a new side bet from that hole to the end of the nine.',
+      'The round is split into three segments: front 9, back 9, and total 18.',
+      'Each segment is worth 1/3 of the total.',
+      'The player with the lowest total strokes in each segment wins that segment.',
+      'Optional presses: when losing, a player can "press" to raise the value from that hole to the end of the nine.',
     ],
     scoring: [
-      'Pot is divided equally across 3 segments.',
-      'Each segment winner takes their 1/3 of the pot.',
+      'The total is divided equally across 3 segments.',
+      'Each segment winner takes their 1/3 of the total.',
       'Ties in a segment result in that portion being split.',
-      'Each press creates an additional bet equal to one segment.',
+      'Each press adds a segment\'s worth of value.',
       'Gross or net scoring available.',
     ],
     tips: [
@@ -80,7 +80,7 @@ export const GAME_RULES: Record<GameType, GameRuleEntry> = {
 
   wolf: {
     title: 'Wolf',
-    summary: 'A rotating-captain game where the "wolf" picks a partner (or goes alone) on each hole. Lone wolf doubles the stakes. Strategic and social.',
+    summary: 'A rotating-captain game where the "wolf" picks a partner (or goes alone) on each hole. Lone wolf doubles the value. Strategic and social.',
     howToPlay: [
       'Players rotate as the "wolf" each hole.',
       'After seeing each player tee off, the wolf either picks a partner or goes lone wolf.',
@@ -91,8 +91,8 @@ export const GAME_RULES: Record<GameType, GameRuleEntry> = {
     scoring: [
       'Points (units) are tracked per hole based on wins/losses.',
       'Normal hole: winning team gets 1 unit from each loser.',
-      'Lone wolf: stakes are doubled (2 units per opponent).',
-      'At round end, net units determine pot distribution.',
+      'Lone wolf: the value is doubled (2 units per opponent).',
+      'At round end, net units determine how the total is split.',
       'Ties push (no points exchanged).',
     ],
     tips: [
@@ -113,10 +113,10 @@ export const GAME_RULES: Record<GameType, GameRuleEntry> = {
       'Points are tallied at the end; highest total wins.',
     ],
     scoring: [
-      'Each point is worth an equal share of the pot.',
+      'Each point is worth an equal share of the total.',
       'Total possible points = 3 x number of holes (54 for 18 holes).',
-      'Winners split the pot proportionally based on points earned.',
-      'If no points are recorded, buy-ins are refunded.',
+      'Winners split the total proportionally based on points earned.',
+      'If no points are recorded, entries are refunded.',
     ],
     tips: [
       'Order of play matters! Play farthest from the hole first (as per golf etiquette).',
@@ -140,7 +140,7 @@ export const GAME_RULES: Record<GameType, GameRuleEntry> = {
       'Points = the absolute difference between team numbers.',
       'Example: Team A has 45, Team B has 36 → Team B wins 9 points (45-36).',
       'Total points are accumulated across all holes.',
-      'Team with more total points wins the pot.',
+      'Team with more total points wins the round.',
     ],
     tips: [
       'Pair consistent players together — two 5s (55) beats a 3 and 8 (38) but loses to a 4 and 4 (44).',
@@ -161,7 +161,7 @@ export const GAME_RULES: Record<GameType, GameRuleEntry> = {
     ],
     scoring: [
       'Points are awarded per hole based on score vs. par.',
-      'Pot is distributed proportionally based on total points.',
+      'The total is split proportionally based on total points.',
       'Net mode applies handicap strokes, making it very fair for mixed groups.',
       'Typical 18-hole scores: 20-25 (amateur), 36+ (scratch).',
     ],
@@ -178,7 +178,7 @@ export const GAME_RULES: Record<GameType, GameRuleEntry> = {
     howToPlay: [
       'Before the round, choose which dot types are active and the value per dot.',
       'During play, mark dots as they happen on each hole.',
-      'Positive dots (sandy, greenie, etc.) earn you money from each opponent.',
+      'Positive dots (sandy, greenie, etc.) earn you points from each opponent.',
       'Snake (3-putt) costs you — you pay each opponent.',
       'Settle up at the end based on net dots.',
     ],
@@ -186,7 +186,7 @@ export const GAME_RULES: Record<GameType, GameRuleEntry> = {
       'Each positive dot: you earn the dot value from each other player.',
       'Snake: you pay the dot value to each other player.',
       'Net settlement at the end of the round.',
-      'More dot types = more action (and more money changing hands).',
+      'More dot types = more action (and more points changing hands).',
     ],
     tips: [
       'Start with just sandies and greenies if the group is new to dots.',
@@ -203,10 +203,10 @@ export const GAME_RULES: Record<GameType, GameRuleEntry> = {
       'The banker plays against every other player individually.',
       'If a player beats the banker, the banker pays 1 unit.',
       'If the banker beats a player, that player pays 1 unit.',
-      'Ties push (no money changes hands).',
+      'Ties push (no points change hands).',
     ],
     scoring: [
-      'Units are tracked per hole. Net units determine pot distribution.',
+      'Units are tracked per hole. Net units determine how the total is split.',
       'The banker has the most at stake — they could win or lose multiple units per hole.',
       'With 4 players, the banker can win or lose up to 3 units per hole.',
       'Gross or net scoring available.',
@@ -230,8 +230,8 @@ export const GAME_RULES: Record<GameType, GameRuleEntry> = {
     scoring: [
       'Quota is auto-calculated: 36 minus course handicap.',
       'A scratch golfer needs 36 points (all pars). A 20-handicap needs only 16.',
-      'Pot is distributed proportionally among players who exceeded their quota.',
-      'If no one exceeds their quota, buy-ins are refunded.',
+      'The total is split proportionally among players who exceeded their quota.',
+      'If no one exceeds their quota, entries are refunded.',
     ],
     tips: [
       'Quota is the fairest game for mixed-handicap groups.',
@@ -242,18 +242,18 @@ export const GAME_RULES: Record<GameType, GameRuleEntry> = {
 
   hammer: {
     title: 'Hammer',
-    summary: 'A 2-player press game where you "throw the hammer" to double the stakes. Your opponent must accept (doubling the value) or decline (losing the current value). Pure psychological warfare.',
+    summary: 'A 2-player press game where you "throw the hammer" to double the value. Your opponent must accept (doubling the value) or decline (losing the current value). Pure psychological warfare.',
     howToPlay: [
       'Played between exactly 2 players.',
       'Each hole starts at the base value. One player holds the "hammer."',
-      'The hammer holder can throw it at any point during the hole to double the stakes.',
-      'The opponent must either Accept (stakes double, hammer passes to them) or Decline (they lose the current value).',
+      'The hammer holder can throw it at any point during the hole to double the value.',
+      'The opponent must either Accept (the value doubles, hammer passes to them) or Decline (they lose the current value).',
       'The hammer alternates to start — Player A on odd holes, Player B on even holes.',
       'When accepted, the receiver now holds the hammer and can throw it back.',
     ],
     scoring: [
-      'Base value is set before the round (e.g., $1 per hole).',
-      'Throwing & accepting doubles the current value: $1 → $2 → $4 → $8...',
+      'Base value is set before the round (e.g., 1 pt per hole).',
+      'Throwing & accepting doubles the current value: 1 → 2 → 4 → 8 pts...',
       'Declining forfeits the current value to the thrower.',
       'If no hammer is thrown, the hole winner gets the base value.',
       'Running tally tracks net amount owed.',
