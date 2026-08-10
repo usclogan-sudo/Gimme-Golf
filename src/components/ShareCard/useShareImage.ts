@@ -1,11 +1,15 @@
 import { useRef, useState, useCallback } from 'react'
+import { shareCard, type ShareResult } from '../../lib/share'
 
 export function useShareImage(filename: string) {
   const shareRef = useRef<HTMLDivElement>(null)
   const [sharing, setSharing] = useState(false)
 
-  const shareImage = useCallback(async () => {
-    if (!shareRef.current || sharing) return
+  // Renders the ref to a PNG and hands it to the crash-proof share utility. Never
+  // throws — resolves to the outcome ('shared' | 'downloaded' | 'copied' |
+  // 'cancelled') so the caller can toast, or null if the image couldn't be produced.
+  const shareImage = useCallback(async (): Promise<ShareResult | null> => {
+    if (!shareRef.current || sharing) return null
     setSharing(true)
     try {
       const html2canvas = (await import('html2canvas')).default
@@ -15,32 +19,12 @@ export function useShareImage(filename: string) {
         useCORS: true,
         logging: false,
       })
-
-      const blob = await new Promise<Blob | null>(resolve =>
-        canvas.toBlob(resolve, 'image/png')
-      )
-      if (!blob) return
-
-      const safeName = filename.replace(/[^a-z0-9-]/gi, '-').toLowerCase()
-      const file = new File([blob], `${safeName}.png`, { type: 'image/png' })
-
-      if (navigator.share && navigator.canShare?.({ files: [file] })) {
-        try {
-          await navigator.share({ files: [file] })
-        } catch (e) {
-          // User cancelled share sheet — not an error
-          if (e instanceof Error && e.name === 'AbortError') return
-          throw e
-        }
-      } else {
-        // Desktop fallback: download
-        const url = URL.createObjectURL(blob)
-        const a = document.createElement('a')
-        a.href = url
-        a.download = `${safeName}.png`
-        a.click()
-        URL.revokeObjectURL(url)
-      }
+      const blob = await new Promise<Blob | null>(resolve => canvas.toBlob(resolve, 'image/png'))
+      if (!blob) return null
+      return await shareCard(blob, filename, window.location.origin)
+    } catch {
+      // Rendering itself failed — surface nothing catastrophic; the app stays mounted.
+      return null
     } finally {
       setSharing(false)
     }
