@@ -247,9 +247,6 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
   const { isOnline } = useOnlineStatus()
   const [syncing, setSyncing] = useState(false)
   const [pendingCount, setPendingCount] = useState(getPending())
-  // Warn before navigating away (back button, tab close) if there are unsaved
-  // offline writes — prevents losing taps that haven't synced yet.
-  useUnsavedChangesPrompt(pendingCount > 0)
   const holeNavRef = useRef<HTMLDivElement>(null)
   const [showHoleGrid, setShowHoleGrid] = useState(false)
 
@@ -290,6 +287,12 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
   const [showRoundSummary, setShowRoundSummary] = useState(true)
   const [showBatchEntry, setShowBatchEntry] = useState(false)
   const [batchScores, setBatchScores] = useState<Record<string, Record<number, string>>>({})
+  // Warn before navigating away (back button, tab close) with unsaved work — either
+  // queued offline writes OR buffered batch-grid edits not yet persisted. The batch
+  // grid also autosaves per cell on blur (below), so this is a backstop for a cell
+  // still being edited when the user leaves. (UX v2.1 §16.2 — data-loss guard)
+  const hasUnsavedBatch = Object.values(batchScores).some(holes => Object.keys(holes).length > 0)
+  useUnsavedChangesPrompt(pendingCount > 0 || hasUnsavedBatch)
   const [numberPadTarget, setNumberPadTarget] = useState<{ playerId: string; playerName: string } | null>(null)
   const [photoExtraction, setPhotoExtraction] = useState<ExtractionResult | null>(null)
 
@@ -2419,7 +2422,7 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
           <button
             onClick={() => setShowBatchEntry(!showBatchEntry)}
             className={`w-full py-2.5 rounded-xl text-sm font-semibold transition-colors ${
-              showBatchEntry ? 'bg-blue-600 text-white' : 'bg-blue-50 border border-blue-200 text-blue-700'
+              showBatchEntry ? 'bg-navy text-cream' : 'bg-white dark:bg-gray-800 border border-navy/20 text-navy dark:text-cream'
             }`}
           >
             {showBatchEntry ? '← Standard Entry' : '⊞ Batch Entry'}
@@ -2442,22 +2445,45 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
             return existing ? String(existing.grossScore) : ''
           }
 
+          // Immutably drop one cell from the unsaved buffer.
+          const dropBatchCell = (
+            prev: Record<string, Record<number, string>>,
+            playerId: string,
+            holeNum: number,
+          ): Record<string, Record<number, string>> => {
+            if (!prev[playerId]) return prev
+            const holes = { ...prev[playerId] }
+            delete holes[holeNum]
+            const next = { ...prev, [playerId]: holes }
+            if (Object.keys(holes).length === 0) delete next[playerId]
+            return next
+          }
+
+          // Persist a single cell and clear it from the unsaved buffer. Called on cell
+          // blur so batch scores are saved as you go — navigating away can no longer
+          // drop the whole grid. (UX v2.1 §16.2)
+          const persistBatchCell = (playerId: string, holeNum: number, valStr: string) => {
+            const val = parseInt(valStr)
+            if (isNaN(val) || val < 1 || val > 15) return // leave invalid edits buffered
+            const existing = holeScores.find(s => s.playerId === playerId && s.holeNumber === holeNum)
+            if (!(existing && existing.grossScore === val)) {
+              if (existing) {
+                setHoleScores(prev => prev.map(s => s.id === existing.id ? { ...s, grossScore: val } : s))
+                safeWrite(supabase.from('hole_scores').update({ gross_score: val }).eq('id', existing.id), 'update batch score')
+              } else {
+                const newScore: HoleScore = { id: uuidv4(), roundId, playerId, holeNumber: holeNum, grossScore: val }
+                setHoleScores(prev => [...prev, newScore])
+                safeWrite(supabase.from('hole_scores').insert(holeScoreToRow(newScore, userId)), 'insert batch score')
+              }
+            }
+            setBatchScores(prev => dropBatchCell(prev, playerId, holeNum))
+          }
+
+          // Flush any still-buffered cells (e.g. one being edited) and close.
           const saveBatch = async () => {
             for (const playerId of Object.keys(batchScores)) {
               for (const [holeStr, valStr] of Object.entries(batchScores[playerId])) {
-                const holeNum = Number(holeStr)
-                const val = parseInt(valStr)
-                if (isNaN(val) || val < 1 || val > 15) continue
-                const existing = holeScores.find(s => s.playerId === playerId && s.holeNumber === holeNum)
-                if (existing && existing.grossScore === val) continue
-                if (existing) {
-                  setHoleScores(prev => prev.map(s => s.id === existing.id ? { ...s, grossScore: val } : s))
-                  safeWrite(supabase.from('hole_scores').update({ gross_score: val }).eq('id', existing.id), 'update batch score')
-                } else {
-                  const newScore: HoleScore = { id: uuidv4(), roundId, playerId, holeNumber: holeNum, grossScore: val }
-                  setHoleScores(prev => [...prev, newScore])
-                  safeWrite(supabase.from('hole_scores').insert(holeScoreToRow(newScore, userId)), 'insert batch score')
-                }
+                persistBatchCell(playerId, Number(holeStr), valStr)
               }
             }
             setBatchScores({})
@@ -2503,7 +2529,8 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
                                     [p.id]: { ...prev[p.id], [holeNum]: e.target.value },
                                   }))
                                 }}
-                                className="w-12 h-10 text-center text-sm font-semibold rounded-lg border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                onBlur={e => persistBatchCell(p.id, holeNum, e.target.value)}
+                                className="w-12 h-11 text-center text-sm font-semibold rounded-lg border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-brass"
                               />
                             </td>
                           ))}
@@ -2515,7 +2542,7 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
               </div>
               <button
                 onClick={saveBatch}
-                className="w-full h-12 bg-blue-600 text-white font-bold rounded-xl active:bg-blue-700 text-sm"
+                className="w-full h-12 bg-navy text-cream font-bold rounded-xl active:opacity-90 text-sm"
               >
                 Save All Scores
               </button>
