@@ -316,7 +316,7 @@ export function PhotoImportConfirmGrid({
           <button
             onClick={handleSave}
             disabled={saving}
-            className="flex-[2] h-12 bg-gray-800 text-white rounded-xl font-semibold active:bg-gray-900 disabled:opacity-60"
+            className="flex-[2] h-12 bg-gray-800 text-white dark:bg-brass dark:text-navy rounded-xl font-semibold active:bg-gray-900 disabled:opacity-60"
           >
             {saving ? 'Saving…' : 'Save all scores'}
           </button>

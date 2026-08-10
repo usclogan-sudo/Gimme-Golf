@@ -581,7 +581,7 @@ function Home({
             <button
               onClick={() => onJoinRound(joinCode)}
               disabled={joinCode.length !== 6}
-              className="h-11 px-5 bg-gray-800 text-white font-bold rounded-xl text-sm disabled:opacity-40 active:bg-gray-900 transition-colors"
+              className="h-11 px-5 bg-gray-800 text-white dark:bg-brass dark:text-navy font-bold rounded-xl text-sm disabled:opacity-40 active:bg-gray-900 transition-colors"
             >
               Join
             </button>

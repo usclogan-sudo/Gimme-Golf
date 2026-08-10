@@ -149,7 +149,7 @@ export function CourseSetup({ userId, course: editCourse, onSave, onCancel, init
         <section className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm p-4">
           <div className="flex items-center justify-between mb-3">
             <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Tees</h2>
-            <button onClick={addTee} className="bg-gray-800 text-white text-sm px-4 h-9 rounded-lg font-semibold active:bg-gray-900">+ Add Tee</button>
+            <button onClick={addTee} className="bg-gray-800 text-white dark:bg-brass dark:text-navy text-sm px-4 h-9 rounded-lg font-semibold active:bg-gray-900">+ Add Tee</button>
           </div>
           {errors.tees && <p className="text-red-500 text-sm mb-2">{errors.tees}</p>}
           {errors.teeDupe && <p className="text-red-500 text-sm mb-2">{errors.teeDupe}</p>}
@@ -187,7 +187,7 @@ export function CourseSetup({ userId, course: editCourse, onSave, onCancel, init
             <div className="flex gap-1.5">
               {!editCourse && ([9, 18] as const).map(c => (
                 <button key={c} onClick={() => switchHoleCount(c)}
-                  className={`px-3 py-1 text-xs font-semibold rounded-lg transition-colors ${holeCount === c ? 'bg-gray-800 text-white' : 'bg-gray-100 text-gray-600 active:bg-gray-200'}`}>{c}H</button>
+                  className={`px-3 py-1 text-xs font-semibold rounded-lg transition-colors ${holeCount === c ? 'bg-gray-800 text-white dark:bg-brass dark:text-navy' : 'bg-gray-100 text-gray-600 active:bg-gray-200'}`}>{c}H</button>
               ))}
             </div>
           </div>
@@ -243,7 +243,7 @@ export function CourseSetup({ userId, course: editCourse, onSave, onCancel, init
                         <div className="flex gap-0.5 justify-center">
                           {[3, 4, 5].map(p => (
                             <button key={p} onClick={() => updateHole(hole.number, { par: p })}
-                              className={`w-8 h-9 text-sm font-semibold rounded transition-colors ${hole.par === p ? 'bg-gray-800 text-white shadow-sm' : 'bg-gray-100 text-gray-600 active:bg-gray-200'}`}>{p}</button>
+                              className={`w-8 h-9 text-sm font-semibold rounded transition-colors ${hole.par === p ? 'bg-gray-800 text-white dark:bg-brass dark:text-navy shadow-sm' : 'bg-gray-100 text-gray-600 active:bg-gray-200'}`}>{p}</button>
                           ))}
                         </div>
                       </td>
@@ -303,7 +303,7 @@ export function CourseSetup({ userId, course: editCourse, onSave, onCancel, init
       <div className="fixed bottom-0 inset-x-0 p-4 bg-white/95 dark:bg-gray-800/95 backdrop-blur-sm border-t border-gray-200 dark:border-gray-700">
         <div className="max-w-2xl mx-auto">
           <button onClick={handleSave} disabled={saving}
-            className="w-full h-14 bg-gray-800 text-white text-lg font-bold rounded-2xl shadow-lg disabled:opacity-60 active:bg-gray-900 transition-colors">
+            className="w-full h-14 bg-gray-800 text-white dark:bg-brass dark:text-navy text-lg font-bold rounded-2xl shadow-lg disabled:opacity-60 active:bg-gray-900 transition-colors">
             {saving ? 'Saving…' : 'Save Course'}
           </button>
         </div>

@@ -14,7 +14,7 @@ export function GuestBanner({ onUpgrade }: Props) {
       </div>
       <button
         onClick={onUpgrade}
-        className="flex-shrink-0 px-4 py-2 bg-gray-800 text-white font-bold rounded-xl active:bg-gray-900 transition-colors text-sm self-center"
+        className="flex-shrink-0 px-4 py-2 bg-gray-800 text-white dark:bg-brass dark:text-navy font-bold rounded-xl active:bg-gray-900 transition-colors text-sm self-center"
       >
         Save
       </button>

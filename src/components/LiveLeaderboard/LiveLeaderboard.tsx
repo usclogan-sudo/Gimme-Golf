@@ -158,7 +158,7 @@ export function LiveLeaderboard({ inviteCode, onBack }: Props) {
         <div className="px-4 py-8 text-center">
           <p className="text-4xl mb-4">😕</p>
           <p className="text-gray-600 dark:text-gray-400 font-semibold">{error ?? 'Round not found'}</p>
-          <button onClick={onBack} className="mt-4 px-6 py-3 bg-gray-800 text-white rounded-xl font-semibold">
+          <button onClick={onBack} className="mt-4 px-6 py-3 bg-gray-800 text-white dark:bg-brass dark:text-navy rounded-xl font-semibold">
             Go Back
           </button>
         </div>

@@ -287,7 +287,7 @@ export function EventLeaderboard({ userId, eventId, onBack }: Props) {
           <button
             onClick={() => setActiveTab('overall')}
             className={`px-4 py-1.5 rounded-lg text-sm font-semibold transition-colors flex-shrink-0 ${
-              activeTab === 'overall' ? 'bg-gray-800 text-white' : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300'
+              activeTab === 'overall' ? 'bg-gray-800 text-white dark:bg-brass dark:text-navy' : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300'
             }`}
           >
             Overall
@@ -297,7 +297,7 @@ export function EventLeaderboard({ userId, eventId, onBack }: Props) {
               key={gn}
               onClick={() => setActiveTab(gn)}
               className={`px-4 py-1.5 rounded-lg text-sm font-semibold transition-colors flex-shrink-0 ${
-                activeTab === gn ? 'bg-gray-800 text-white' : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300'
+                activeTab === gn ? 'bg-gray-800 text-white dark:bg-brass dark:text-navy' : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300'
               }`}
             >
               Group {gn}
@@ -488,7 +488,7 @@ export function EventLeaderboard({ userId, eventId, onBack }: Props) {
       {/* Bottom bar */}
       <div className="fixed bottom-0 inset-x-0 p-4 bg-white/95 dark:bg-gray-800/95 backdrop-blur-sm border-t border-gray-200 dark:border-gray-700 safe-bottom">
         <div className="max-w-2xl mx-auto">
-          <button onClick={onBack} className="w-full h-14 bg-gray-800 text-white text-lg font-bold rounded-2xl active:bg-gray-900">← Back to Scorecard</button>
+          <button onClick={onBack} className="w-full h-14 bg-gray-800 text-white dark:bg-brass dark:text-navy text-lg font-bold rounded-2xl active:bg-gray-900">← Back to Scorecard</button>
         </div>
       </div>
     </div>

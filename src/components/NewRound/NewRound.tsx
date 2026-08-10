@@ -603,7 +603,7 @@ function PlayerPicker({
               <button
                 onClick={handleAddPlayer}
                 disabled={saving}
-                className="flex-1 h-11 bg-gray-800 text-white rounded-xl font-semibold disabled:opacity-60"
+                className="flex-1 h-11 bg-gray-800 text-white dark:bg-brass dark:text-navy rounded-xl font-semibold disabled:opacity-60"
               >
                 {saving ? 'Saving…' : 'Add'}
               </button>
@@ -718,7 +718,7 @@ function PlayerPicker({
                           onClick={() => onPlayerTeesChange({ ...playerTees, [player.id]: t.name })}
                           className={`px-3 py-1 rounded-lg text-sm font-medium transition-colors ${
                             activeTee === t.name
-                              ? 'bg-gray-800 text-white'
+                              ? 'bg-gray-800 text-white dark:bg-brass dark:text-navy'
                               : 'bg-gray-100 text-gray-600 active:bg-gray-200'
                           }`}
                         >
@@ -791,7 +791,7 @@ function PlayerPicker({
           <button
             onClick={handleNext}
             disabled={selectedIds.size < 2}
-            className="w-full h-14 bg-gray-800 text-white text-lg font-bold rounded-2xl shadow-lg disabled:opacity-40 active:bg-gray-900 transition-colors"
+            className="w-full h-14 bg-gray-800 text-white dark:bg-brass dark:text-navy text-lg font-bold rounded-2xl shadow-lg disabled:opacity-40 active:bg-gray-900 transition-colors"
           >
             {selectedIds.size < 2
               ? 'Select at Least 2 Players'
@@ -928,7 +928,7 @@ function GroupAssignment({
                         onClick={() => setGroups(prev => ({ ...prev, [player.id]: targetGn }))}
                         className={`w-7 h-7 rounded-lg text-xs font-bold transition-colors ${
                           groups[player.id] === targetGn
-                            ? 'bg-gray-800 text-white'
+                            ? 'bg-gray-800 text-white dark:bg-brass dark:text-navy'
                             : 'bg-white border border-gray-200 text-gray-500'
                         }`}
                       >
@@ -951,7 +951,7 @@ function GroupAssignment({
           <button
             onClick={() => onNext(groups)}
             disabled={!allValid || !allAssigned}
-            className="w-full h-14 bg-gray-800 text-white text-lg font-bold rounded-2xl shadow-lg disabled:opacity-40 active:bg-gray-900 transition-colors"
+            className="w-full h-14 bg-gray-800 text-white dark:bg-brass dark:text-navy text-lg font-bold rounded-2xl shadow-lg disabled:opacity-40 active:bg-gray-900 transition-colors"
           >
             {!allValid ? 'Fix group sizes (1–5 each)' : 'Next: Choose Game'}
           </button>
@@ -1257,7 +1257,7 @@ function GameSetup({
           type === gameType
             ? stakesMode === 'high_roller'
               ? 'text-black'
-              : 'bg-gray-800 text-white'
+              : 'bg-gray-800 text-white dark:bg-brass dark:text-navy'
             : 'bg-gray-100 text-gray-700'
         }`}
         style={type === gameType && stakesMode === 'high_roller'
@@ -1336,7 +1336,7 @@ function GameSetup({
               <button
                 onClick={() => handleStakesChange('standard')}
                 className={`h-14 rounded-xl font-semibold ${
-                  stakesMode === 'standard' ? 'bg-gray-800 text-white' : 'bg-gray-100 text-gray-700'
+                  stakesMode === 'standard' ? 'bg-gray-800 text-white dark:bg-brass dark:text-navy' : 'bg-gray-100 text-gray-700'
                 }`}
               >
                 🎯 Standard
@@ -1559,11 +1559,11 @@ function GameSetup({
                 <p className="text-sm text-gray-600 mb-2">Format</p>
                 <div className="grid grid-cols-2 gap-2">
                   <button onClick={() => setBbScoring('match')}
-                    className={`h-12 rounded-xl font-semibold text-sm ${bbScoring === 'match' ? 'bg-gray-800 text-white' : 'bg-gray-100 text-gray-700'}`}>
+                    className={`h-12 rounded-xl font-semibold text-sm ${bbScoring === 'match' ? 'bg-gray-800 text-white dark:bg-brass dark:text-navy' : 'bg-gray-100 text-gray-700'}`}>
                     Match Play
                   </button>
                   <button onClick={() => setBbScoring('total')}
-                    className={`h-12 rounded-xl font-semibold text-sm ${bbScoring === 'total' ? 'bg-gray-800 text-white' : 'bg-gray-100 text-gray-700'}`}>
+                    className={`h-12 rounded-xl font-semibold text-sm ${bbScoring === 'total' ? 'bg-gray-800 text-white dark:bg-brass dark:text-navy' : 'bg-gray-100 text-gray-700'}`}>
                     Stroke Play
                   </button>
                 </div>
@@ -1701,7 +1701,7 @@ function GameSetup({
                     onClick={() => setHammerMaxPresses(mp)}
                     className={`px-3 h-10 rounded-xl font-semibold text-sm transition-colors ${
                       hammerMaxPresses === mp
-                        ? 'bg-gray-800 text-white'
+                        ? 'bg-gray-800 text-white dark:bg-brass dark:text-navy'
                         : 'bg-gray-100 text-gray-700'
                     }`}
                   >
@@ -1914,7 +1914,7 @@ function GameSetup({
               onNext(makeGame(), jc)
             }}
             disabled={!canContinue}
-            className="w-full h-14 bg-gray-800 text-white text-lg font-bold rounded-2xl shadow-lg disabled:opacity-40 active:bg-gray-900 transition-colors"
+            className="w-full h-14 bg-gray-800 text-white dark:bg-brass dark:text-navy text-lg font-bold rounded-2xl shadow-lg disabled:opacity-40 active:bg-gray-900 transition-colors"
           >
             {buyInCents === 0 || stakesMode === 'points' ? 'Next: Start Round' : 'Next: Collect Buy-ins'}
           </button>
@@ -2228,7 +2228,7 @@ function TreasurerAndBuyIns({
           <button
             onClick={startRound}
             disabled={!canStart || saving}
-            className="w-full h-14 bg-gray-800 text-white text-lg font-bold rounded-2xl shadow-lg disabled:opacity-40 active:bg-gray-900 transition-colors"
+            className="w-full h-14 bg-gray-800 text-white dark:bg-brass dark:text-navy text-lg font-bold rounded-2xl shadow-lg disabled:opacity-40 active:bg-gray-900 transition-colors"
           >
             {saving
               ? 'Starting…'

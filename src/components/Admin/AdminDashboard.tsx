@@ -245,7 +245,7 @@ function SharedCoursesTab({ userId }: { userId: string }) {
         <button
           onClick={handleSave}
           disabled={saving || !name.trim()}
-          className="w-full h-12 bg-gray-800 text-white font-semibold rounded-xl disabled:opacity-50 active:bg-gray-900 transition-colors"
+          className="w-full h-12 bg-gray-800 text-white dark:bg-brass dark:text-navy font-semibold rounded-xl disabled:opacity-50 active:bg-gray-900 transition-colors"
         >
           {saving ? 'Saving...' : editingId ? 'Update Course' : 'Add Course'}
         </button>
@@ -452,7 +452,7 @@ function GamePresetsTab({ userId }: { userId: string }) {
                 key={gt}
                 onClick={() => setGameType(gt)}
                 className={`h-10 rounded-xl text-sm font-semibold transition-colors ${
-                  gameType === gt ? 'bg-gray-800 text-white' : 'bg-gray-100 text-gray-700'
+                  gameType === gt ? 'bg-gray-800 text-white dark:bg-brass dark:text-navy' : 'bg-gray-100 text-gray-700'
                 }`}
               >
                 {GAME_TYPE_LABELS[gt]}
@@ -478,7 +478,7 @@ function GamePresetsTab({ userId }: { userId: string }) {
             <div className="grid grid-cols-2 gap-1">
               <button
                 onClick={() => setStakesMode('standard')}
-                className={`h-12 rounded-xl text-sm font-semibold ${stakesMode === 'standard' ? 'bg-gray-800 text-white' : 'bg-gray-100 text-gray-700'}`}
+                className={`h-12 rounded-xl text-sm font-semibold ${stakesMode === 'standard' ? 'bg-gray-800 text-white dark:bg-brass dark:text-navy' : 'bg-gray-100 text-gray-700'}`}
               >
                 Standard
               </button>
@@ -497,13 +497,13 @@ function GamePresetsTab({ userId }: { userId: string }) {
           <div className="grid grid-cols-2 gap-2">
             <button
               onClick={() => setMode('net')}
-              className={`h-10 rounded-xl font-semibold text-sm ${mode === 'net' ? 'bg-gray-800 text-white' : 'bg-gray-100 text-gray-700'}`}
+              className={`h-10 rounded-xl font-semibold text-sm ${mode === 'net' ? 'bg-gray-800 text-white dark:bg-brass dark:text-navy' : 'bg-gray-100 text-gray-700'}`}
             >
               Net (handicap)
             </button>
             <button
               onClick={() => setMode('gross')}
-              className={`h-10 rounded-xl font-semibold text-sm ${mode === 'gross' ? 'bg-gray-800 text-white' : 'bg-gray-100 text-gray-700'}`}
+              className={`h-10 rounded-xl font-semibold text-sm ${mode === 'gross' ? 'bg-gray-800 text-white dark:bg-brass dark:text-navy' : 'bg-gray-100 text-gray-700'}`}
             >
               Gross (raw)
             </button>
@@ -535,7 +535,7 @@ function GamePresetsTab({ userId }: { userId: string }) {
         <button
           onClick={handleSave}
           disabled={saving || !presetName.trim()}
-          className="w-full h-12 bg-gray-800 text-white font-semibold rounded-xl disabled:opacity-50 active:bg-gray-900 transition-colors"
+          className="w-full h-12 bg-gray-800 text-white dark:bg-brass dark:text-navy font-semibold rounded-xl disabled:opacity-50 active:bg-gray-900 transition-colors"
         >
           {saving ? 'Saving...' : editingId ? 'Update Preset' : 'Add Preset'}
         </button>
@@ -926,7 +926,7 @@ function UsersTab({ currentUserId }: { currentUserId: string }) {
         <button
           onClick={handleCreateAccount}
           disabled={creating || !createEmail.trim() || !createPassword.trim()}
-          className="w-full h-12 bg-gray-800 text-white font-semibold rounded-xl disabled:opacity-50 active:bg-gray-900 transition-colors"
+          className="w-full h-12 bg-gray-800 text-white dark:bg-brass dark:text-navy font-semibold rounded-xl disabled:opacity-50 active:bg-gray-900 transition-colors"
         >
           {creating ? 'Creating...' : 'Create Account'}
         </button>
@@ -1319,7 +1319,7 @@ function BroadcastTab() {
         <button
           onClick={() => setShowConfirm(true)}
           disabled={!canSend}
-          className="w-full h-12 bg-gray-800 text-white font-bold rounded-xl disabled:opacity-40 active:bg-gray-900 transition-colors"
+          className="w-full h-12 bg-gray-800 text-white dark:bg-brass dark:text-navy font-bold rounded-xl disabled:opacity-40 active:bg-gray-900 transition-colors"
         >
           Send broadcast
         </button>
@@ -1483,7 +1483,7 @@ export function AdminDashboard({ userId, onBack, isHome, onSettings, onLogout }:
               key={t.key}
               onClick={() => setTab(t.key)}
               className={`px-3 h-10 rounded-xl font-semibold text-sm transition-colors flex-shrink-0 ${
-                tab === t.key ? 'bg-gray-800 text-white' : 'bg-white text-gray-700 border border-gray-200'
+                tab === t.key ? 'bg-gray-800 text-white dark:bg-brass dark:text-navy' : 'bg-white text-gray-700 border border-gray-200'
               }`}
             >
               {t.label}

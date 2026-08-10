@@ -381,7 +381,7 @@ export function Ledger({ userId, onBack }: Props) {
 
       <div className="fixed bottom-0 inset-x-0 p-4 bg-white/95 dark:bg-gray-800/95 backdrop-blur-sm border-t border-gray-200 dark:border-gray-700 safe-bottom">
         <div className="max-w-2xl mx-auto">
-          <button onClick={onBack} className="w-full h-14 bg-gray-800 text-white text-lg font-bold rounded-2xl active:bg-gray-900">← Back</button>
+          <button onClick={onBack} className="w-full h-14 bg-gray-800 text-white dark:bg-brass dark:text-navy text-lg font-bold rounded-2xl active:bg-gray-900">← Back</button>
         </div>
       </div>
 

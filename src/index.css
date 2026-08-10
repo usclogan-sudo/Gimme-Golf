@@ -60,6 +60,37 @@
   --cream: var(--brand-cream);
   --brass: var(--brand-brass);
   --slate: var(--brand-slate);
+
+  /* Surface gray channels (R G B) consumed by the Tailwind gray-600..900 scale.
+     Light = Tailwind defaults; .dark remaps them to brand navy shades. (§14) */
+  --gray-600: 75 85 99;
+  --gray-700: 55 65 81;
+  --gray-800: 31 41 55;
+  --gray-900: 17 24 39;
+}
+
+/* ── Dark mode — Option A: dark mode looks like the brand, not a framework default.
+   Remaps the surface grays to navy and flips the semantic tokens so primary actions
+   are brass (navy-on-navy can't work) and text is cream. (UX v2.1 §14) */
+.dark {
+  --gray-900: 15 27 43;    /* brand navy-deep  #0F1B2B — app background */
+  --gray-800: 22 38 59;    /* brand navy       #16263B — raised cards */
+  --gray-700: 46 66 87;    /* brand slate      #2E4257 — hairlines / secondary */
+  --gray-600: 74 95 119;   /* brand slate-soft #4A5F77 */
+
+  --surface-app:        var(--brand-navy-deep);
+  --surface-raised:     var(--brand-navy);
+  --surface-sunken:     #0B1420;
+  --surface-inverse:    var(--brand-cream);
+  --text-primary:       var(--brand-cream);
+  --text-secondary:     var(--brand-cream-dim);
+  --text-muted:         #8A97A6;
+  --text-on-inverse:    var(--brand-navy);
+  --line-hairline:      var(--line-hairline-inv);
+  --action-primary-bg:  var(--brand-brass);
+  --action-primary-fg:  var(--brand-navy);
+  --action-secondary-fg: var(--brand-cream);
+  --action-secondary-br: var(--line-hairline-inv);
 }
 
 @layer base {

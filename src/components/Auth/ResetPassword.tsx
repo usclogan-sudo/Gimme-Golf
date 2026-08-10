@@ -41,7 +41,7 @@ export function ResetPassword({ onDone }: Props) {
             <p className="font-semibold text-green-900">Password updated!</p>
             <button
               onClick={onDone}
-              className="w-full h-14 bg-gray-800 text-white text-lg font-bold rounded-2xl shadow-lg active:bg-gray-900 transition-colors"
+              className="w-full h-14 bg-gray-800 text-white dark:bg-brass dark:text-navy text-lg font-bold rounded-2xl shadow-lg active:bg-gray-900 transition-colors"
             >
               Continue
             </button>
@@ -86,7 +86,7 @@ export function ResetPassword({ onDone }: Props) {
             <button
               onClick={handleReset}
               disabled={loading}
-              className="w-full h-14 bg-gray-800 text-white text-lg font-bold rounded-2xl shadow-lg disabled:opacity-60 active:bg-gray-900 transition-colors"
+              className="w-full h-14 bg-gray-800 text-white dark:bg-brass dark:text-navy text-lg font-bold rounded-2xl shadow-lg disabled:opacity-60 active:bg-gray-900 transition-colors"
             >
               {loading ? 'Updating...' : 'Update Password'}
             </button>

@@ -964,7 +964,7 @@ export function SettleUp({ roundId, userId, eventId, onDone, onContinue }: Props
           <button
             onClick={onShareCard}
             disabled={sharing}
-            className="w-full h-14 bg-navy text-cream text-lg font-bold rounded-2xl active:opacity-90 transition disabled:opacity-50 flex items-center justify-center gap-2"
+            className="w-full h-14 bg-navy text-cream dark:bg-brass dark:text-navy text-lg font-bold rounded-2xl active:opacity-90 transition disabled:opacity-50 flex items-center justify-center gap-2"
           >
             {sharing ? (
               <span className="inline-block w-5 h-5 border-2 border-cream/30 border-t-cream rounded-full animate-spin" />
@@ -1122,7 +1122,7 @@ export function SettleUp({ roundId, userId, eventId, onDone, onContinue }: Props
                               className={`px-4 py-2 rounded-xl text-sm font-semibold transition-colors ${
                                 isPaid
                                   ? 'bg-gray-100 text-gray-500 dark:bg-gray-600 dark:text-gray-200 active:bg-gray-200'
-                                  : 'bg-navy text-cream active:opacity-90'
+                                  : 'bg-navy text-cream dark:bg-brass dark:text-navy active:opacity-90'
                               }`}
                             >
                               {isPaid ? 'Paid' : 'Mark Paid'}
@@ -1842,7 +1842,7 @@ export function SettleUp({ roundId, userId, eventId, onDone, onContinue }: Props
       {/* Undo toast */}
       {pendingAction && (
         <div className="fixed bottom-24 inset-x-0 z-50 flex justify-center px-4">
-          <div className="bg-gray-800 text-white px-5 py-3 rounded-2xl shadow-xl flex items-center gap-3 max-w-sm">
+          <div className="bg-gray-800 text-white dark:bg-brass dark:text-navy px-5 py-3 rounded-2xl shadow-xl flex items-center gap-3 max-w-sm">
             <p className="text-sm font-semibold flex-1">{pendingAction.name} marked as paid</p>
             <button
               onClick={undoPendingAction}
@@ -1857,7 +1857,7 @@ export function SettleUp({ roundId, userId, eventId, onDone, onContinue }: Props
       <div className="fixed bottom-0 inset-x-0 p-4 bg-white/95 dark:bg-gray-800/95 backdrop-blur-sm border-t border-gray-200 dark:border-gray-700 safe-bottom">
         <div className="max-w-2xl mx-auto flex gap-3">
           <button onClick={onContinue} className="flex-1 h-14 border-2 border-gray-200 text-gray-600 font-semibold rounded-2xl active:bg-gray-50">← Back to Scores</button>
-          <button onClick={onDone} className="flex-1 h-14 bg-gray-800 text-white text-lg font-bold rounded-2xl active:bg-gray-900 transition-colors">✓ Done</button>
+          <button onClick={onDone} className="flex-1 h-14 bg-gray-800 text-white dark:bg-brass dark:text-navy text-lg font-bold rounded-2xl active:bg-gray-900 transition-colors">✓ Done</button>
         </div>
       </div>
     </div>
