@@ -453,34 +453,28 @@ function Home({
         {activeRounds.length > 0 && (
           <section className="space-y-3">
             {(showAllActive ? activeRounds : activeRounds.slice(0, 2)).map(round => (
-              <div key={round.id} className="rounded-2xl overflow-hidden shadow-lg">
+              <div key={round.id} className="rounded-2xl overflow-hidden bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 shadow-sm">
+                {/* Compact live row — the loud amber gradient is gone (§9b). */}
                 <button onClick={() => onResumeRound(round.id)}
-                  className="w-full active:scale-[0.98] transition-transform">
-                  <div className="bg-gradient-to-r from-amber-500 to-yellow-400 px-5 py-4">
-                    <div className="flex items-center justify-between">
-                      <div className="text-left">
-                        <p className="font-display font-bold text-amber-950 text-lg leading-tight">Round in Progress</p>
-                        <p className="text-amber-800 text-sm mt-0.5">{round.courseSnapshot?.courseName ?? 'Unknown course'}</p>
-                      </div>
-                      <div className="text-right">
-                        <p className="font-display font-bold text-amber-950 text-2xl">&#9971; {round.currentHole}</p>
-                        <p className="text-amber-800 text-xs">Hole</p>
+                  className="w-full active:bg-gray-50 dark:active:bg-gray-700 transition-colors">
+                  <div className="px-4 py-3 flex items-center justify-between gap-3 text-left">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <span className="w-2.5 h-2.5 rounded-full bg-brass flex-shrink-0" style={{ boxShadow: '0 0 0 3px rgba(194,162,76,0.18)' }} />
+                      <div className="min-w-0">
+                        <p className="font-semibold text-gray-900 dark:text-gray-100 text-sm truncate">{round.courseSnapshot?.courseName ?? 'Round in progress'}</p>
+                        <p className="text-xs text-gray-500 dark:text-gray-400 truncate">
+                          Live · {round.players?.length ?? 0} players · Hole {round.currentHole}
+                        </p>
                       </div>
                     </div>
-                    <div className="mt-3 bg-amber-950/20 rounded-xl px-4 py-2 flex items-center justify-between">
-                      <span className="text-amber-900 text-sm font-semibold">
-                        {round.players?.length ?? 0} players · {round.game?.type ? (GAME_EMOJI[round.game.type] ?? round.game.type) : 'Unknown'}
-                        {round.game?.stakesMode === 'high_roller' && ' 💎'}
-                      </span>
-                      <span className="text-amber-900 text-sm font-bold">Tap to Resume &rarr;</span>
-                    </div>
+                    <span className="text-gray-400 dark:text-gray-500 flex-shrink-0">›</span>
                   </div>
                 </button>
                 {confirmingDiscardId === round.id ? (
-                  <div className="bg-amber-100 px-5 py-2.5 flex items-center justify-between gap-2">
-                    <span className="text-red-700 text-sm font-semibold">Discard this round permanently?</span>
+                  <div className="border-t border-gray-100 dark:border-gray-700 px-4 py-2.5 flex items-center justify-between gap-2">
+                    <span className="text-sm font-semibold text-gray-800 dark:text-gray-100">Discard this round? {round.currentHole} hole{round.currentHole !== 1 ? 's' : ''} of scores will be deleted.</span>
                     <div className="flex gap-2 flex-shrink-0">
-                      <button onClick={() => setConfirmingDiscardId(null)} className="text-gray-600 text-sm font-semibold px-2">Cancel</button>
+                      <button onClick={() => setConfirmingDiscardId(null)} className="text-gray-600 dark:text-gray-300 text-sm font-semibold px-2">Cancel</button>
                       <button
                         disabled={discardingId === round.id}
                         onClick={async () => {
@@ -490,37 +484,37 @@ function Home({
                           setConfirmingDiscardId(null)
                           if (!error) setActiveRounds(prev => prev.filter(r => r.id !== round.id))
                         }}
-                        className="text-white bg-red-600 text-sm font-semibold rounded-lg px-3 py-1 active:bg-red-700 disabled:opacity-50"
+                        className="text-white text-sm font-semibold rounded-lg px-3 py-1 disabled:opacity-50"
+                        style={{ background: 'var(--sys-danger)' }}
                       >
                         {discardingId === round.id ? 'Deleting…' : 'Discard'}
                       </button>
                     </div>
                   </div>
                 ) : (
-                  <div className="bg-amber-100 px-5 py-2 flex justify-between items-center">
-                    {SHOW_PROP_BETS ? (
+                  <div className="border-t border-gray-100 dark:border-gray-700 px-4 py-2 flex justify-between items-center">
+                    {/* §9c: End round is the neutral action; Discard is the only red-capable
+                        one and it confirms what's lost. (Inverted from before.) */}
+                    {onEndRound ? (
                       <button
-                        onClick={(e) => { e.stopPropagation(); onViewProps?.(round.id) }}
-                        className="text-purple-600 text-sm font-semibold hover:text-purple-800 transition-colors"
+                        onClick={(e) => { e.stopPropagation(); onEndRound(round.id) }}
+                        className="text-gray-600 dark:text-gray-300 text-sm font-semibold active:text-gray-900 dark:active:text-gray-100"
                       >
-                        Props
+                        End round
                       </button>
-                    ) : (
+                    ) : <span />}
+                    <div className="flex items-center gap-4">
+                      {SHOW_PROP_BETS && (
+                        <button onClick={(e) => { e.stopPropagation(); onViewProps?.(round.id) }} className="text-gray-600 dark:text-gray-300 text-sm font-semibold">Props</button>
+                      )}
                       <button
                         onClick={(e) => { e.stopPropagation(); setConfirmingDiscardId(round.id) }}
-                        className="text-gray-500 text-sm font-semibold hover:text-gray-700 transition-colors"
+                        className="text-sm font-semibold"
+                        style={{ color: 'var(--sys-danger)' }}
                       >
                         Discard
                       </button>
-                    )}
-                    {onEndRound && (
-                      <button
-                        onClick={(e) => { e.stopPropagation(); onEndRound(round.id) }}
-                        className="text-red-600 text-sm font-semibold hover:text-red-800 transition-colors"
-                      >
-                        End Round
-                      </button>
-                    )}
+                    </div>
                   </div>
                 )}
               </div>
