@@ -1158,7 +1158,7 @@ export function SettleUp({ roundId, userId, eventId, onDone, onContinue }: Props
             </div>
             <div className={`rounded-xl p-3 ${isHighRoller ? 'bg-amber-900/40' : 'bg-green-50'}`}>
               {/* Unit games have no pot — show total points that actually changed hands. */}
-              <p className={`text-xs ${isHighRoller ? 'text-amber-400' : 'text-gray-500'}`}>{unitNet ? 'Total won' : isPoints ? 'Total points' : 'Total pot'}</p>
+              <p className={`text-xs ${isHighRoller ? 'text-amber-400' : 'text-gray-500'}`}>{unitNet ? 'Total won' : isPoints ? 'Total points' : 'Total in play'}</p>
               <p className={`text-xl font-bold ${isHighRoller ? 'text-amber-400' : 'text-green-800'}`}>{fmt(unitTotalWon ?? potCents)}</p>
             </div>
           </div>
@@ -1236,8 +1236,14 @@ export function SettleUp({ roundId, userId, eventId, onDone, onContinue }: Props
           const bestNet = Math.min(...board.map(b => b.net))
 
           return (
-            <section className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm p-4 space-y-3">
-              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Scoreboard</p>
+            <section className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm overflow-hidden">
+              {/* Collapsed by default — the card already tells the story. (UX v2.1 §4.6) */}
+              <button onClick={() => toggleSection('scoreboard')} className="w-full flex items-center justify-between p-4 active:bg-gray-50 dark:active:bg-gray-700">
+                <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Scoreboard</span>
+                <span className="text-gray-400 text-sm">{expandedSections.has('scoreboard') ? '▾' : '▸'}</span>
+              </button>
+              {expandedSections.has('scoreboard') && (
+              <div className="px-4 pb-4 space-y-3">
               <div className="overflow-x-auto -mx-2">
                 <table className="w-full text-sm">
                   <thead>
@@ -1268,6 +1274,8 @@ export function SettleUp({ roundId, userId, eventId, onDone, onContinue }: Props
                 </table>
               </div>
               <p className="text-xs text-gray-400">* Best score</p>
+              </div>
+              )}
             </section>
           )
         })()}
@@ -1282,7 +1290,7 @@ export function SettleUp({ roundId, userId, eventId, onDone, onContinue }: Props
             {expandedSections.has('skins') && (
               <div className="px-4 pb-4 space-y-2">
                 {skinsResult.totalSkins === 0 ? (
-                  <p className="text-gray-500 text-sm">No skins won — all holes tied. Pot refunded.</p>
+                  <p className="text-gray-500 text-sm">No skins won — all holes tied. Entries refunded.</p>
                 ) : (
                   players.map(p => {
                     const skins = skinsResult.skinsWon[p.id] ?? 0
@@ -1812,7 +1820,7 @@ export function SettleUp({ roundId, userId, eventId, onDone, onContinue }: Props
           return (
             <section className="bg-green-50 border border-green-200 rounded-2xl p-4">
               <p className="font-bold text-green-800">{treasurer?.name} keeps {fmt(keep.amountCents)}</p>
-              <p className="text-sm text-green-700">{keep.reason} — taken from the pot directly</p>
+              <p className="text-sm text-brass">{keep.reason} — taken from the total directly</p>
             </section>
           )
         })()}
