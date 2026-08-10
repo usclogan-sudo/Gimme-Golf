@@ -232,12 +232,14 @@ function PlayerCard({ player, isPinned, onTogglePin }: { player: PlayerEntry; is
       <UserAvatar url={player.avatarUrl} preset={player.avatarPreset} name={player.name} size="md" />
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2">
-          <p className="font-semibold text-gray-900 truncate">{player.name}</p>
-          {player.isRegistered && (
-            <span className="text-[10px] font-bold uppercase px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700">Registered</span>
+          <p className="font-semibold text-gray-900 dark:text-gray-100 truncate">{player.name}</p>
+          {/* Badge the exception (guests, whose handles will be missing at settle
+              time) — not the 100%-present "Registered". (UX v2.1 §19) */}
+          {!player.isRegistered && (
+            <span className="text-[10px] font-bold uppercase px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-500 dark:bg-gray-700 dark:text-gray-300">Guest</span>
           )}
         </div>
-        <p className="text-sm text-gray-500">
+        <p className="text-sm text-gray-500 dark:text-gray-400">
           HCP {player.handicapIndex} · {player.roundsPlayed} round{player.roundsPlayed !== 1 ? 's' : ''}
           {player.lastPlayed && (
             <> · Last {player.lastPlayed.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</>
@@ -245,27 +247,29 @@ function PlayerCard({ player, isPinned, onTogglePin }: { player: PlayerEntry; is
         </p>
         {hasPayment && (
           <div className="flex flex-wrap gap-1.5 mt-1.5">
+            {/* Rails are a utility, not a sponsor — navy outline wordmarks, not
+                brand-colored chips. (UX v2.1 §19/§5) */}
             {player.venmoUsername && (
               <a href={venmoProfileLink(player.venmoUsername)} target="_blank" rel="noopener noreferrer"
-                className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 active:bg-blue-200">
+                className="text-[11px] font-semibold px-2 py-0.5 rounded-full border border-navy/25 text-navy dark:text-cream dark:border-cream/25 active:bg-navy/5">
                 Venmo
               </a>
             )}
             {player.zelleIdentifier && (
               <a href={zelleLink(player.zelleIdentifier)} target="_blank" rel="noopener noreferrer"
-                className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-purple-100 text-purple-700 active:bg-purple-200">
+                className="text-[11px] font-semibold px-2 py-0.5 rounded-full border border-navy/25 text-navy dark:text-cream dark:border-cream/25 active:bg-navy/5">
                 Zelle
               </a>
             )}
             {player.cashAppUsername && (
               <a href={cashAppProfileLink(player.cashAppUsername)} target="_blank" rel="noopener noreferrer"
-                className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-green-100 text-green-700 active:bg-green-200">
+                className="text-[11px] font-semibold px-2 py-0.5 rounded-full border border-navy/25 text-navy dark:text-cream dark:border-cream/25 active:bg-navy/5">
                 Cash App
               </a>
             )}
             {player.paypalEmail && (
               <a href={paypalLink(player.paypalEmail, 0)} target="_blank" rel="noopener noreferrer"
-                className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-yellow-100 text-yellow-700 active:bg-yellow-200">
+                className="text-[11px] font-semibold px-2 py-0.5 rounded-full border border-navy/25 text-navy dark:text-cream dark:border-cream/25 active:bg-navy/5">
                 PayPal
               </a>
             )}

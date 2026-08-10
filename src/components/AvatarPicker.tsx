@@ -145,7 +145,8 @@ export function UserAvatar({ url, preset, name, size = 'md' }: { url?: string; p
 
   // Priority 3: Initials fallback
   const initials = name ? name.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2) : '?'
-  const colors = ['bg-emerald-700', 'bg-teal-700', 'bg-cyan-700', 'bg-blue-700', 'bg-violet-700', 'bg-rose-700']
+  // Brand tints only — navy / slate / brass, not a hash-rainbow of purple/blue/red. (§19)
+  const colors = ['bg-navy', 'bg-slate-brand', 'bg-[#4A5F77]', 'bg-[#9A7F36]', 'bg-[#0F1B2B]', 'bg-[#3A4E63]']
   let hash = 0
   for (let i = 0; i < (name ?? '').length; i++) hash = (hash * 31 + (name ?? '').charCodeAt(i)) & 0xffffff
   const bg = colors[Math.abs(hash) % colors.length]
