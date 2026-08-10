@@ -113,7 +113,7 @@ export function PaymentButtons({ toPlayer, amountCents, note, compact }: { toPla
       ) : (
         <button onClick={handleCopy}
           className={`w-full h-11 font-semibold rounded-xl transition-colors ${copied ? 'bg-green-600 text-white' : 'bg-gray-100 text-gray-700 active:bg-gray-200'}`}>
-          {copied ? 'Copied!' : 'Copy Payment Text'}
+          {copied ? 'Copied!' : 'Copy settle message'}
         </button>
       )}
     </div>
