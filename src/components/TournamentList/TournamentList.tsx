@@ -48,7 +48,7 @@ export function TournamentList({ userId, onBack, onViewTournament, onNewTourname
           </div>
           <button
             onClick={onNewTournament}
-            className="px-4 py-2 bg-gold-400 text-gray-900 font-bold rounded-xl text-sm active:bg-gold-500"
+            className="px-4 py-2 bg-gold-400 text-gray-900 dark:text-gray-100 font-bold rounded-xl text-sm active:bg-gold-500"
           >
             + New
           </button>

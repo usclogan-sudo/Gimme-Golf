@@ -40,7 +40,7 @@ export function UpgradeAccount({ onComplete, onCancel }: Props) {
       <div className="w-full max-w-sm space-y-6">
         <div className="text-center">
           <div className="text-5xl mb-3">&#128274;</div>
-          <h1 className="font-display text-2xl font-800 tracking-tight text-gray-900">Secure Your Account</h1>
+          <h1 className="font-display text-2xl font-800 tracking-tight text-gray-900 dark:text-gray-100">Secure Your Account</h1>
           <p className="text-gray-500 text-sm mt-2">All your existing data stays &mdash; we just add a login.</p>
         </div>
 

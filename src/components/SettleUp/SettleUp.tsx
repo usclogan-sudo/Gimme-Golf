@@ -1097,7 +1097,7 @@ export function SettleUp({ roundId, userId, eventId, onDone, onContinue }: Props
                     return (
                       <div key={b.id} className={`flex items-center justify-between p-3 rounded-xl ${playerReported ? 'bg-amber-50' : 'bg-gray-50 dark:bg-gray-700'}`}>
                         <div>
-                          <p className="font-semibold text-gray-800 text-sm">{p?.name ?? 'Unknown'}</p>
+                          <p className="font-semibold text-gray-800 dark:text-gray-100 text-sm">{p?.name ?? 'Unknown'}</p>
                           <p className="text-xs text-gray-500">
                             {fmt(b.amountCents)}
                             {p?.venmoUsername && <span className="ml-1 text-blue-500">Venmo</span>}
@@ -1150,11 +1150,11 @@ export function SettleUp({ roundId, userId, eventId, onDone, onContinue }: Props
           <div className="grid grid-cols-3 gap-3 text-center">
             <div className={`rounded-xl p-3 ${isHighRoller ? 'bg-black/30' : 'bg-gray-50'}`}>
               <p className={`text-xs ${isHighRoller ? 'text-amber-400' : 'text-gray-500'}`}>Players</p>
-              <p className={`text-xl font-bold ${isHighRoller ? 'text-white' : 'text-gray-800'}`}>{players.length}</p>
+              <p className={`text-xl font-bold ${isHighRoller ? 'text-white' : 'text-gray-800 dark:text-gray-100'}`}>{players.length}</p>
             </div>
             <div className={`rounded-xl p-3 ${isHighRoller ? 'bg-black/30' : 'bg-gray-50'}`}>
               <p className={`text-xs ${isHighRoller ? 'text-amber-400' : 'text-gray-500'}`}>{unitNet ? 'Per unit' : isPoints ? 'Entry' : 'Buy-in'}</p>
-              <p className={`text-xl font-bold ${isHighRoller ? 'text-white' : 'text-gray-800'}`}>{fmt(unitNet ? perUnitCents : game.buyInCents)}</p>
+              <p className={`text-xl font-bold ${isHighRoller ? 'text-white' : 'text-gray-800 dark:text-gray-100'}`}>{fmt(unitNet ? perUnitCents : game.buyInCents)}</p>
             </div>
             <div className={`rounded-xl p-3 ${isHighRoller ? 'bg-amber-900/40' : 'bg-green-50'}`}>
               {/* Unit games have no pot — show total points that actually changed hands. */}

@@ -262,7 +262,7 @@ export function HandicapDetail({ userId, userProfile, onBack }: Props) {
                       <p className="text-xs text-gray-400">{entry.date.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}</p>
                     </div>
                     <div className="text-right flex-shrink-0 ml-3">
-                      <p className="font-bold text-gray-800">{entry.gross}</p>
+                      <p className="font-bold text-gray-800 dark:text-gray-100">{entry.gross}</p>
                       <div className="flex items-center gap-2 justify-end">
                         <p className={`text-xs font-semibold ${vsPar > 0 ? 'text-red-500' : vsPar < 0 ? 'text-green-600' : 'text-gray-400'}`}>
                           {vsPar > 0 ? '+' : ''}{vsPar}

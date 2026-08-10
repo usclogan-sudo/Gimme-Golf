@@ -129,7 +129,7 @@ function SharedCoursesTab({ userId }: { userId: string }) {
     return (
       <div className="space-y-4">
         <div className="flex items-center justify-between">
-          <h3 className="font-semibold text-gray-800">{editingId ? 'Edit' : 'Add'} Shared Course</h3>
+          <h3 className="font-semibold text-gray-800 dark:text-gray-100">{editingId ? 'Edit' : 'Add'} Shared Course</h3>
           <button onClick={resetForm} className="text-sm text-gray-500">Cancel</button>
         </div>
 
@@ -259,7 +259,7 @@ function SharedCoursesTab({ userId }: { userId: string }) {
     return (
       <div className="space-y-3">
         <div className="flex items-center justify-between">
-          <h3 className="font-semibold text-gray-800">Import from Catalog</h3>
+          <h3 className="font-semibold text-gray-800 dark:text-gray-100">Import from Catalog</h3>
           <button onClick={() => setShowImport(false)} className="text-sm text-gray-500">Cancel</button>
         </div>
         {available.length === 0 && (
@@ -271,7 +271,7 @@ function SharedCoursesTab({ userId }: { userId: string }) {
             onClick={() => handleImport(t)}
             className="w-full bg-white rounded-xl p-3 border border-gray-200 text-left active:bg-gray-50"
           >
-            <p className="font-semibold text-gray-800">{t.name}</p>
+            <p className="font-semibold text-gray-800 dark:text-gray-100">{t.name}</p>
             <p className="text-sm text-gray-500">Par {totalPar(t.holes)} · {t.tees.map(te => te.name).join(', ')}</p>
           </button>
         ))}
@@ -304,7 +304,7 @@ function SharedCoursesTab({ userId }: { userId: string }) {
         <div key={course.id} className="bg-white rounded-xl border border-gray-200 p-4">
           <div className="flex items-center justify-between">
             <div>
-              <p className="font-semibold text-gray-800">{course.name}</p>
+              <p className="font-semibold text-gray-800 dark:text-gray-100">{course.name}</p>
               <p className="text-sm text-gray-500">Par {totalPar(course.holes)} · {course.tees.map(t => t.name).join(', ')}</p>
             </div>
             <div className="flex gap-2">
@@ -429,7 +429,7 @@ function GamePresetsTab({ userId }: { userId: string }) {
     return (
       <div className="space-y-4">
         <div className="flex items-center justify-between">
-          <h3 className="font-semibold text-gray-800">{editingId ? 'Edit' : 'Add'} Preset</h3>
+          <h3 className="font-semibold text-gray-800 dark:text-gray-100">{editingId ? 'Edit' : 'Add'} Preset</h3>
           <button onClick={resetForm} className="text-sm text-gray-500">Cancel</button>
         </div>
 
@@ -560,7 +560,7 @@ function GamePresetsTab({ userId }: { userId: string }) {
         <div key={preset.id} className="bg-white rounded-xl border border-gray-200 p-4">
           <div className="flex items-center justify-between">
             <div className="flex-1 min-w-0">
-              <p className="font-semibold text-gray-800">{preset.name}</p>
+              <p className="font-semibold text-gray-800 dark:text-gray-100">{preset.name}</p>
               <p className="text-sm text-gray-500">
                 {GAME_TYPE_LABELS[preset.gameType]} · {fmtAmount(preset.buyInCents, preset.stakesMode)}
                 {preset.stakesMode === 'high_roller' && ' · 💎'}
@@ -703,7 +703,7 @@ function PlayersTab() {
           ) : (
             <div className="flex items-center justify-between">
               <div className="min-w-0 flex-1">
-                <p className="font-semibold text-gray-800">{p.name}</p>
+                <p className="font-semibold text-gray-800 dark:text-gray-100">{p.name}</p>
                 <p className="text-xs text-gray-500">
                   HCP: {p.handicap_index ?? '—'} · Tee: {p.tee ?? '—'}
                   {p.owner_name && <span className="text-gray-400"> · Owner: {p.owner_name}</span>}
@@ -876,7 +876,7 @@ function UsersTab({ currentUserId }: { currentUserId: string }) {
     return (
       <div className="space-y-4">
         <div className="flex items-center justify-between">
-          <h3 className="font-semibold text-gray-800">Create Account</h3>
+          <h3 className="font-semibold text-gray-800 dark:text-gray-100">Create Account</h3>
           <button onClick={() => setShowCreate(false)} className="text-sm text-gray-500">Cancel</button>
         </div>
         <div>
@@ -1046,7 +1046,7 @@ function UsersTab({ currentUserId }: { currentUserId: string }) {
             ) : (
               <div className="flex items-center justify-between">
                 <div className="min-w-0 flex-1">
-                  <p className="font-semibold text-gray-800">{u.display_name || 'No name'}</p>
+                  <p className="font-semibold text-gray-800 dark:text-gray-100">{u.display_name || 'No name'}</p>
                   <p className="text-xs text-gray-500 truncate">
                     HCP: {u.handicap_index ?? '—'}
                     {u.venmo_username && ` · Venmo: @${u.venmo_username}`}
@@ -1181,7 +1181,7 @@ function RoundsTab() {
           <div key={r.id} className="bg-white rounded-xl border border-gray-200 p-3">
             <div className="flex items-center justify-between">
               <div className="min-w-0 flex-1">
-                <p className="font-semibold text-gray-800">{courseName}</p>
+                <p className="font-semibold text-gray-800 dark:text-gray-100">{courseName}</p>
                 <p className="text-xs text-gray-500">
                   {date} · {playerCount} players
                   {gameType && ` · ${gameType.replace(/_/g, ' ')}`}
@@ -1348,7 +1348,7 @@ function BroadcastTab() {
           <div className="space-y-2">
             {recent.map(r => (
               <div key={r.id} className="bg-gray-50 rounded-xl px-3 py-2 text-sm">
-                <p className="font-semibold text-gray-800 truncate">{r.target_label || 'Untitled broadcast'}</p>
+                <p className="font-semibold text-gray-800 dark:text-gray-100 truncate">{r.target_label || 'Untitled broadcast'}</p>
                 <p className="text-xs text-gray-500 mt-0.5">
                   {new Date(r.created_at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
                   {r.metadata?.recipient_count !== undefined && ` · ${r.metadata.recipient_count} recipient${r.metadata.recipient_count !== 1 ? 's' : ''}`}

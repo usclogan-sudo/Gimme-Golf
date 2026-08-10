@@ -72,7 +72,7 @@ export function AvatarPicker({ currentPreset, userId, onSelect, onUpload, onClos
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm" onClick={onClose}>
       <div className="bg-white rounded-2xl shadow-xl mx-4 w-full max-w-sm p-5 space-y-4" onClick={e => e.stopPropagation()}>
-        <h3 className="text-lg font-bold text-gray-900">Choose Avatar</h3>
+        <h3 className="text-lg font-bold text-gray-900 dark:text-gray-100">Choose Avatar</h3>
 
         {/* Photo upload */}
         {userId && onUpload && (

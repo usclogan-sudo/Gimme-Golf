@@ -244,7 +244,7 @@ export function LeaderboardTab({
             {board.map((entry, idx) => (
               <tr key={entry.player.id} className={`border-b border-gray-50 ${positions[idx] === 1 ? 'bg-amber-50' : ''}`}>
                 <td className={`py-2.5 px-1 font-bold ${positions[idx] === 1 ? 'text-amber-600' : 'text-gray-500'}`}>{positions[idx]}</td>
-                <td className="py-2.5 px-1 font-semibold text-gray-800">{entry.player.name}</td>
+                <td className="py-2.5 px-1 font-semibold text-gray-800 dark:text-gray-100">{entry.player.name}</td>
                 <td className="py-2.5 px-1 text-center text-gray-500">{entry.thru}</td>
                 <td className="py-2.5 px-1 text-center font-semibold text-gray-700">{entry.gross || '—'}</td>
                 <td className="py-2.5 px-1 text-center font-semibold text-gray-700">{entry.net || '—'}</td>

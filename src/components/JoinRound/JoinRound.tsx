@@ -236,7 +236,7 @@ export function JoinRound({ userId, initialCode, onJoined, onCancel }: Props) {
           <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 p-6 space-y-4">
             <div className="text-center">
               <p className="text-4xl mb-2">🔗</p>
-              <h2 className="font-display font-bold text-xl text-gray-900">Enter Invite Code</h2>
+              <h2 className="font-display font-bold text-xl text-gray-900 dark:text-gray-100">Enter Invite Code</h2>
               <p className="text-sm text-gray-500 mt-1">Get the 6-character code from the scoremaster</p>
             </div>
 

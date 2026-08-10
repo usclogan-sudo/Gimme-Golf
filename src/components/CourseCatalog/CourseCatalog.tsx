@@ -358,7 +358,7 @@ export function CourseCatalog({ userId, onDone, onAddCustom, onPrefillCourse }: 
                         {isAdded ? '✓' : '⛳'}
                       </div>
                       <div className="flex-1 min-w-0">
-                        <p className={`font-semibold text-sm leading-tight ${isAdded ? 'text-green-800' : 'text-gray-900'}`}>
+                        <p className={`font-semibold text-sm leading-tight ${isAdded ? 'text-green-800' : 'text-gray-900 dark:text-gray-100'}`}>
                           {course.name}
                         </p>
                         <p className="text-xs text-gray-500 mt-0.5">
