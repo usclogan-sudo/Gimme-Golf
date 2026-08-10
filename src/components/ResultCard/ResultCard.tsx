@@ -50,6 +50,8 @@ export interface ResultCardProps {
   roundId?: string
   /** Winner's first win with this group — unlocks the firstWin sub-line bucket. */
   winnerFirstWin?: boolean
+  /** Mid-round leaderboard share: "leads" not "takes it", THRU N, no settle block. */
+  inProgress?: boolean
 }
 
 // ── Palette (literal hex, not tokens) ──────────────────────────────────────────
@@ -130,17 +132,21 @@ interface Headline {
   figure: string | null
 }
 
-function buildHeadline(winners: ResultCardStanding[], isAllSquare: boolean): Headline {
-  if (isAllSquare) return { line1: 'All square.', line2: '', figure: null }
+function buildHeadline(winners: ResultCardStanding[], isAllSquare: boolean, inProgress: boolean): Headline {
+  if (isAllSquare) return { line1: 'All square.', line2: inProgress ? 'Nobody ahead yet.' : '', figure: null }
 
   if (winners.length >= 3) {
-    return { line1: `${numberWord(winners.length)}-way tie.`, line2: "Nobody's buying.", figure: null }
+    return {
+      line1: `${numberWord(winners.length)}-way tie.`,
+      line2: inProgress ? 'at the top.' : "Nobody's buying.",
+      figure: null,
+    }
   }
   if (winners.length === 2) {
     const [a, b] = winners
     return {
       line1: `${middleTruncate(a.displayName, 14)} and ${middleTruncate(b.displayName, 14)}`,
-      line2: 'split it.',
+      line2: inProgress ? 'share the lead.' : 'split it.',
       figure: a.net > 0 ? fmtSigned(a.net) : null,
     }
   }
@@ -150,13 +156,13 @@ function buildHeadline(winners: ResultCardStanding[], isAllSquare: boolean): Hea
     // long name is truncated here (and CSS-ellipsis guards the rest) rather than
     // double-ellipsing. Standings rows still show the fuller 18-char form.
     line1: middleTruncate(w.displayName, 14),
-    line2: 'takes it.',
+    line2: inProgress ? 'leads.' : 'takes it.',
     figure: w.net > 0 ? fmtSigned(w.net) : null,
   }
 }
 
 export const ResultCard = forwardRef<HTMLDivElement, ResultCardProps>(function ResultCard(
-  { round, standings, settlements, variant = 'screen', ratio = 'story', roundId, winnerFirstWin = false },
+  { round, standings, settlements, variant = 'screen', ratio = 'story', roundId, winnerFirstWin = false, inProgress = false },
   ref,
 ) {
   const { w: W, h: H } = RATIOS[ratio]
@@ -175,7 +181,7 @@ export const ResultCard = forwardRef<HTMLDivElement, ResultCardProps>(function R
   const hasPositiveWinner = !!winner && winner.net > 0
   const isAllSquare = settlements.length === 0 && !hasPositiveWinner
 
-  const headline = buildHeadline(winners, isAllSquare)
+  const headline = buildHeadline(winners, isAllSquare, inProgress)
 
   const pointsInPlay = sorted.reduce((sum, s) => (s.net > 0 ? sum + s.net : sum), 0)
   const margin = winner ? winner.net - (runnerUp?.net ?? 0) : 0
@@ -190,18 +196,24 @@ export const ResultCard = forwardRef<HTMLDivElement, ResultCardProps>(function R
     margin,
     isAllSquare,
     isFirstWin: winnerFirstWin && hasPositiveWinner,
+    inProgress,
   })
 
   // Overflow: >6 rows → top 5 + a "+N more" summary row. (§3d)
   const showStandings = sorted.slice(0, sorted.length > 6 ? 5 : 6)
   const moreStandings = sorted.length - showStandings.length
-  const showSettle = isAllSquare ? [] : settlements
+  // No settling has happened mid-round — never show the settle block in that mode.
+  const showSettle = isAllSquare || inProgress ? [] : settlements
   const settleVisible = showSettle.slice(0, showSettle.length > 6 ? 5 : 6)
   const moreSettle = showSettle.length - settleVisible.length
 
   const eyebrowFormats = formatFormats(round.formats)
   const eyebrowLine1 = [round.courseName, eyebrowFormats].filter(Boolean).join(' · ').toUpperCase()
-  const eyebrowLine2 = `${dateStr} · ${round.holesPlayed} ${round.holesPlayed === 1 ? 'HOLE' : 'HOLES'}`.toUpperCase()
+  const eyebrowLine2 = (
+    inProgress
+      ? `${dateStr} · LIVE · THRU ${round.holesPlayed}`
+      : `${dateStr} · ${round.holesPlayed} ${round.holesPlayed === 1 ? 'HOLE' : 'HOLES'}`
+  ).toUpperCase()
 
   // ── Style fragments ─────────────────────────────────────────────────────────
   const hairline = (key?: string) => (

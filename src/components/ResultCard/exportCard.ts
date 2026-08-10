@@ -24,14 +24,25 @@ const FONT_CSS_URL =
 
 let cachedFontCSS: string | null = null
 
-/** Fetch the Google Fonts @font-face CSS once. Returns '' if offline/blocked. */
+/**
+ * Fetch the Google Fonts @font-face CSS once. Returns '' if offline/blocked/slow —
+ * a stalled request must never hang the export, so it's bounded by a timeout. On
+ * timeout the export proceeds without embedded fonts (the on-DOM fonts still render;
+ * the risk is only a Times fallback in the rasterized PNG, never a hang).
+ */
 async function getFontEmbedCSS(): Promise<string> {
   if (cachedFontCSS != null) return cachedFontCSS
   try {
-    const res = await fetch(FONT_CSS_URL)
-    cachedFontCSS = res.ok ? await res.text() : ''
+    const ctrl = new AbortController()
+    const timer = setTimeout(() => ctrl.abort(), 4000)
+    try {
+      const res = await fetch(FONT_CSS_URL, { signal: ctrl.signal })
+      cachedFontCSS = res.ok ? await res.text() : ''
+    } finally {
+      clearTimeout(timer)
+    }
   } catch {
-    cachedFontCSS = ''
+    return '' // timed out or blocked — leave uncached so a later export can retry
   }
   return cachedFontCSS
 }
@@ -45,7 +56,7 @@ export async function exportResultCard(
     await document.fonts.ready
   }
   const fontEmbedCSS = await getFontEmbedCSS()
-  return toBlob(node, {
+  const blobPromise = toBlob(node, {
     pixelRatio: 2,
     width: 1080,
     height: ratio === 'story' ? 1920 : 1350,
@@ -56,4 +67,9 @@ export async function exportResultCard(
     // and let the library try its default path.
     ...(fontEmbedCSS ? { fontEmbedCSS } : {}),
   })
+  // Hard ceiling: html-to-image can stall fetching webfont binaries with no internal
+  // timeout. Never let the export hang the UI — resolve to null and let the caller
+  // surface a "couldn't create image" toast instead of a spinner that never stops.
+  const timeout = new Promise<null>((resolve) => setTimeout(() => resolve(null), 15000))
+  return Promise.race([blobPromise, timeout])
 }

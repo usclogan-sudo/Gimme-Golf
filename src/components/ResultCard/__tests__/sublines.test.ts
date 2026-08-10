@@ -31,6 +31,12 @@ describe('selectSubline bucket selection', () => {
     expect(SUBLINES.allSquare).toContain(line)
   })
 
+  it('picks inProgress above every result bucket mid-round', () => {
+    const line = selectSubline({ ...base, inProgress: true, isFirstWin: true, isAllSquare: true })
+    const filled = SUBLINES.inProgress.map((t) => t.replace('{winner}', 'A-Aron'))
+    expect(filled).toContain(line)
+  })
+
   it('picks blowout when margin exceeds 50% of points in play', () => {
     const line = selectSubline({ ...base, pointsInPlay: 100, margin: 60 })
     const filled = SUBLINES.blowout.map((t) => t.replace('{winner}', 'A-Aron'))

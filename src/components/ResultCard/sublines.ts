@@ -69,6 +69,17 @@ export const SUBLINES = {
     '{lastPlace} is quiet in the cart.',
     'Good round. Better result for {winner}.',
   ],
+
+  // Mid-round (the leaderboard/in-progress share). No settling has happened, so the
+  // copy stays open-ended — never declares a result.
+  inProgress: [
+    "Still anyone's round.",
+    'Long way to go.',
+    '{winner} out front — for now.',
+    'The back nine will decide it.',
+    'Plenty of golf left.',
+    'Nothing settled yet.',
+  ],
 } as const
 
 export type SublineBucket = keyof typeof SUBLINES
@@ -87,6 +98,8 @@ export interface SublineInput {
   isAllSquare: boolean
   /** Winner's first win with this group. Unknown to a pure card, so opt-in. */
   isFirstWin?: boolean
+  /** Mid-round share — use the open-ended inProgress bucket, never a result line. */
+  inProgress?: boolean
 }
 
 // Small, stable string hash (djb2-ish). Same input → same index, forever.
@@ -96,8 +109,9 @@ export function hashStr(s: string): number {
   return Math.abs(h)
 }
 
-// Priority: firstWin > allSquare > blowout > squeaker > standard.
+// Priority: inProgress > firstWin > allSquare > blowout > squeaker > standard.
 function selectBucket(input: SublineInput): SublineBucket {
+  if (input.inProgress) return 'inProgress'
   if (input.isFirstWin && input.winner) return 'firstWin'
   if (input.isAllSquare) return 'allSquare'
   if (input.pointsInPlay > 0 && input.margin > 0.5 * input.pointsInPlay) return 'blowout'

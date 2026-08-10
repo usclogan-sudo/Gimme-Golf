@@ -1,0 +1,66 @@
+diff --git a/src/components/SettleUp/SettleUp.tsx b/src/components/SettleUp/SettleUp.tsx
+index 7f98d0f..e0812c9 100644
+--- a/src/components/SettleUp/SettleUp.tsx
++++ b/src/components/SettleUp/SettleUp.tsx
+@@ -236,16 +236,30 @@ export function SettleUp({ roundId, userId, eventId, onDone, onContinue }: Props
+       if (pwRes?.data) setPropWagers(pwRes.data.map(rowToPropWager))
+       if (settlRes.data) setSettlementRecords(settlRes.data.map(rowToSettlementRecord))
+ 
+-      // Build participant map: playerId → userId
+-      if (partRes.data) {
++      // Build player → user link map from BOTH sources:
++      //  1. accepted join-flow participants (round_participants)
++      //  2. any round_player with a linked user_id (covers registered users the
++      //     host added from the roster, who never go through join/accept —
++      //     previously they were skipped, so their saved payment handles were
++      //     never merged and the Venmo/PayPal/Cash App buttons never rendered)
++      {
+         const pMap = new Map<string, string>()
+-        for (const row of partRes.data) {
+-          pMap.set(row.player_id, row.user_id)
++        if (partRes.data) {
++          for (const row of partRes.data) {
++            pMap.set(row.player_id, row.user_id)
++          }
++        }
++        if (rpRes.data) {
++          for (const row of rpRes.data) {
++            if (row.user_id && row.player_id && !pMap.has(row.player_id)) {
++              pMap.set(row.player_id, row.user_id)
++            }
++          }
+         }
+         setParticipantMap(pMap)
+ 
+-        // Fetch fresh user profiles for linked players
+-        const userIds = [...new Set(partRes.data.map((r: any) => r.user_id))]
++        // Fetch fresh user profiles for every linked user (union of both sources)
++        const userIds = [...new Set(pMap.values())]
+         if (userIds.length > 0) {
+           supabase.from('user_profiles').select('*').in('user_id', userIds).then(({ data }) => {
+             if (data) {
+diff --git a/src/lib/supabase.ts b/src/lib/supabase.ts
+index 931c8cc..3f7ebb1 100644
+--- a/src/lib/supabase.ts
++++ b/src/lib/supabase.ts
+@@ -70,6 +70,7 @@ export function rowToRoundPlayer(row: any): RoundPlayer {
+     id: row.id,
+     roundId: row.round_id,
+     playerId: row.player_id,
++    userId: row.user_id ?? undefined,
+     teePlayed: row.tee_played,
+     courseHandicap: row.course_handicap ?? undefined,
+     playingHandicap: row.playing_handicap ?? undefined,
+diff --git a/src/types/index.ts b/src/types/index.ts
+index e18b192..536aaf5 100644
+--- a/src/types/index.ts
++++ b/src/types/index.ts
+@@ -324,6 +324,8 @@ export interface RoundPlayer {
+   id: string
+   roundId: string
+   playerId: string
++  /** Linked auth user, when this round player is a registered user (set for roster-adds too, not just join-flow participants) */
++  userId?: string
+   teePlayed: string
+   courseHandicap?: number
+   playingHandicap?: number
