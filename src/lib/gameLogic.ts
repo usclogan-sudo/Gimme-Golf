@@ -96,10 +96,15 @@ export function calculateSkins(
   snapshot: CourseSnapshot,
   config: SkinsConfig,
   courseHcps: Record<string, number>,
+  /** playerId → join hole (mid-round). Absent ⇒ from the start. A player is only a
+   *  contestant on holes ≥ their startHole, so a not-yet-joined player's missing
+   *  score doesn't make an earlier hole "incomplete". */
+  startHoles: Record<string, number> = {},
 ): SkinsResult {
   const skinsWon: Record<string, number> = {}
   const holeResults: HoleSkinsResult[] = []
   players.forEach(p => (skinsWon[p.id] = 0))
+  const activeOn = (holeNum: number) => players.filter(p => (startHoles[p.id] ?? 1) <= holeNum)
 
   let carry = 0
 
@@ -111,7 +116,9 @@ export function calculateSkins(
 
     const skinsInPlay = 1 + carry
 
-    const scores = players.map(p => {
+    // Only players active on this hole are contestants — a player who joined later
+    // isn't "missing" here.
+    const scores = activeOn(holeNum).map(p => {
       const hs = holeScores.find(s => s.playerId === p.id && s.holeNumber === holeNum)
       if (!hs) return { playerId: p.id, score: null as number | null }
       const gross = hs.grossScore
@@ -122,7 +129,7 @@ export function calculateSkins(
       return { playerId: p.id, score: net }
     })
 
-    const allScored = scores.every(s => s.score !== null)
+    const allScored = scores.length > 0 && scores.every(s => s.score !== null)
     if (!allScored) {
       holeResults.push({ holeNumber: holeNum, winnerId: null, carry, skinsInPlay })
       continue
@@ -152,7 +159,7 @@ export function calculateSkins(
   if (carry > 0 && config.carryovers) {
     const lastHoleNum = totalHoles
     const lastHole = snapshot.holes.find(h => h.number === lastHoleNum)
-    const scoresLast = players.map(p => {
+    const scoresLast = activeOn(lastHoleNum).map(p => {
       const hs = holeScores.find(s => s.playerId === p.id && s.holeNumber === lastHoleNum)
       if (!hs || !lastHole) return { playerId: p.id, score: null as number | null }
       const gross = hs.grossScore
@@ -237,7 +244,6 @@ export function calculateSkinsNet(
 ): Record<string, number> {
   const presses: Press[] = (game.config as SkinsConfig).presses ?? []
   const buyIn = game.buyInCents
-  const totalHoles = result.holeResults.length || 18
   const startOf = (id: string) => startHoles[id] ?? 1
   const pressMult = (h: number) => Math.pow(2, presses.filter(p => p.holeNumber <= h).length)
 
@@ -249,6 +255,12 @@ export function calculateSkinsNet(
   const zero: Record<string, number> = {}
   players.forEach(p => (zero[p.id] = 0))
   if (lastWon === 0) return zero
+
+  // The per-round buy-in is spread over the holes that actually counted — i.e. up to
+  // the last resolved hole — NOT the scheduled 18. So a round that ends after a few
+  // holes still charges each full-round player their whole buy-in (matching the pot
+  // model), rather than 1/18th of it.
+  const divisor = lastWon
 
   const winningsS: Record<string, number> = { ...zero }
   const anteS: Record<string, number> = { ...zero }
@@ -269,7 +281,7 @@ export function calculateSkinsNet(
 
   const netS: Record<string, number> = {}
   players.forEach(p => (netS[p.id] = winningsS[p.id] - anteS[p.id]))
-  return divideZeroSum(netS, totalHoles)
+  return divideZeroSum(netS, divisor)
 }
 
 // ─── Best Ball ────────────────────────────────────────────────────────────────

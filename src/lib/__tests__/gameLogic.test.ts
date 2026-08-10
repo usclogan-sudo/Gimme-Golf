@@ -363,6 +363,37 @@ describe('calculateSkinsNet (mid-round join, Option A)', () => {
     expect(net.p1).toBe(533)
   })
 
+  it('PARTIAL round (constant roster, ended after 3 holes) still == pot model', () => {
+    // Round ends after 3 holes; p1 wins all three. The buy-in must spread over the
+    // 3 played holes, not 18 — so a full-round player still antes their whole buyIn.
+    const g30 = { id: 'g', type: 'skins', buyInCents: 30, config: cfg } as unknown as Game
+    const scores: HoleScore[] = []
+    for (let h = 1; h <= 3; h++) { scores.push(hs('p1', h, 3)); scores.push(hs('p2', h, 5)); scores.push(hs('p3', h, 5)) }
+    const result = calculateSkins(three, scores, snapshot, cfg, { p1: 0, p2: 0, p3: 0 })
+    const potNet = netFromPayouts(calculateSkinsPayouts(result, g30, 3), three, 30)
+    const net = calculateSkinsNet(result, g30, three, {})
+    expect(net).toEqual(potNet)
+    expect(net.p1).toBe(60); expect(net.p2).toBe(-30); expect(net.p3).toBe(-30)
+  })
+
+  it('PARTIAL round with a mid-round join (the real scenario) prorates correctly', () => {
+    // 2 holes played: p1 wins hole 1 (2-player value), p3 joins at hole 2, p2 wins
+    // hole 2 (3-player value). buyIn 25.
+    const g25 = { id: 'g', type: 'skins', buyInCents: 25, config: cfg } as unknown as Game
+    const scores: HoleScore[] = [
+      hs('p1', 1, 3), hs('p2', 1, 5),               // hole 1: p1 & p2 only → p1 wins
+      hs('p1', 2, 5), hs('p2', 2, 3), hs('p3', 2, 5), // hole 2: all three → p2 wins
+    ]
+    const result = calculateSkins(three, scores, snapshot, cfg, { p1: 0, p2: 0, p3: 0 }, { p3: 2 })
+    const net = calculateSkinsNet(result, g25, three, { p3: 2 })
+    expect(net.p1 + net.p2 + net.p3).toBe(0)              // zero-sum
+    expect(net.p1).toBe(0)                                 // won 1 (2-player), paid for 2 → even
+    expect(net.p2).toBe(12)                                // won hole 2 (3-player value)
+    expect(net.p3).toBe(-12)                               // joiner: funded only hole 2, prorated
+    // The joiner (1 of 2 holes) is charged less than a full-round non-winner would be.
+    expect(net.p3).toBeGreaterThan(-25)
+  })
+
   it('all holes carry then tie on 18 (never resolved) → everyone net zero (entries returned)', () => {
     // All three tie every hole → no skin ever won.
     const scores: HoleScore[] = []

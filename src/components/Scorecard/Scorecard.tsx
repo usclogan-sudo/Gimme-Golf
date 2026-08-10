@@ -1136,12 +1136,20 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
     return holeScores.filter(s => s.scoreStatus === 'pending')
   }, [holeScores, isEventRound])
 
+  // Player-id → the hole they joined mid-round (Option A). Absent ⇒ round start, so
+  // a pre-join hole isn't treated as "incomplete" just because they've no score yet.
+  const startHoles = useMemo((): Record<string, number> => {
+    const m: Record<string, number> = {}
+    for (const rp of roundPlayers) if (rp.startHole) m[rp.playerId] = rp.startHole
+    return m
+  }, [roundPlayers])
+
   // Game result calculations (all depend on approvedScores, must come after it)
   // Use playableSnapshot so game logic only sees the holes being played
   const skinsResult = useMemo(() => {
     if (!game || game.type !== 'skins' || !playableSnapshot) return null
-    return calculateSkins(players, approvedScores, playableSnapshot, game.config as SkinsConfig, courseHcps)
-  }, [game, players, approvedScores, playableSnapshot, courseHcps])
+    return calculateSkins(players, approvedScores, playableSnapshot, game.config as SkinsConfig, courseHcps, startHoles)
+  }, [game, players, approvedScores, playableSnapshot, courseHcps, startHoles])
 
   const bestBallResult = useMemo(() => {
     if (!game || game.type !== 'best_ball' || !playableSnapshot) return null
@@ -1210,8 +1218,8 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
   const skinsResultAlt = useMemo(() => {
     if (!game || game.type !== 'skins' || !playableSnapshot) return null
     const cfg = game.config as SkinsConfig
-    return calculateSkins(players, approvedScores, playableSnapshot, { ...cfg, mode: cfg.mode === 'net' ? 'gross' : 'net' }, courseHcps)
-  }, [game, players, approvedScores, playableSnapshot, courseHcps])
+    return calculateSkins(players, approvedScores, playableSnapshot, { ...cfg, mode: cfg.mode === 'net' ? 'gross' : 'net' }, courseHcps, startHoles)
+  }, [game, players, approvedScores, playableSnapshot, courseHcps, startHoles])
 
   const bestBallResultAlt = useMemo(() => {
     if (!game || game.type !== 'best_ball' || !playableSnapshot) return null
