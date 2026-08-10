@@ -44,7 +44,7 @@ export function Settings({ userId, email, onBack, onSignOut, isAdmin, onAdmin, i
   const [deleteError, setDeleteError] = useState('')
 
   // Manage Data state
-  const [manageConfirm, setManageConfirm] = useState<{ title: string; message: string; action: () => Promise<void> } | null>(null)
+  const [manageConfirm, setManageConfirm] = useState<{ title: string; message: string; action: () => Promise<void>; requireTyped?: string } | null>(null)
   const [manageRunning, setManageRunning] = useState(false)
 
   useEffect(() => {
@@ -416,8 +416,9 @@ export function Settings({ userId, email, onBack, onSignOut, isAdmin, onAdmin, i
             <button
               onClick={() => setManageConfirm({
                 title: 'Reset Stats & History?',
-                message: 'This will permanently delete all completed rounds, scores, and settlements. Your courses and players will be kept.',
+                message: 'This will permanently delete all completed rounds, scores, and settlements. Your courses and players will be kept. This cannot be undone.',
                 action: handleResetStats,
+                requireTyped: 'DELETE',
               })}
               className="w-full h-12 border-2 border-red-200 text-red-600 font-semibold rounded-xl active:bg-red-50 transition-colors"
             >
@@ -438,6 +439,7 @@ export function Settings({ userId, email, onBack, onSignOut, isAdmin, onAdmin, i
                 title: 'Reset Everything?',
                 message: 'This will permanently delete ALL your data: rounds, scores, courses, and guest players. This cannot be undone.',
                 action: handleResetEverything,
+                requireTyped: 'DELETE',
               })}
               className="w-full h-12 bg-red-600 text-white font-semibold rounded-xl active:bg-red-700 transition-colors"
             >
@@ -506,6 +508,7 @@ export function Settings({ userId, email, onBack, onSignOut, isAdmin, onAdmin, i
         message={manageConfirm?.message ?? ''}
         confirmLabel={manageRunning ? 'Working...' : 'Confirm'}
         destructive
+        requireTyped={manageConfirm?.requireTyped}
         onConfirm={() => manageConfirm?.action()}
         onCancel={() => { if (!manageRunning) setManageConfirm(null) }}
       />

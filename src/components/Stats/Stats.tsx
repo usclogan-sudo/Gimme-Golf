@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react'
-import { ConfirmModal } from '../ConfirmModal'
 import { ScoringDistribution } from '../ScoringDistribution'
 import { supabase, rowToRound, rowToHoleScore, rowToRoundPlayer, rowToJunkRecord } from '../../lib/supabase'
 import { buildCourseHandicaps, calculateSkinsPayouts, calculateSkins, calculateBestBallPayouts, calculateBestBall, calculateNassauPayouts, calculateNassau, calculateWolfPayouts, calculateWolf, calculateBBBPayouts, calculateBBB, calculateJunks } from '../../lib/gameLogic'
@@ -208,39 +207,6 @@ export function Stats({ userId, onBack }: Props) {
     setLoading(false)
   }
 
-  const [resetting, setResetting] = useState(false)
-  const [showResetConfirm, setShowResetConfirm] = useState(false)
-
-  const handleResetStats = async () => {
-    setResetting(true)
-    try {
-      const { data: roundRows } = await supabase.from('rounds').select('id').eq('status', 'complete')
-      const roundIds = (roundRows ?? []).map((r: any) => r.id)
-      if (roundIds.length > 0) {
-        await Promise.all([
-          supabase.from('settlements').delete().in('round_id', roundIds),
-          supabase.from('hole_scores').delete().in('round_id', roundIds),
-          supabase.from('bbb_points').delete().in('round_id', roundIds),
-          supabase.from('junk_records').delete().in('round_id', roundIds),
-          supabase.from('round_players').delete().in('round_id', roundIds),
-          supabase.from('buy_ins').delete().in('round_id', roundIds),
-          supabase.from('side_bets').delete().in('round_id', roundIds),
-          supabase.from('round_participants').delete().in('round_id', roundIds),
-          supabase.from('notifications').delete().in('round_id', roundIds),
-        ])
-        await supabase.from('rounds').delete().in('id', roundIds)
-      }
-      setStats([])
-      setTotalRounds(0)
-      setScoreDist({ eagles: 0, birdies: 0, pars: 0, bogeys: 0, doubles: 0, worse: 0 })
-      setMostPlayedCourse('')
-    } catch (err) {
-      console.error('Reset stats failed:', err)
-    }
-    setResetting(false)
-    setShowResetConfirm(false)
-  }
-
   // Points only — winnings totals are aggregated point values (1 pt = $1).
   const fmtPts = (value: number) => {
     const abs = Math.abs(value)
@@ -291,14 +257,10 @@ export function Stats({ userId, onBack }: Props) {
             </section>
 
             <section>
-              <div className="flex items-center justify-between mb-3">
+              {/* Reset lives in Settings → Manage data only — never one tap from
+                  browsing standings. (UX v2.1 §17) */}
+              <div className="mb-3">
                 <h2 className="font-display font-semibold text-gray-800 dark:text-gray-100 text-base">Lifetime Standings</h2>
-                <button
-                  onClick={() => setShowResetConfirm(true)}
-                  className="text-xs text-red-500 border border-red-200 dark:border-red-800 px-3 py-1.5 rounded-lg font-semibold active:bg-red-50 dark:active:bg-red-900/20"
-                >
-                  Reset Stats
-                </button>
               </div>
               <div className="space-y-2">
                 {stats.map((player, i) => (
@@ -339,15 +301,6 @@ export function Stats({ userId, onBack }: Props) {
           </>
         )}
       </div>
-      <ConfirmModal
-        open={showResetConfirm}
-        title="Reset All Stats?"
-        message="This will permanently delete all completed rounds, scores, and settlement history. Active rounds are not affected. This cannot be undone."
-        confirmLabel={resetting ? 'Resetting...' : 'Reset Everything'}
-        destructive
-        onConfirm={handleResetStats}
-        onCancel={() => setShowResetConfirm(false)}
-      />
     </div>
   )
 }
