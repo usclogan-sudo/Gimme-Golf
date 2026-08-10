@@ -8,7 +8,6 @@ import { setSentryUser, clearSentryUser } from './lib/sentry'
 import { checkAppVersion } from './lib/appVersion'
 import { SHOW_PROP_BETS } from './lib/featureFlags'
 import { NotificationToast } from './components/NotificationToast'
-import { NotificationBadge } from './components/NotificationBadge'
 import { Auth } from './components/Auth/Auth'
 import { ResetPassword } from './components/Auth/ResetPassword'
 import { FeedbackModal } from './components/FeedbackModal'
@@ -16,6 +15,8 @@ import { GuestBanner } from './components/GuestBanner/GuestBanner'
 import { ConfirmModal } from './components/ConfirmModal'
 import { UserAvatar } from './components/AvatarPicker'
 import { InstallBanner } from './components/InstallBanner'
+import { TabBar, type HomeTab } from './components/nav/TabBar'
+import { NavCard } from './components/nav/NavCard'
 import { PendingInvites } from './components/PendingInvites'
 
 // Lazy-loaded screens (not needed for initial Home render)
@@ -182,6 +183,7 @@ function Home({
   const [feedbackOpen, setFeedbackOpen] = useState(false)
   const [betaDismissed, setBetaDismissed] = useState(() => localStorage.getItem('gimme_beta_dismissed') === '1')
   const [retryKey, setRetryKey] = useState(0)
+  const [homeTab, setHomeTab] = useState<HomeTab>('play') // bottom tab nav (§9a)
 
   const guardAnon = (action: () => void) => {
     if (isAnonymous) { setShowAnonBlock(true); return }
@@ -313,7 +315,7 @@ function Home({
   }, [userId, retryKey])
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-gray-900 pb-8">
+    <div className="min-h-screen bg-slate-50 dark:bg-gray-900 pb-24">
       <header className="app-header text-white px-4 pt-5 pb-4 sticky top-0 z-10 shadow-xl">
         <div className="max-w-2xl mx-auto flex items-center justify-between gap-2">
           <div className="min-w-0">
@@ -365,6 +367,8 @@ function Home({
           <GuestBanner onUpgrade={onUpgrade} />
         )}
 
+        {/* ── PLAY tab (§9a) ── */}
+        {homeTab === 'play' && (<>
         {/* Primary CTA: Start New Round. Guests can play a real round (it persists
             under their anonymous session and upgrades in place when they create an
             account) — otherwise "Try it first" is a dead-end. The GuestBanner above
@@ -604,42 +608,29 @@ function Home({
             <span className="text-xs text-amber-600 font-semibold">Go →</span>
           </button>
         )}
+        </>)}
 
-        {/* More — secondary navigation (was in header) */}
-        <section>
-          <h2 className="font-display font-semibold text-gray-800 dark:text-gray-100 text-base mb-3">More</h2>
-          <div className="grid grid-cols-3 gap-2">
-            <button onClick={onPersonalDashboard} className={`flex flex-col items-center justify-center min-h-[68px] rounded-2xl border shadow-sm transition-colors ${(roundCount ?? 0) > 0 ? 'bg-white dark:bg-gray-800 border-gray-100 dark:border-gray-700 text-gray-700 dark:text-gray-200 active:bg-gray-50 dark:active:bg-gray-700' : 'bg-gray-50 dark:bg-gray-800/40 border-gray-100 dark:border-gray-700 text-gray-400'}`}>
-              <span className="text-xl">📈</span>
-              <span className="text-xs font-semibold mt-0.5">My Stats</span>
-            </button>
-            {(roundCount ?? 0) > 0 && (
-              <>
-                <button onClick={onRoundHistory} className="flex flex-col items-center justify-center min-h-[68px] rounded-2xl border bg-white dark:bg-gray-800 border-gray-100 dark:border-gray-700 text-gray-700 dark:text-gray-200 active:bg-gray-50 dark:active:bg-gray-700 shadow-sm transition-colors relative">
-                  <span className="text-xl">📋</span>
-                  <span className="text-xs font-semibold mt-0.5">History</span>
-                  {(notificationCount ?? 0) > 0 && <span className="absolute top-1 right-1"><NotificationBadge count={notificationCount!} /></span>}
-                </button>
-                <button onClick={onStats} className="flex flex-col items-center justify-center min-h-[68px] rounded-2xl border bg-white dark:bg-gray-800 border-gray-100 dark:border-gray-700 text-gray-700 dark:text-gray-200 active:bg-gray-50 dark:active:bg-gray-700 shadow-sm transition-colors">
-                  <span className="text-xl">📊</span>
-                  <span className="text-xs font-semibold mt-0.5">Leaderboard</span>
-                </button>
-                <button onClick={onLedger} className="flex flex-col items-center justify-center min-h-[68px] rounded-2xl border bg-white dark:bg-gray-800 border-gray-100 dark:border-gray-700 text-gray-700 dark:text-gray-200 active:bg-gray-50 dark:active:bg-gray-700 shadow-sm transition-colors">
-                  <span className="text-xl">💰</span>
-                  <span className="text-xs font-semibold mt-0.5">Ledger</span>
-                </button>
-                <button onClick={onPlayers} className="flex flex-col items-center justify-center min-h-[68px] rounded-2xl border bg-white dark:bg-gray-800 border-gray-100 dark:border-gray-700 text-gray-700 dark:text-gray-200 active:bg-gray-50 dark:active:bg-gray-700 shadow-sm transition-colors">
-                  <span className="text-xl">🏌️</span>
-                  <span className="text-xs font-semibold mt-0.5">Players</span>
-                </button>
-                <button onClick={() => guardAnon(onTournaments)} className="flex flex-col items-center justify-center min-h-[68px] rounded-2xl border bg-white dark:bg-gray-800 border-gray-100 dark:border-gray-700 text-gray-700 dark:text-gray-200 active:bg-gray-50 dark:active:bg-gray-700 shadow-sm transition-colors">
-                  <span className="text-xl">🏆</span>
-                  <span className="text-xs font-semibold mt-0.5">Tournaments</span>
-                </button>
-              </>
-            )}
+        {/* ── ROUNDS tab (§9a) — the record ── */}
+        {homeTab === 'rounds' && (
+          <div className="space-y-3">
+            <NavCard label="Round History" sublabel="Every round you've played" onClick={onRoundHistory} badge={(notificationCount ?? 0) > 0 ? String(notificationCount) : undefined} />
+            <NavCard label="Leaderboard" sublabel="Lifetime standings across your group" onClick={onStats} />
+            <NavCard label="Ledger" sublabel="Cross-round balances" onClick={onLedger} />
+            <NavCard label="Tournaments" sublabel="Multi-round competitions" onClick={() => guardAnon(onTournaments)} />
           </div>
-        </section>
+        )}
+
+        {/* ── GROUP tab (§9a) ── */}
+        {homeTab === 'group' && (
+          <div className="space-y-3">
+            <NavCard label="Players" sublabel="Everyone you've played with" onClick={onPlayers} />
+          </div>
+        )}
+
+        {/* ── YOU tab (§9a) ── */}
+        {homeTab === 'you' && (<>
+        <NavCard label="My Stats" sublabel="Scoring average, win rate, breakdowns" onClick={onPersonalDashboard} />
+
 
         {userProfile?.displayName && (
           <section>
@@ -693,6 +684,9 @@ function Home({
           )}
         </section>
 
+        <NavCard label="Settings" sublabel="Profile, payment handles, account" onClick={onSettings} />
+        <NavCard label="Sign out" onClick={onSignOut} />
+
         {/* Send Feedback — at the bottom */}
         <button
           onClick={() => setFeedbackOpen(true)}
@@ -706,9 +700,11 @@ function Home({
             </div>
           </div>
         </button>
+        </>)}
 
         <p className="text-center text-xs text-gray-400 pb-8">Gimme Golf · Beta</p>
       </main>
+      <TabBar tab={homeTab} onTab={setHomeTab} />
 
       {showAnonBlock && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-6">
