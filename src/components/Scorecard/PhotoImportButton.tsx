@@ -95,7 +95,7 @@ export function usePhotoImport({ roundId, players, snapshot, onExtracted }: UseP
               </button>
               <button
                 onClick={submitPhoto}
-                className="flex-1 h-12 bg-gray-800 text-white rounded-xl font-semibold active:bg-gray-900"
+                className="flex-1 h-12 bg-gray-800 text-white dark:bg-brass dark:text-navy rounded-xl font-semibold active:bg-gray-900"
               >
                 Use photo
               </button>
@@ -130,7 +130,7 @@ export function usePhotoImport({ roundId, players, snapshot, onExtracted }: UseP
               </button>
               <button
                 onClick={open}
-                className="flex-1 h-11 bg-gray-800 text-white rounded-xl font-semibold"
+                className="flex-1 h-11 bg-gray-800 text-white dark:bg-brass dark:text-navy rounded-xl font-semibold"
               >
                 Try again
               </button>

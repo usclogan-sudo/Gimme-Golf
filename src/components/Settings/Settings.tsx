@@ -225,7 +225,7 @@ export function Settings({ userId, email, onBack, onSignOut, isAdmin, onAdmin, i
             </div>
             <button
               onClick={onUpgrade}
-              className="w-full h-12 bg-gray-800 text-white font-bold rounded-xl active:bg-gray-900 transition-colors"
+              className="w-full h-12 bg-gray-800 text-white dark:bg-brass dark:text-navy font-bold rounded-xl active:bg-gray-900 transition-colors"
             >
               Create Account
             </button>
@@ -289,7 +289,7 @@ export function Settings({ userId, email, onBack, onSignOut, isAdmin, onAdmin, i
             <button
               onClick={handleSaveProfile}
               disabled={profileSaving}
-              className="w-full h-12 bg-gray-800 text-white font-semibold rounded-xl disabled:opacity-50 active:bg-gray-900 transition-colors"
+              className="w-full h-12 bg-gray-800 text-white dark:bg-brass dark:text-navy font-semibold rounded-xl disabled:opacity-50 active:bg-gray-900 transition-colors"
             >
               {profileSaving ? 'Saving...' : 'Save Profile'}
             </button>
@@ -372,7 +372,7 @@ export function Settings({ userId, email, onBack, onSignOut, isAdmin, onAdmin, i
             </p>
             <button
               onClick={onUpgrade}
-              className="w-full h-12 bg-gray-800 text-white font-semibold rounded-xl active:bg-gray-900 transition-colors"
+              className="w-full h-12 bg-gray-800 text-white dark:bg-brass dark:text-navy font-semibold rounded-xl active:bg-gray-900 transition-colors"
             >
               Create Account
             </button>
@@ -402,7 +402,7 @@ export function Settings({ userId, email, onBack, onSignOut, isAdmin, onAdmin, i
             <button
               onClick={handleChangePassword}
               disabled={pwSaving || !newPassword}
-              className="w-full h-12 bg-gray-800 text-white font-semibold rounded-xl disabled:opacity-50 active:bg-gray-900 transition-colors"
+              className="w-full h-12 bg-gray-800 text-white dark:bg-brass dark:text-navy font-semibold rounded-xl disabled:opacity-50 active:bg-gray-900 transition-colors"
             >
               {pwSaving ? 'Updating...' : 'Update Password'}
             </button>

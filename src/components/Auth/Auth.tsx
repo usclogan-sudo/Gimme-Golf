@@ -174,7 +174,7 @@ export function Auth({ inviteCode, sessionExpired }: AuthProps = {}) {
             <button
               onClick={handleSignIn}
               disabled={loading}
-              className="w-full h-14 bg-gray-800 text-white text-lg font-bold rounded-2xl shadow-lg disabled:opacity-60 active:bg-gray-900 transition-colors"
+              className="w-full h-14 bg-gray-800 text-white dark:bg-brass dark:text-navy text-lg font-bold rounded-2xl shadow-lg disabled:opacity-60 active:bg-gray-900 transition-colors"
             >
               {loading ? 'Loading...' : 'Sign In'}
             </button>
@@ -283,7 +283,7 @@ export function Auth({ inviteCode, sessionExpired }: AuthProps = {}) {
             <button
               onClick={handleSubmit}
               disabled={loading}
-              className="w-full h-14 bg-gray-800 text-white text-lg font-bold rounded-2xl shadow-lg disabled:opacity-60 active:bg-gray-900 transition-colors"
+              className="w-full h-14 bg-gray-800 text-white dark:bg-brass dark:text-navy text-lg font-bold rounded-2xl shadow-lg disabled:opacity-60 active:bg-gray-900 transition-colors"
             >
               {loading ? 'Loading...' : buttonLabel}
             </button>

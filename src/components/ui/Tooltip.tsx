@@ -96,7 +96,7 @@ export function Tooltip({ term, children }: TooltipProps) {
       {open && (
         <div
           ref={popoverRef}
-          className={`absolute z-50 left-1/2 -translate-x-1/2 w-56 bg-gray-800 text-white text-xs rounded-xl px-3 py-2 shadow-lg ${
+          className={`absolute z-50 left-1/2 -translate-x-1/2 w-56 bg-gray-800 text-white dark:bg-brass dark:text-navy text-xs rounded-xl px-3 py-2 shadow-lg ${
             flipBelow ? 'top-full mt-1.5' : 'bottom-full mb-1.5'
           }`}
         >

@@ -245,7 +245,7 @@ export function PlayerSetup({ userId, player, onSave, onCancel, onDelete }: Prop
           <button
             onClick={handleSave}
             disabled={saving}
-            className="w-full h-14 bg-gray-800 text-white text-lg font-bold rounded-2xl shadow-lg disabled:opacity-60 active:bg-gray-900 transition-colors"
+            className="w-full h-14 bg-gray-800 text-white dark:bg-brass dark:text-navy text-lg font-bold rounded-2xl shadow-lg disabled:opacity-60 active:bg-gray-900 transition-colors"
           >
             {saving ? 'Saving...' : 'Save Player'}
           </button>

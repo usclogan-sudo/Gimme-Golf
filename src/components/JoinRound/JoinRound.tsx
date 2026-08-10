@@ -256,7 +256,7 @@ export function JoinRound({ userId, initialCode, onJoined, onCancel }: Props) {
             <button
               onClick={() => lookupRound(code)}
               disabled={code.length !== 6 || loading}
-              className="w-full h-14 bg-gray-800 text-white text-lg font-bold rounded-2xl shadow-lg disabled:opacity-40 active:bg-gray-900 transition-colors"
+              className="w-full h-14 bg-gray-800 text-white dark:bg-brass dark:text-navy text-lg font-bold rounded-2xl shadow-lg disabled:opacity-40 active:bg-gray-900 transition-colors"
             >
               {loading ? 'Looking up...' : 'Find Round'}
             </button>
@@ -420,7 +420,7 @@ export function JoinRound({ userId, initialCode, onJoined, onCancel }: Props) {
 
                 <button
                   onClick={() => onJoined(eventPreview.roundId)}
-                  className="w-full h-14 bg-gray-800 text-white text-lg font-bold rounded-2xl shadow-lg active:bg-gray-900 transition-colors"
+                  className="w-full h-14 bg-gray-800 text-white dark:bg-brass dark:text-navy text-lg font-bold rounded-2xl shadow-lg active:bg-gray-900 transition-colors"
                 >
                   Start Scoring →
                 </button>

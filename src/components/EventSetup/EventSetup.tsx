@@ -367,7 +367,7 @@ export function EventSetup({ userId, onStart, onCancel, onAddCourse }: Props) {
             <button
               onClick={() => setStep('course')}
               disabled={!eventName.trim()}
-              className="w-full h-14 bg-gray-800 text-white text-lg font-bold rounded-2xl disabled:opacity-40 active:bg-gray-900"
+              className="w-full h-14 bg-gray-800 text-white dark:bg-brass dark:text-navy text-lg font-bold rounded-2xl disabled:opacity-40 active:bg-gray-900"
             >
               Next: Pick Course →
             </button>
@@ -467,7 +467,7 @@ export function EventSetup({ userId, onStart, onCancel, onAddCourse }: Props) {
             <button
               onClick={quickAddPlayer}
               disabled={!quickAddName.trim()}
-              className="h-11 px-4 bg-gray-800 text-white text-sm font-bold rounded-xl disabled:opacity-40"
+              className="h-11 px-4 bg-gray-800 text-white dark:bg-brass dark:text-navy text-sm font-bold rounded-xl disabled:opacity-40"
             >
               + Add
             </button>
@@ -499,7 +499,7 @@ export function EventSetup({ userId, onStart, onCancel, onAddCourse }: Props) {
             <button
               onClick={() => setStep('groups')}
               disabled={selectedPlayers.length < 2}
-              className="w-full h-14 bg-gray-800 text-white text-lg font-bold rounded-2xl disabled:opacity-40 active:bg-gray-900"
+              className="w-full h-14 bg-gray-800 text-white dark:bg-brass dark:text-navy text-lg font-bold rounded-2xl disabled:opacity-40 active:bg-gray-900"
             >
               Next: Assign Groups ({selectedPlayers.length} players) →
             </button>
@@ -697,7 +697,7 @@ export function EventSetup({ userId, onStart, onCancel, onAddCourse }: Props) {
                 setGroupError(null)
                 setStep('game')
               }}
-              className="w-full h-14 bg-gray-800 text-white text-lg font-bold rounded-2xl active:bg-gray-900"
+              className="w-full h-14 bg-gray-800 text-white dark:bg-brass dark:text-navy text-lg font-bold rounded-2xl active:bg-gray-900"
             >
               Next: Game Setup →
             </button>
@@ -852,7 +852,7 @@ export function EventSetup({ userId, onStart, onCancel, onAddCourse }: Props) {
             <button
               onClick={() => setStep('review')}
               disabled={!treasurerId}
-              className="w-full h-14 bg-gray-800 text-white text-lg font-bold rounded-2xl disabled:opacity-40 active:bg-gray-900"
+              className="w-full h-14 bg-gray-800 text-white dark:bg-brass dark:text-navy text-lg font-bold rounded-2xl disabled:opacity-40 active:bg-gray-900"
             >
               Next: Review →
             </button>
@@ -936,7 +936,7 @@ export function EventSetup({ userId, onStart, onCancel, onAddCourse }: Props) {
           <div className="max-w-2xl mx-auto">
             <button
               onClick={() => onStart(createdRoundId, createdEventId)}
-              className="w-full h-14 bg-gray-800 text-white text-lg font-bold rounded-2xl active:bg-gray-900"
+              className="w-full h-14 bg-gray-800 text-white dark:bg-brass dark:text-navy text-lg font-bold rounded-2xl active:bg-gray-900"
             >
               Start Scoring →
             </button>

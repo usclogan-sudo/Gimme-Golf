@@ -39,7 +39,7 @@ export function ConfirmModal({
             className={`flex-1 h-12 font-semibold rounded-xl transition-colors ${
               destructive
                 ? 'bg-red-600 text-white active:bg-red-700'
-                : 'bg-gray-800 text-white active:bg-gray-900'
+                : 'bg-gray-800 text-white dark:bg-brass dark:text-navy active:bg-gray-900'
             }`}
           >
             {confirmLabel}

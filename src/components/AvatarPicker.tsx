@@ -111,7 +111,7 @@ export function AvatarPicker({ currentPreset, userId, onSelect, onUpload, onClos
           <button
             onClick={() => { if (selected) onSelect(selected); onClose() }}
             disabled={!selected}
-            className="flex-1 h-12 bg-gray-800 text-white font-semibold rounded-xl disabled:opacity-50 active:bg-gray-900 transition-colors"
+            className="flex-1 h-12 bg-gray-800 text-white dark:bg-brass dark:text-navy font-semibold rounded-xl disabled:opacity-50 active:bg-gray-900 transition-colors"
           >
             Save
           </button>

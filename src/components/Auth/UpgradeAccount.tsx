@@ -116,7 +116,7 @@ export function UpgradeAccount({ onComplete, onCancel }: Props) {
             <button
               onClick={handleUpgrade}
               disabled={loading}
-              className="w-full h-14 bg-gray-800 text-white text-lg font-bold rounded-2xl shadow-lg disabled:opacity-60 active:bg-gray-900 transition-colors"
+              className="w-full h-14 bg-gray-800 text-white dark:bg-brass dark:text-navy text-lg font-bold rounded-2xl shadow-lg disabled:opacity-60 active:bg-gray-900 transition-colors"
             >
               {loading ? 'Loading...' : 'Create Account'}
             </button>

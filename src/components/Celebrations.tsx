@@ -38,7 +38,7 @@ export function CelebrationToast({ config, playerName, onDone }: ToastProps) {
 
   return (
     <div className={`fixed top-4 left-4 right-4 z-50 transition-all duration-300 ${visible ? 'translate-y-0 opacity-100' : '-translate-y-4 opacity-0'}`}>
-      <div className="max-w-md mx-auto bg-gray-800 text-white rounded-2xl shadow-xl px-5 py-3 flex items-center gap-3">
+      <div className="max-w-md mx-auto bg-gray-800 text-white dark:bg-brass dark:text-navy rounded-2xl shadow-xl px-5 py-3 flex items-center gap-3">
         <span className="text-2xl">{config.emoji}</span>
         <div>
           <p className="font-display font-bold">{playerName} — {config.title}</p>

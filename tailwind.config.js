@@ -12,6 +12,15 @@ export default {
         cream: '#F2ECDD',
         brass: '#C2A24C',
         slate: { brand: '#2E4257' },
+        // Surface grays read from CSS vars so dark mode can become brand-navy without
+        // editing 400 call sites. Tailwind defaults in light; navy shades under .dark.
+        // (UX v2.1 §14, Option A — see index.css :root / .dark)
+        gray: {
+          600: 'rgb(var(--gray-600) / <alpha-value>)',
+          700: 'rgb(var(--gray-700) / <alpha-value>)',
+          800: 'rgb(var(--gray-800) / <alpha-value>)',
+          900: 'rgb(var(--gray-900) / <alpha-value>)',
+        },
         forest: {
           50:  '#f0faf3',
           100: '#d8f0de',

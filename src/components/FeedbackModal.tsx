@@ -61,7 +61,7 @@ export function FeedbackModal({ userId, defaultEmail, onClose }: Props) {
             <p className="text-gray-600 dark:text-gray-300 text-sm">We read every one. If you left an email and it needs a reply, we'll be in touch.</p>
             <button
               onClick={onClose}
-              className="w-full h-12 bg-gray-800 text-white font-bold rounded-xl active:bg-gray-900 transition-colors"
+              className="w-full h-12 bg-gray-800 text-white dark:bg-brass dark:text-navy font-bold rounded-xl active:bg-gray-900 transition-colors"
             >
               Done
             </button>
@@ -79,7 +79,7 @@ export function FeedbackModal({ userId, defaultEmail, onClose }: Props) {
                     onClick={() => setCategory(c.key)}
                     className={`h-12 rounded-xl text-sm font-semibold transition-colors flex items-center justify-center gap-2 ${
                       category === c.key
-                        ? 'bg-gray-800 text-white'
+                        ? 'bg-gray-800 text-white dark:bg-brass dark:text-navy'
                         : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200'
                     }`}
                   >
@@ -132,7 +132,7 @@ export function FeedbackModal({ userId, defaultEmail, onClose }: Props) {
             <button
               onClick={handleSend}
               disabled={sending || !message.trim()}
-              className="w-full h-14 bg-gray-800 text-white text-lg font-bold rounded-2xl shadow-lg disabled:opacity-40 active:bg-gray-900 transition-colors"
+              className="w-full h-14 bg-gray-800 text-white dark:bg-brass dark:text-navy text-lg font-bold rounded-2xl shadow-lg disabled:opacity-40 active:bg-gray-900 transition-colors"
             >
               {sending ? 'Sending…' : 'Send'}
             </button>

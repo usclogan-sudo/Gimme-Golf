@@ -521,7 +521,7 @@ export function LeaderboardTab({
         <button
           onClick={onShareStandings}
           disabled={sharing}
-          className="mt-4 w-full h-12 bg-navy text-cream font-bold rounded-2xl active:opacity-90 transition disabled:opacity-50 flex items-center justify-center gap-2"
+          className="mt-4 w-full h-12 bg-navy text-cream dark:bg-brass dark:text-navy font-bold rounded-2xl active:opacity-90 transition disabled:opacity-50 flex items-center justify-center gap-2"
         >
           {sharing && (
             <span className="inline-block w-5 h-5 border-2 border-cream/30 border-t-cream rounded-full animate-spin" />

@@ -1594,7 +1594,7 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
           <button
             onClick={() => setScoreTab('scores')}
             className={`flex-1 py-2 rounded-lg text-sm font-semibold transition-colors ${
-              scoreTab === 'scores' ? 'bg-gray-800 text-white' : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300'
+              scoreTab === 'scores' ? 'bg-gray-800 text-white dark:bg-brass dark:text-navy' : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300'
             }`}
           >
             Scores
@@ -1602,7 +1602,7 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
           <button
             onClick={() => setScoreTab('leaderboard')}
             className={`flex-1 py-2 rounded-lg text-sm font-semibold transition-colors ${
-              scoreTab === 'leaderboard' ? 'bg-gray-800 text-white' : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300'
+              scoreTab === 'leaderboard' ? 'bg-gray-800 text-white dark:bg-brass dark:text-navy' : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300'
             }`}
           >
             Leaderboard
@@ -1920,7 +1920,7 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
                   key={gn}
                   onClick={() => setActiveGroupTab(gn)}
                   className={`px-4 py-1.5 rounded-lg text-sm font-semibold transition-colors flex-shrink-0 ${
-                    activeGroupTab === gn ? 'bg-gray-800 text-white' : 'bg-gray-100 text-gray-600'
+                    activeGroupTab === gn ? 'bg-gray-800 text-white dark:bg-brass dark:text-navy' : 'bg-gray-100 text-gray-600'
                   }`}
                 >
                   Group {gn}
@@ -1929,7 +1929,7 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
               <button
                 onClick={() => setActiveGroupTab('all')}
                 className={`px-4 py-1.5 rounded-lg text-sm font-semibold transition-colors flex-shrink-0 ${
-                  activeGroupTab === 'all' ? 'bg-gray-800 text-white' : 'bg-gray-100 text-gray-600'
+                  activeGroupTab === 'all' ? 'bg-gray-800 text-white dark:bg-brass dark:text-navy' : 'bg-gray-100 text-gray-600'
                 }`}
               >
                 All
@@ -2417,7 +2417,7 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
           <button
             onClick={() => setShowBatchEntry(!showBatchEntry)}
             className={`w-full py-2.5 rounded-xl text-sm font-semibold transition-colors ${
-              showBatchEntry ? 'bg-navy text-cream' : 'bg-white dark:bg-gray-800 border border-navy/20 text-navy dark:text-cream'
+              showBatchEntry ? 'bg-navy text-cream dark:bg-brass dark:text-navy' : 'bg-white dark:bg-gray-800 border border-navy/20 text-navy dark:text-cream'
             }`}
           >
             {showBatchEntry ? '← Standard Entry' : '⊞ Batch Entry'}
@@ -2537,7 +2537,7 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
               </div>
               <button
                 onClick={saveBatch}
-                className="w-full h-12 bg-navy text-cream font-bold rounded-xl active:opacity-90 text-sm"
+                className="w-full h-12 bg-navy text-cream dark:bg-brass dark:text-navy font-bold rounded-xl active:opacity-90 text-sm"
               >
                 Save All Scores
               </button>
@@ -2637,7 +2637,7 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
                           PENDING
                         </button>
                         {pendingPopover && (
-                          <div className="absolute z-50 left-1/2 -translate-x-1/2 top-full mt-1.5 w-56 bg-gray-800 text-white text-xs rounded-xl px-3 py-2 shadow-lg">
+                          <div className="absolute z-50 left-1/2 -translate-x-1/2 top-full mt-1.5 w-56 bg-gray-800 text-white dark:bg-brass dark:text-navy text-xs rounded-xl px-3 py-2 shadow-lg">
                             <p className="font-bold mb-0.5">Pending Score</p>
                             <p className="text-gray-300 leading-relaxed">Your score is awaiting approval from your group's scorekeeper</p>
                             <div className="absolute bottom-full left-1/2 -translate-x-1/2 w-0 h-0 border-l-[6px] border-r-[6px] border-b-[6px] border-transparent border-b-gray-800" />
@@ -2688,7 +2688,7 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
                           PENDING
                         </button>
                         {pendingPopover && (
-                          <div className="absolute z-50 left-1/2 -translate-x-1/2 top-full mt-1.5 w-56 bg-gray-800 text-white text-xs rounded-xl px-3 py-2 shadow-lg">
+                          <div className="absolute z-50 left-1/2 -translate-x-1/2 top-full mt-1.5 w-56 bg-gray-800 text-white dark:bg-brass dark:text-navy text-xs rounded-xl px-3 py-2 shadow-lg">
                             <p className="font-bold mb-0.5">Pending Score</p>
                             <p className="text-gray-300 leading-relaxed">Your score is awaiting approval from your group's scorekeeper</p>
                             <div className="absolute bottom-full left-1/2 -translate-x-1/2 w-0 h-0 border-l-[6px] border-r-[6px] border-b-[6px] border-transparent border-b-gray-800" />
@@ -2868,7 +2868,7 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
               goToHole(playableHoleNums[nextIdx])
             }
           }}
-            className="w-full h-14 bg-gray-800 text-white text-lg font-bold rounded-2xl active:bg-gray-900 transition-colors shadow-lg">Next Hole →</button>
+            className="w-full h-14 bg-gray-800 text-white dark:bg-brass dark:text-navy text-lg font-bold rounded-2xl active:bg-gray-900 transition-colors shadow-lg">Next Hole →</button>
         ) : readOnly ? (
           <button onClick={onHome}
             className="w-full h-14 bg-gray-600 text-white text-lg font-bold rounded-2xl active:bg-gray-700 transition-colors shadow-lg">Back to Home</button>
@@ -2882,7 +2882,7 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
       {/* Invite toast */}
       {inviteToast && (
         <div className="fixed top-20 inset-x-0 z-50 flex justify-center pointer-events-none">
-          <div className="bg-gray-800 text-white px-4 py-2 rounded-xl shadow-lg text-sm font-semibold">
+          <div className="bg-gray-800 text-white dark:bg-brass dark:text-navy px-4 py-2 rounded-xl shadow-lg text-sm font-semibold">
             {inviteToast}
           </div>
         </div>
