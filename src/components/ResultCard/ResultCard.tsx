@@ -201,7 +201,7 @@ export const ResultCard = forwardRef<HTMLDivElement, ResultCardProps>(function R
 
   const eyebrowFormats = formatFormats(round.formats)
   const eyebrowLine1 = [round.courseName, eyebrowFormats].filter(Boolean).join(' · ').toUpperCase()
-  const eyebrowLine2 = `${dateStr} · ${round.holesPlayed} HOLES`.toUpperCase()
+  const eyebrowLine2 = `${dateStr} · ${round.holesPlayed} ${round.holesPlayed === 1 ? 'HOLE' : 'HOLES'}`.toUpperCase()
 
   // ── Style fragments ─────────────────────────────────────────────────────────
   const hairline = (key?: string) => (
