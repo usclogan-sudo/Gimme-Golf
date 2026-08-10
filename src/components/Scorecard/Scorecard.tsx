@@ -2912,6 +2912,7 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
           roundId={roundId}
           currentUserId={userId}
           existingPlayerIds={players.map((p: any) => p.id)}
+          startHole={currentHole}
           onClose={() => setShowInviteModal(false)}
           onInvited={name => {
             setInviteToast(`Invited ${name}`); setTimeout(() => setInviteToast(null), 3000)

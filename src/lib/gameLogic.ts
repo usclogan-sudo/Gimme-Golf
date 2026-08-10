@@ -186,6 +186,92 @@ export function calculateSkins(
   return { skinsWon, holeResults, totalSkins, pendingCarry }
 }
 
+/**
+ * Round a map of ×divisor-scaled integers to integer cents that STILL sum to zero.
+ * Largest-remainder method: truncate toward zero, then hand the residual ±1s to the
+ * entries with the most extreme fractional parts. Used so Option-A Skins nets stay
+ * exactly zero-sum after the ÷totalHoles proration.
+ */
+function divideZeroSum(scaled: Record<string, number>, divisor: number): Record<string, number> {
+  const ids = Object.keys(scaled)
+  const out: Record<string, number> = {}
+  const frac: Array<{ id: string; f: number }> = []
+  let sum = 0
+  for (const id of ids) {
+    const v = scaled[id] / divisor
+    const b = Math.trunc(v)
+    out[id] = b
+    sum += b
+    frac.push({ id, f: v - b })
+  }
+  let residual = -sum // ±1s needed to reach a zero sum
+  if (residual > 0) {
+    frac.sort((a, b) => b.f - a.f)
+    for (let i = 0; i < residual && i < frac.length; i++) out[frac[i].id] += 1
+  } else if (residual < 0) {
+    frac.sort((a, b) => a.f - b.f)
+    for (let i = 0; i < -residual && i < frac.length; i++) out[frac[i].id] -= 1
+  }
+  return out
+}
+
+/**
+ * Signed net cents per player for Skins with a MID-ROUND ROSTER (Option A —
+ * "you're in the bets from the hole you joined"). Each hole's skin is valued at
+ * `buyIn × (players active that hole) ÷ totalHoles` and funded equally by exactly
+ * those active players, so a late joiner only funds — and can only win — holes on or
+ * after their startHole; earlier skins keep their original (smaller) value.
+ *
+ * Returns net = winnings − prorated ante, summing to zero. For a CONSTANT roster on
+ * a fully-resolved, press-free round this reduces exactly to the pot model
+ * (calculateSkinsPayouts + netFromPayouts) — but callers should only use this when a
+ * joiner is actually present and keep the pot path otherwise (see SettleUp).
+ *
+ * `startHoles`: playerId → the hole they joined (absent ⇒ round start, i.e. 1).
+ */
+export function calculateSkinsNet(
+  result: SkinsResult,
+  game: Game,
+  players: Player[],
+  startHoles: Record<string, number>,
+): Record<string, number> {
+  const presses: Press[] = (game.config as SkinsConfig).presses ?? []
+  const buyIn = game.buyInCents
+  const totalHoles = result.holeResults.length || 18
+  const startOf = (id: string) => startHoles[id] ?? 1
+  const pressMult = (h: number) => Math.pow(2, presses.filter(p => p.holeNumber <= h).length)
+
+  // Holes after the last WON hole are an unresolved trailing carry — nobody is
+  // charged for them (mirrors the pot model paying nothing when a skin never
+  // resolves), so their entries are effectively returned.
+  let lastWon = 0
+  for (const hr of result.holeResults) if (hr.winnerId) lastWon = Math.max(lastWon, hr.holeNumber)
+  const zero: Record<string, number> = {}
+  players.forEach(p => (zero[p.id] = 0))
+  if (lastWon === 0) return zero
+
+  const winningsS: Record<string, number> = { ...zero }
+  const anteS: Record<string, number> = { ...zero }
+  let carryS = 0
+  for (const hr of result.holeResults) {
+    if (hr.holeNumber > lastWon) break
+    const active = players.filter(p => startOf(p.id) <= hr.holeNumber)
+    const mult = pressMult(hr.holeNumber)
+    const holeValueS = buyIn * active.length * mult // = holeValue × totalHoles
+    for (const p of active) anteS[p.id] += buyIn * mult // equal share of the hole
+    if (hr.winnerId) {
+      winningsS[hr.winnerId] += carryS + holeValueS
+      carryS = 0
+    } else {
+      carryS += holeValueS
+    }
+  }
+
+  const netS: Record<string, number> = {}
+  players.forEach(p => (netS[p.id] = winningsS[p.id] - anteS[p.id]))
+  return divideZeroSum(netS, totalHoles)
+}
+
 // ─── Best Ball ────────────────────────────────────────────────────────────────
 
 export interface HoleBestBallResult {

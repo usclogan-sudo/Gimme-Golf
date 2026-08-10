@@ -20,6 +20,7 @@ import {
   calculateQuota,
   calculateJunks,
   calculateSkinsPayouts,
+  calculateSkinsNet,
   calculateBBBPayouts,
   calculateWolfPayouts,
   calculateNassau,
@@ -318,6 +319,57 @@ describe('calculateQuota', () => {
     // netPoints = gross stableford − quota target
     expect(result.netPoints['p1']).toBe(0)
     expect(result.netPoints['p2']).toBe(18)
+  })
+})
+
+// ─── Skins: mid-round roster (Option A) ─────────────────────────────────────────
+
+describe('calculateSkinsNet (mid-round join, Option A)', () => {
+  const three = [players[0], players[1], players[2]] // p1, p2, p3
+  const cfg = { mode: 'gross' as const, carryovers: true }
+  const game = { id: 'g', type: 'skins', buyInCents: 300, config: cfg } as unknown as Game
+  const hcps = { p1: 0, p2: 0, p3: 0 }
+
+  it('constant roster (no join) reduces EXACTLY to the pot model', () => {
+    // p1 birdies every hole → wins all 18 skins outright; p2/p3 present all round.
+    const scores: HoleScore[] = []
+    for (let h = 1; h <= 18; h++) { scores.push(hs('p1', h, 3)); scores.push(hs('p2', h, 5)); scores.push(hs('p3', h, 5)) }
+    const result = calculateSkins(three, scores, snapshot, cfg, hcps)
+    const potNet = netFromPayouts(calculateSkinsPayouts(result, game, 3), three, 300)
+    const net = calculateSkinsNet(result, game, three, {}) // no startHoles ⇒ all from hole 1
+    expect(net).toEqual(potNet)
+    expect(net.p1).toBe(600); expect(net.p2).toBe(-300); expect(net.p3).toBe(-300)
+    expect(net.p1 + net.p2 + net.p3).toBe(0)
+  })
+
+  it('a late joiner funds only holes from their start; earlier skins are NOT diluted', () => {
+    // p3 joins at hole 5 (no scores holes 1–4). p1 wins every hole.
+    const scores: HoleScore[] = []
+    for (let h = 1; h <= 18; h++) {
+      scores.push(hs('p1', h, 3)); scores.push(hs('p2', h, 5))
+      if (h >= 5) scores.push(hs('p3', h, 5))
+    }
+    const result = calculateSkins(three, scores, snapshot, cfg, hcps)
+    const net = calculateSkinsNet(result, game, three, { p3: 5 })
+    // Zero-sum preserved.
+    expect(net.p1 + net.p2 + net.p3).toBe(0)
+    // p2 played all 18 and won nothing → pays the full buy-in (300). Proration keeps a
+    // full-round participant's ante at exactly buyIn.
+    expect(net.p2).toBe(-300)
+    // p3 joined at hole 5 → funds only 14 of 18 holes → pays LESS than a full-round
+    // loser: 14/18 × 300 = 233.  (Undiluted earlier holes are why p1 doesn't collect more.)
+    expect(net.p3).toBe(-233)
+    expect(net.p3).toBeGreaterThan(net.p2) // joiner paid less than the full-round loser
+    expect(net.p1).toBe(533)
+  })
+
+  it('all holes carry then tie on 18 (never resolved) → everyone net zero (entries returned)', () => {
+    // All three tie every hole → no skin ever won.
+    const scores: HoleScore[] = []
+    for (let h = 1; h <= 18; h++) { scores.push(hs('p1', h, 4)); scores.push(hs('p2', h, 4)); scores.push(hs('p3', h, 4)) }
+    const result = calculateSkins(three, scores, snapshot, cfg, hcps)
+    const net = calculateSkinsNet(result, game, three, { p3: 5 })
+    expect(net.p1).toBe(0); expect(net.p2).toBe(0); expect(net.p3).toBe(0)
   })
 })
 

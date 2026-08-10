@@ -327,6 +327,8 @@ export interface RoundPlayer {
   teePlayed: string
   courseHandicap?: number
   playingHandicap?: number
+  /** Hole this player joined at (mid-round add). Absent ⇒ joined at the round start. */
+  startHole?: number
 }
 
 export interface HoleScore {

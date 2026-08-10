@@ -73,6 +73,7 @@ export function rowToRoundPlayer(row: any): RoundPlayer {
     teePlayed: row.tee_played,
     courseHandicap: row.course_handicap ?? undefined,
     playingHandicap: row.playing_handicap ?? undefined,
+    startHole: row.start_hole ?? undefined,
   }
 }
 
@@ -175,6 +176,7 @@ export function roundPlayerToRow(rp: RoundPlayer, userId: string) {
     tee_played: rp.teePlayed,
     course_handicap: rp.courseHandicap ?? null,
     playing_handicap: rp.playingHandicap ?? null,
+    start_hole: rp.startHole ?? null,
   }
 }
 

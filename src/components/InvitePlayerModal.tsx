@@ -10,6 +10,9 @@ interface Props {
   currentUserId: string
   /** player_ids already in the roster (to hide from the picker) */
   existingPlayerIds: string[]
+  /** Current hole — when adding mid-round, stamps the new player's start_hole so the
+   *  settlement prorates their ante (Option A). Omit / 1 for a not-yet-started round. */
+  startHole?: number
   onClose: () => void
   onInvited?: (name: string) => void
 }
@@ -20,7 +23,7 @@ interface Props {
  * Registered users' player_id equals their auth uuid, so we pass userId for both
  * p_user_id and p_player_id.
  */
-export function InvitePlayerModal({ roundId, eventId, currentUserId, existingPlayerIds, onClose, onInvited }: Props) {
+export function InvitePlayerModal({ roundId, eventId, currentUserId, existingPlayerIds, startHole, onClose, onInvited }: Props) {
   const [users, setUsers] = useState<UserProfile[]>([])
   const [search, setSearch] = useState('')
   const [busy, setBusy] = useState<string | null>(null)
@@ -50,6 +53,14 @@ export function InvitePlayerModal({ roundId, eventId, currentUserId, existingPla
       reportSupabaseError(error, eventId ? 'invite_to_event' : 'invite_to_round', { roundId, eventId, invitee: u.userId })
       setMsg(error.message || 'Could not send invite.')
       return
+    }
+    // Mid-round add: stamp the new player's start hole so the settlement prorates
+    // their ante (Option A). The host owns round_players rows, so this update is
+    // allowed by RLS. Only meaningful past hole 1; harmless otherwise.
+    if (roundId && startHole && startHole > 1) {
+      const { error: shErr } = await supabase.from('round_players')
+        .update({ start_hole: startHole }).eq('round_id', roundId).eq('player_id', u.userId)
+      if (shErr) reportSupabaseError(shErr, 'set_start_hole', { roundId, invitee: u.userId, startHole })
     }
     setInvited(prev => new Set(prev).add(u.userId))
     setMsg(`Invited ${u.displayName}`)
