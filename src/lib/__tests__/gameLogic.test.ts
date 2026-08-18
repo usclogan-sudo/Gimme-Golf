@@ -14,6 +14,8 @@ import type {
 import {
   calcCourseHandicap,
   strokesOnHole,
+  parseHandicap,
+  fmtHandicap,
   buildCourseHandicaps,
   calculateSkins,
   calculateStableford,
@@ -97,6 +99,53 @@ describe('strokesOnHole', () => {
   it('returns 2 when courseHcp >= 18 + strokeIndex (two strokes)', () => {
     expect(strokesOnHole(28, 10)).toBe(2)
     expect(strokesOnHole(36, 1)).toBe(2)
+  })
+
+  it('PLUS handicap gives strokes back on the easiest holes (highest SI)', () => {
+    // A +4 (courseHcp −4) plays +1 to par on the four highest-SI holes (15–18).
+    expect(strokesOnHole(-4, 18)).toBe(-1)
+    expect(strokesOnHole(-4, 15)).toBe(-1)
+    expect(strokesOnHole(-4, 14)).toBe(0) // 14th-hardest is spared
+    expect(strokesOnHole(-4, 1)).toBe(0)  // never on the hardest holes
+  })
+
+  it('PLUS +1 gives a stroke back only on the single easiest hole (SI 18)', () => {
+    expect(strokesOnHole(-1, 18)).toBe(-1)
+    expect(strokesOnHole(-1, 17)).toBe(0)
+  })
+})
+
+describe('parseHandicap', () => {
+  it('reads a plus handicap ("+4") as a negative index', () => {
+    expect(parseHandicap('+4')).toBe(-4)
+    expect(parseHandicap('+2.3')).toBe(-2.3)
+  })
+  it('reads a normal handicap as positive', () => {
+    expect(parseHandicap('12.4')).toBe(12.4)
+    expect(parseHandicap('0')).toBe(0)
+  })
+  it('accepts a leading minus as a plus handicap too', () => {
+    expect(parseHandicap('-4')).toBe(-4)
+  })
+  it('returns null for blank, non-numeric input', () => {
+    expect(parseHandicap('')).toBeNull()
+    expect(parseHandicap('  ')).toBeNull()
+    expect(parseHandicap('abc')).toBeNull()
+  })
+})
+
+describe('fmtHandicap', () => {
+  it('shows a plus handicap in "+N" golf notation', () => {
+    expect(fmtHandicap(-4)).toBe('+4')
+    expect(fmtHandicap(-2.3)).toBe('+2.3')
+  })
+  it('shows a normal handicap as-is', () => {
+    expect(fmtHandicap(12.4)).toBe('12.4')
+    expect(fmtHandicap(0)).toBe('0')
+  })
+  it('shows an em dash for null/undefined', () => {
+    expect(fmtHandicap(null)).toBe('—')
+    expect(fmtHandicap(undefined)).toBe('—')
   })
 })
 

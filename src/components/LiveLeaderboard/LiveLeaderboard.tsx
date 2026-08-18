@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { makePlayableSnapshot } from '../../lib/holeUtils'
+import { fmtHandicap } from '../../lib/gameLogic'
 import type { CourseSnapshot, Player, RoundPlayer, HoleScore, Game, HolesMode } from '../../types'
 
 interface Props {
@@ -263,7 +264,7 @@ export function LiveLeaderboard({ inviteCode, onBack }: Props) {
                       <p className={`text-sm font-semibold ${isLeader ? 'text-amber-700' : 'text-gray-800 dark:text-gray-100'}`}>
                         {entry.player.name}
                       </p>
-                      <p className="text-[10px] text-gray-400">HCP {entry.player.handicapIndex}</p>
+                      <p className="text-[10px] text-gray-400">HCP {fmtHandicap(entry.player.handicapIndex)}</p>
                     </td>
                     <td className="py-3 px-2 text-center text-sm text-gray-600 dark:text-gray-400">{entry.holesScored || '—'}</td>
                     <td className={`py-3 px-2 text-center text-sm font-bold ${toParColor}`}>{toParStr}</td>
