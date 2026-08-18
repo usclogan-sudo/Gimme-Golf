@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { v4 as uuidv4 } from 'uuid'
 import { supabase, playerToRow } from '../../lib/supabase'
+import { parseHandicap, fmtHandicap } from '../../lib/gameLogic'
 import type { Player } from '../../types'
 
 interface Props {
@@ -14,7 +15,7 @@ interface Props {
 export function PlayerSetup({ userId, player, onSave, onCancel, onDelete }: Props) {
   const [name, setName] = useState(player?.name ?? '')
   const [handicapIndex, setHandicapIndex] = useState(
-    player !== undefined ? String(player.handicapIndex) : '',
+    player !== undefined ? fmtHandicap(player.handicapIndex) : '',
   )
   const [tee, setTee] = useState(player?.tee ?? 'White')
   const [ghin, setGhin] = useState(player?.ghinNumber ?? '')
@@ -30,9 +31,9 @@ export function PlayerSetup({ userId, player, onSave, onCancel, onDelete }: Prop
     const errs: Record<string, string> = {}
     if (!name.trim()) errs.name = 'Name is required'
     if (name.trim().length > 64) errs.name = 'Name must be 64 characters or fewer'
-    const hcp = handicapIndex === '' ? 0 : parseFloat(handicapIndex)
-    if (isNaN(hcp) || hcp < -10 || hcp > 54) {
-      errs.handicap = 'Must be between -10 and 54'
+    const hcp = handicapIndex.trim() === '' ? 0 : parseHandicap(handicapIndex)
+    if (hcp === null || hcp < -10 || hcp > 54) {
+      errs.handicap = 'Must be between +10 and 54 (e.g. 12 or +4)'
     }
     if (ghin.trim() && !/^\d+$/.test(ghin.trim())) {
       errs.ghin = 'Must be numeric'
@@ -48,7 +49,7 @@ export function PlayerSetup({ userId, player, onSave, onCancel, onDelete }: Prop
       const p: Player = {
         id: player?.id ?? uuidv4(),
         name: name.trim(),
-        handicapIndex: parseFloat(handicapIndex),
+        handicapIndex: handicapIndex.trim() === '' ? 0 : (parseHandicap(handicapIndex) ?? 0),
         tee: tee.trim() || 'White',
         ghinNumber: ghin.trim(),
         isPublic,
@@ -109,12 +110,9 @@ export function PlayerSetup({ userId, player, onSave, onCancel, onDelete }: Prop
                 Handicap Index
               </label>
               <input
-                type="number"
-                inputMode="decimal"
-                step="0.1"
-                min="-10"
-                max="54"
-                placeholder="e.g. 12.4 (optional)"
+                type="text"
+                inputMode="text"
+                placeholder="e.g. 12.4 or +4 (optional)"
                 value={handicapIndex}
                 onChange={e => setHandicapIndex(e.target.value)}
                 className={`w-full h-12 px-4 rounded-xl border text-base focus:outline-none focus:ring-2 focus:ring-amber-500 ${

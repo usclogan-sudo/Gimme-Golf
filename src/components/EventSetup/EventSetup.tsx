@@ -5,7 +5,7 @@ import { safeWrite } from '../../lib/safeWrite'
 import { reportSupabaseError } from '../../lib/sentry'
 // Events store buy-in in cents (money mode); fmtAmount with no stakesMode
 // converts cents -> points for display (1 pt = $1), so no $ surfaces.
-import { fmtAmount } from '../../lib/gameLogic'
+import { fmtAmount, fmtHandicap } from '../../lib/gameLogic'
 import { autoAssignGroups, autoAssignShotgunStarts, MAX_PER_GROUP } from '../../lib/eventUtils'
 import { parseDollarsToCents } from '../../lib/money'
 import { venturaCourses } from '../../data/venturaCourses'
@@ -490,7 +490,7 @@ export function EventSetup({ userId, onStart, onCancel, onAddCourse }: Props) {
               className="w-full text-left px-4 py-3 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl active:bg-gray-50"
             >
               <p className="font-semibold text-gray-900 dark:text-gray-100">{p.name}</p>
-              <p className="text-xs text-gray-500">HCP {p.handicapIndex} · {p.tee}</p>
+              <p className="text-xs text-gray-500">HCP {fmtHandicap(p.handicapIndex)} · {p.tee}</p>
             </button>
           ))}
         </div>
@@ -591,7 +591,7 @@ export function EventSetup({ userId, onStart, onCancel, onAddCourse }: Props) {
                           <span className="ml-2 text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-200 text-amber-700">SK</span>
                         )}
                       </p>
-                      <p className="text-xs text-gray-500">HCP {player.handicapIndex}</p>
+                      <p className="text-xs text-gray-500">HCP {fmtHandicap(player.handicapIndex)}</p>
                     </div>
                     <div className="flex gap-1">
                       {groupNumbers.map(targetGn => (

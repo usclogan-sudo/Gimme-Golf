@@ -4,6 +4,7 @@ import { supabase, rowToCourse, tournamentToRow, tournamentMatchupToRow } from '
 import { safeWrite } from '../../lib/safeWrite'
 import { generateBracket } from '../../lib/tournamentLogic'
 import { parseDollarsToCents } from '../../lib/money'
+import { fmtHandicap } from '../../lib/gameLogic'
 import type { Course, Tournament, TournamentFormat, Player } from '../../types'
 
 interface Props {
@@ -187,7 +188,7 @@ export function TournamentSetup({ userId, onCreated, onCancel }: Props) {
                     >
                       <div className="text-left">
                         <p className={`font-semibold text-sm ${selected ? 'text-forest-800 dark:text-forest-300' : 'text-gray-800 dark:text-gray-200'}`}>{p.name}</p>
-                        <p className="text-xs text-gray-500 dark:text-gray-400">HCP {p.handicapIndex}</p>
+                        <p className="text-xs text-gray-500 dark:text-gray-400">HCP {fmtHandicap(p.handicapIndex)}</p>
                       </div>
                       <span className={`text-lg ${selected ? 'text-forest-600' : 'text-gray-300 dark:text-gray-600'}`}>
                         {selected ? '✓' : '○'}

@@ -4,7 +4,7 @@ import { supabase, courseToRow, playerToRow, roundToRow, roundPlayerToRow, buyIn
 import { safeWrite } from '../../lib/safeWrite'
 import { reportSupabaseError } from '../../lib/sentry'
 import { SHOW_HOLE_BETS, SHOW_EXTRA_GAMES, SHOW_DOTS, SHOW_BEST_BALL_STROKE_PLAY } from '../../lib/featureFlags'
-import { fmtMoney, fmtAmount, JUNK_LABELS, DOT_LABELS } from '../../lib/gameLogic'
+import { fmtMoney, fmtAmount, fmtHandicap, JUNK_LABELS, DOT_LABELS } from '../../lib/gameLogic'
 import { parseDollarsToCents, parsePointsValue } from '../../lib/money'
 import { venturaCourses } from '../../data/venturaCourses'
 import { NearMeCourses } from '../NearMeCourses/NearMeCourses'
@@ -704,7 +704,7 @@ function PlayerPicker({
                         <span className="ml-2 text-[10px] font-bold uppercase px-1.5 py-0.5 rounded bg-amber-100 text-amber-700">{badge}</span>
                       )}
                     </p>
-                    <p className="text-sm text-gray-500">HCP {player.handicapIndex}</p>
+                    <p className="text-sm text-gray-500">HCP {fmtHandicap(player.handicapIndex)}</p>
                   </div>
                 </button>
 
@@ -923,7 +923,7 @@ function GroupAssignment({
                 <div key={player.id} className="flex items-center justify-between bg-gray-50 rounded-xl px-3 py-2">
                   <div>
                     <p className="font-medium text-gray-800 dark:text-gray-100 text-sm">{player.name}</p>
-                    <p className="text-xs text-gray-500">HCP {player.handicapIndex}</p>
+                    <p className="text-xs text-gray-500">HCP {fmtHandicap(player.handicapIndex)}</p>
                   </div>
                   <div className="flex gap-1">
                     {groupNumbers.map(targetGn => (
@@ -1892,7 +1892,7 @@ function GameSetup({
                 return (
                   <div key={p.id} className="flex items-center justify-between text-sm">
                     <span className="text-gray-700 font-medium">{p.name}</span>
-                    <span className="text-gray-500">Target: <strong className="text-gray-800 dark:text-gray-100">{quota} pts</strong> (HCP {p.handicapIndex})</span>
+                    <span className="text-gray-500">Target: <strong className="text-gray-800 dark:text-gray-100">{quota} pts</strong> (HCP {fmtHandicap(p.handicapIndex)})</span>
                   </div>
                 )
               })}

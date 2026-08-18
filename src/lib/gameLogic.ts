@@ -41,12 +41,41 @@ export function calcCourseHandicap(
   return Math.round(handicapIndex * (slope / 113) + (rating - par))
 }
 
-/** How many strokes a player receives on a specific hole */
+/** How many strokes a player receives on a specific hole. Positive = strokes given
+ *  on the hardest holes (low stroke index). Negative = a PLUS handicap gives strokes
+ *  back on the easiest holes (high stroke index) — a +4 (courseHcp −4) plays +1 to par
+ *  on the four holes with the highest stroke index. (USGA plus-handicap allocation.) */
 export function strokesOnHole(courseHcp: number, strokeIndex: number, totalHoles: number = 18): number {
+  if (courseHcp < 0) {
+    // Mirror of the positive case, allocated from the easiest hole (highest SI) up.
+    let s = 0
+    if (strokeIndex >= totalHoles + 1 + courseHcp) s--
+    if (strokeIndex >= 2 * totalHoles + 1 + courseHcp) s--
+    return s
+  }
   let s = 0
   if (courseHcp >= strokeIndex) s++
   if (courseHcp >= totalHoles + strokeIndex) s++
   return s
+}
+
+/** Parse a handicap the way golfers write it: a leading "+" means a PLUS handicap
+ *  (better than scratch), stored internally as a negative index (USGA convention).
+ *  "+4" → −4 · "12.4" → 12.4 · "0" → 0 · "" → null. */
+export function parseHandicap(input: string): number | null {
+  const s = input.trim()
+  if (s === '') return null
+  const isPlus = s.startsWith('+')
+  const n = parseFloat(s.replace(/^\+/, ''))
+  if (isNaN(n)) return null
+  return isPlus ? -Math.abs(n) : n
+}
+
+/** Display a handicap index in golf notation: a negative (plus) index shows as "+4",
+ *  a normal index as-is, null/undefined as an em dash. */
+export function fmtHandicap(index: number | null | undefined): string {
+  if (index === null || index === undefined || isNaN(index as number)) return '—'
+  return index < 0 ? `+${-index}` : `${index}`
 }
 
 /** Build playerId → courseHandicap map for all players in a round.

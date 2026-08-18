@@ -7,6 +7,7 @@ import { safeWrite } from './lib/safeWrite'
 import { setSentryUser, clearSentryUser } from './lib/sentry'
 import { checkAppVersion } from './lib/appVersion'
 import { SHOW_PROP_BETS } from './lib/featureFlags'
+import { fmtHandicap } from './lib/gameLogic'
 import { NotificationToast } from './components/NotificationToast'
 import { Auth } from './components/Auth/Auth'
 import { ResetPassword } from './components/Auth/ResetPassword'
@@ -636,7 +637,7 @@ function Home({
               <UserAvatar url={userProfile.avatarUrl} preset={userProfile.avatarPreset} name={userProfile.displayName} size="md" />
               <div className="flex-1 min-w-0">
                 <p className="font-semibold text-gray-900 dark:text-gray-100 truncate">{userProfile.displayName}</p>
-                <p className="text-sm text-gray-500 dark:text-gray-400">HCP {userProfile.handicapIndex ?? '—'}</p>
+                <p className="text-sm text-gray-500 dark:text-gray-400">HCP {fmtHandicap(userProfile.handicapIndex)}</p>
               </div>
               <span className="text-xs text-amber-600 font-semibold">Edit</span>
             </button>

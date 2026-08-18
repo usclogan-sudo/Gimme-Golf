@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { supabase, rowToRound, rowToUserProfile, rowToPinnedFriend } from '../../lib/supabase'
-import { venmoProfileLink, cashAppProfileLink, zelleLink, paypalLink } from '../../lib/gameLogic'
+import { venmoProfileLink, cashAppProfileLink, zelleLink, paypalLink, fmtHandicap } from '../../lib/gameLogic'
 import { UserAvatar } from '../AvatarPicker'
 import type { Round, Player, UserProfile, PinnedFriend } from '../../types'
 
@@ -240,7 +240,7 @@ function PlayerCard({ player, isPinned, onTogglePin }: { player: PlayerEntry; is
           )}
         </div>
         <p className="text-sm text-gray-500 dark:text-gray-400">
-          HCP {player.handicapIndex} · {player.roundsPlayed} round{player.roundsPlayed !== 1 ? 's' : ''}
+          HCP {fmtHandicap(player.handicapIndex)} · {player.roundsPlayed} round{player.roundsPlayed !== 1 ? 's' : ''}
           {player.lastPlayed && (
             <> · Last {player.lastPlayed.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</>
           )}

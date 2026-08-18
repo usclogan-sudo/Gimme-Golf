@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { supabase, rowToUserProfile } from '../../lib/supabase'
 import { safeWrite } from '../../lib/safeWrite'
+import { parseHandicap, fmtHandicap } from '../../lib/gameLogic'
 import { AvatarPicker, UserAvatar } from '../AvatarPicker'
 import { ConfirmModal } from '../ConfirmModal'
 import { useDarkMode } from '../../hooks/useDarkMode'
@@ -54,7 +55,7 @@ export function Settings({ userId, email, onBack, onSignOut, isAdmin, onAdmin, i
         const p = rowToUserProfile(data)
         setProfile(p)
         setDisplayName(p.displayName ?? '')
-        setHandicapIndex(p.handicapIndex != null ? String(p.handicapIndex) : '')
+        setHandicapIndex(p.handicapIndex != null ? fmtHandicap(p.handicapIndex) : '')
         setVenmo(p.venmoUsername ?? '')
         setZelle(p.zelleIdentifier ?? '')
         setCashapp(p.cashAppUsername ?? '')
@@ -69,8 +70,10 @@ export function Settings({ userId, email, onBack, onSignOut, isAdmin, onAdmin, i
   const handleSaveProfile = async () => {
     setProfileMessage(null)
     if (!displayName.trim()) { setProfileMessage({ type: 'error', text: 'Name is required' }); return }
-    const hcp = handicapIndex.trim() === '' ? null : parseFloat(handicapIndex)
-    if (hcp !== null && (isNaN(hcp) || hcp < -10 || hcp > 54)) { setProfileMessage({ type: 'error', text: 'Handicap must be between -10 and 54' }); return }
+    const trimmedHcp = handicapIndex.trim()
+    const hcp = trimmedHcp === '' ? null : parseHandicap(trimmedHcp)
+    if (trimmedHcp !== '' && hcp === null) { setProfileMessage({ type: 'error', text: 'Enter a number like 12 or +4' }); return }
+    if (hcp !== null && (hcp < -10 || hcp > 54)) { setProfileMessage({ type: 'error', text: 'Handicap must be between +10 and 54' }); return }
     setProfileSaving(true)
     const { error } = await supabase.from('user_profiles').update({
       display_name: displayName.trim(),
@@ -271,15 +274,14 @@ export function Settings({ userId, email, onBack, onSignOut, isAdmin, onAdmin, i
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Handicap Index</label>
               <input
-                type="number"
-                inputMode="decimal"
-                step="0.1"
-                placeholder="Auto-calculate"
+                type="text"
+                inputMode="text"
+                placeholder="Auto-calculate — or 12.4, or +4"
                 value={handicapIndex}
                 onChange={e => setHandicapIndex(e.target.value)}
                 className="w-full h-12 px-4 rounded-xl border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 text-base focus:outline-none focus:ring-2 focus:ring-amber-500"
               />
-              <p className="text-xs text-gray-400 mt-1">Leave blank to auto-calculate from your rounds</p>
+              <p className="text-xs text-gray-400 mt-1">Leave blank to auto-calculate. Better than scratch? Enter a plus handicap like <span className="font-semibold">+4</span>.</p>
             </div>
             {profileMessage && (
               <p className={`text-sm ${profileMessage.type === 'error' ? 'text-red-500' : 'text-amber-600'}`}>

@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { supabase } from '../../lib/supabase'
+import { parseHandicap } from '../../lib/gameLogic'
 
 interface Props {
   userId: string
@@ -22,8 +23,8 @@ export function Onboarding({ userId, onComplete }: Props) {
     setError('')
     if (!displayName.trim()) { setError('Name is required'); return }
     if (handicapIndex.trim()) {
-      const hcp = parseFloat(handicapIndex)
-      if (isNaN(hcp) || hcp < -10 || hcp > 54) { setError('Handicap must be between -10 and 54'); return }
+      const hcp = parseHandicap(handicapIndex)
+      if (hcp === null || hcp < -10 || hcp > 54) { setError('Enter a number like 12 or +4'); return }
     }
     setStep('payment')
   }
@@ -32,7 +33,7 @@ export function Onboarding({ userId, onComplete }: Props) {
     setSaving(true)
     setError('')
     try {
-      const hcp = handicapIndex.trim() ? parseFloat(handicapIndex) : null
+      const hcp = handicapIndex.trim() ? parseHandicap(handicapIndex) : null
       const { error: err } = await supabase
         .from('user_profiles')
         .update({
@@ -101,16 +102,15 @@ export function Onboarding({ userId, onComplete }: Props) {
               <div>
                 <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">Handicap Index <span className="font-normal text-gray-400">(optional)</span></label>
                 <input
-                  type="number"
-                  inputMode="decimal"
-                  step="0.1"
-                  placeholder="e.g. 12.4"
+                  type="text"
+                  inputMode="text"
+                  placeholder="e.g. 12.4 — or +4 if you're a plus"
                   value={handicapIndex}
                   onChange={e => setHandicapIndex(e.target.value)}
                   className="w-full h-12 px-4 rounded-xl border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 text-base focus:outline-none focus:ring-2 focus:ring-amber-500"
                 />
                 <p className="text-xs text-gray-400 dark:text-gray-500 mt-1.5 leading-snug">
-                  Your USGA index, if you know it. Skip if you're not sure — we'll track one for you as you play.
+                  Your USGA index, if you know it — better than scratch, enter a plus like <span className="font-semibold">+4</span>. Skip if you're not sure; we'll track one as you play.
                 </p>
               </div>
             </div>

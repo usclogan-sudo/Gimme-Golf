@@ -39,6 +39,8 @@ import {
   calculateDots,
   wolfForHole,
   strokesOnHole,
+  parseHandicap,
+  fmtHandicap,
   fmtAmount,
 } from '../../lib/gameLogic'
 import type { BestBallResult } from '../../lib/gameLogic'
@@ -1093,8 +1095,8 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
 
   const saveHandicapEdit = async () => {
     if (!editingHcpPlayerId || !round) return
-    const newHcp = parseFloat(editingHcpValue)
-    if (isNaN(newHcp) || newHcp < 0 || newHcp > 54) return
+    const newHcp = parseHandicap(editingHcpValue)
+    if (newHcp === null || newHcp < -10 || newHcp > 54) return // plus handicaps (down to +10) allowed
     // Update the player snapshot in the round
     const updatedPlayers = (round.players ?? []).map(p =>
       p.id === editingHcpPlayerId ? { ...p, handicapIndex: newHcp } : p
@@ -2680,14 +2682,12 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
                   {editingHcpPlayerId === player.id ? (
                     <div className="flex items-center gap-2 mt-1">
                       <input
-                        type="number"
-                        inputMode="decimal"
-                        step="0.1"
-                        min="0"
-                        max="54"
+                        type="text"
+                        inputMode="text"
+                        placeholder="e.g. 12 or +4"
                         value={editingHcpValue}
                         onChange={e => setEditingHcpValue(e.target.value)}
-                        className="w-16 h-8 px-2 rounded-lg border border-amber-300 text-sm text-gray-800 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-amber-500"
+                        className="w-16 h-8 px-2 rounded-lg border border-amber-300 dark:bg-gray-700 dark:border-gray-600 text-sm text-gray-800 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-amber-500"
                         autoFocus
                         onKeyDown={e => { if (e.key === 'Enter') saveHandicapEdit(); if (e.key === 'Escape') setEditingHcpPlayerId(null) }}
                       />
@@ -2699,10 +2699,10 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
                       onClick={() => {
                         if (readOnly) return
                         setEditingHcpPlayerId(player.id)
-                        setEditingHcpValue(String(player.handicapIndex))
+                        setEditingHcpValue(fmtHandicap(player.handicapIndex))
                       }}
                     >
-                      HCP {player.handicapIndex}
+                      HCP {fmtHandicap(player.handicapIndex)}
                       {strokesGiven > 0 && <span className="ml-2 text-amber-600 font-semibold">+{strokesGiven} stroke{strokesGiven !== 1 ? 's' : ''}</span>}
                       {!readOnly && <span className="ml-1 text-gray-300 text-xs">✎</span>}
                     </p>
