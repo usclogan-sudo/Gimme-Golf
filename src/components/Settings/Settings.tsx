@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react'
 import { supabase, rowToUserProfile } from '../../lib/supabase'
-import { safeWrite } from '../../lib/safeWrite'
 import { parseHandicap, fmtHandicap } from '../../lib/gameLogic'
 import { AvatarPicker, UserAvatar } from '../AvatarPicker'
 import { ConfirmModal } from '../ConfirmModal'
@@ -34,6 +33,10 @@ export function Settings({ userId, email, onBack, onSignOut, isAdmin, onAdmin, i
   const [showAvatarPicker, setShowAvatarPicker] = useState(false)
   const [profileSaving, setProfileSaving] = useState(false)
   const [profileMessage, setProfileMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
+
+  const [newEmail, setNewEmail] = useState(email)
+  const [emailSaving, setEmailSaving] = useState(false)
+  const [emailMessage, setEmailMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
 
   const [newPassword, setNewPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
@@ -84,12 +87,36 @@ export function Settings({ userId, email, onBack, onSignOut, isAdmin, onAdmin, i
       paypal_email: paypalAddr.trim() || null,
       preferred_payment: preferred || null,
       avatar_preset: avatarPreset || null,
+      avatar_url: avatarUrl || null,
     }).eq('user_id', userId)
     setProfileSaving(false)
     if (error) {
       setProfileMessage({ type: 'error', text: 'Failed to update profile. Please try again.' })
     } else {
       setProfileMessage({ type: 'success', text: 'Profile updated' })
+    }
+  }
+
+  const handleChangeEmail = async () => {
+    setEmailMessage(null)
+    const next = newEmail.trim().toLowerCase()
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(next)) {
+      setEmailMessage({ type: 'error', text: 'Enter a valid email address' })
+      return
+    }
+    if (next === email.trim().toLowerCase()) {
+      setEmailMessage({ type: 'error', text: "That's already your email" })
+      return
+    }
+    setEmailSaving(true)
+    // Supabase sends a confirmation link to the new address; the email only
+    // changes once the user clicks it, so the account is never left half-changed.
+    const { error } = await supabase.auth.updateUser({ email: next })
+    setEmailSaving(false)
+    if (error) {
+      setEmailMessage({ type: 'error', text: error.message })
+    } else {
+      setEmailMessage({ type: 'success', text: `Check ${next} for a link to confirm the change.` })
     }
   }
 
@@ -214,9 +241,35 @@ export function Settings({ userId, email, onBack, onSignOut, isAdmin, onAdmin, i
 
       <div className="px-4 py-5 max-w-2xl mx-auto space-y-5">
         {/* Account info */}
-        <section className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm p-4">
-          <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-2">Account</p>
-          <p className="text-gray-800 dark:text-gray-100 font-medium">{isAnonymous ? 'Guest (no account)' : email}</p>
+        <section className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm p-4 space-y-3">
+          <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Account</p>
+          {isAnonymous ? (
+            <p className="text-gray-800 dark:text-gray-100 font-medium">Guest (no account)</p>
+          ) : (
+            <>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Email</label>
+                <input
+                  type="email"
+                  inputMode="email"
+                  value={newEmail}
+                  onChange={e => setNewEmail(e.target.value)}
+                  className="w-full h-12 px-4 rounded-xl border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 text-base focus:outline-none focus:ring-2 focus:ring-amber-500"
+                />
+                <p className="text-xs text-gray-400 mt-1">Changing this sends a confirmation link to the new address — it only takes effect once you click it.</p>
+              </div>
+              {emailMessage && (
+                <p className={`text-sm ${emailMessage.type === 'error' ? 'text-red-500' : 'text-amber-600'}`}>{emailMessage.text}</p>
+              )}
+              <button
+                onClick={handleChangeEmail}
+                disabled={emailSaving || newEmail.trim().toLowerCase() === email.trim().toLowerCase()}
+                className="w-full h-11 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 font-semibold rounded-xl disabled:opacity-50 active:bg-gray-50 dark:active:bg-gray-700 transition-colors"
+              >
+                {emailSaving ? 'Sending…' : 'Update email'}
+              </button>
+            </>
+          )}
         </section>
 
         {/* Prominent upgrade card for anonymous users */}
@@ -283,18 +336,6 @@ export function Settings({ userId, email, onBack, onSignOut, isAdmin, onAdmin, i
               />
               <p className="text-xs text-gray-400 mt-1">Leave blank to auto-calculate. Better than scratch? Enter a plus handicap like <span className="font-semibold">+4</span>.</p>
             </div>
-            {profileMessage && (
-              <p className={`text-sm ${profileMessage.type === 'error' ? 'text-red-500' : 'text-amber-600'}`}>
-                {profileMessage.text}
-              </p>
-            )}
-            <button
-              onClick={handleSaveProfile}
-              disabled={profileSaving}
-              className="w-full h-12 bg-gray-800 text-white dark:bg-brass dark:text-navy font-semibold rounded-xl disabled:opacity-50 active:bg-gray-900 transition-colors"
-            >
-              {profileSaving ? 'Saving...' : 'Save Profile'}
-            </button>
           </section>
         )}
 
@@ -343,6 +384,21 @@ export function Settings({ userId, email, onBack, onSignOut, isAdmin, onAdmin, i
                 </div>
               </div>
             )}
+
+            {/* One save for the whole profile — name, handicap, avatar, and
+                payment handles all commit together (§21 one-save contract). */}
+            {profileMessage && (
+              <p className={`text-sm ${profileMessage.type === 'error' ? 'text-red-500' : 'text-amber-600'}`}>
+                {profileMessage.text}
+              </p>
+            )}
+            <button
+              onClick={handleSaveProfile}
+              disabled={profileSaving}
+              className="w-full h-12 bg-gray-800 text-white dark:bg-brass dark:text-navy font-semibold rounded-xl disabled:opacity-50 active:bg-gray-900 transition-colors"
+            >
+              {profileSaving ? 'Saving…' : 'Save changes'}
+            </button>
           </section>
         )}
 
@@ -491,14 +547,14 @@ export function Settings({ userId, email, onBack, onSignOut, isAdmin, onAdmin, i
           currentUrl={avatarUrl || undefined}
           userId={userId}
           onSelect={(preset) => {
+            // Stage the choice locally; it persists with the single "Save changes"
+            // below, so the whole profile commits atomically (§21 one-save contract).
             setAvatarPreset(preset)
             setAvatarUrl('')  // Clear photo when selecting preset
-            safeWrite(supabase.from('user_profiles').update({ avatar_preset: preset, avatar_url: null }).eq('user_id', userId), 'update avatar preset')
           }}
           onUpload={(url) => {
             setAvatarUrl(url)
             setAvatarPreset('')  // Clear preset when uploading photo
-            safeWrite(supabase.from('user_profiles').update({ avatar_url: url, avatar_preset: null }).eq('user_id', userId), 'update avatar url')
           }}
           onClose={() => setShowAvatarPicker(false)}
         />
