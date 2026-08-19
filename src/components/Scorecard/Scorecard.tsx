@@ -1110,6 +1110,39 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
     safeWrite(supabase.from('players').update({ handicap_index: newHcp }).eq('id', editingHcpPlayerId), 'update player handicap')
   }
 
+  // Lazily mint the round's invite code the first time someone shares it (§15).
+  const ensureInviteCode = async (): Promise<string | null> => {
+    if (!round) return null
+    let code = (event?.inviteCode) ?? round.inviteCode
+    if (!code) {
+      code = generateInviteCode()
+      const { error } = await supabase.from('rounds').update({ invite_code: code }).eq('id', roundId)
+      if (error) {
+        const { data } = await supabase.from('rounds').select('invite_code').eq('id', roundId).single()
+        code = data?.invite_code ?? code
+      }
+      setRound(prev => prev ? { ...prev, inviteCode: code! } : prev)
+    }
+    return code!
+  }
+
+  const shareJoinLink = async () => {
+    const code = await ensureInviteCode()
+    if (!code) return
+    const title = event ? `Join ${event.name}!` : 'Join my round!'
+    const url = `${window.location.origin}${window.location.pathname}?join=${code}`
+    const text = event
+      ? `Join ${event.name} on Gimme Golf! Code: ${code}\n${url}`
+      : `Join my round on Gimme Golf! Code: ${code}\n${url}`
+    if (navigator.share) {
+      try { await navigator.share({ title, text, url }) } catch {}
+    } else {
+      await navigator.clipboard.writeText(url)
+    }
+    setInviteToast(`Join link copied · code ${code}`)
+    setTimeout(() => setInviteToast(null), 5000)
+  }
+
   // Role-based access (must be before approvedScores which depends on isEventRound)
   const {
     isScoremasterRole,
@@ -1439,63 +1472,13 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
             </button>
             {showHeaderMenu && (
               <div className="absolute right-0 top-full mt-1 bg-gray-800 rounded-xl shadow-2xl border border-gray-600 min-w-[180px] z-50 py-1 overflow-hidden">
-                {/* Primary path: the clear search-and-add modal comes first. The
-                    share-a-link path (which just fires the OS share sheet / copies a
-                    link) is demoted below it, since on desktop it reads as a no-op. */}
-                {isScoremasterRole && (
-                  <button
-                    onClick={() => { setShowHeaderMenu(false); setShowInviteModal(true) }}
-                    className="w-full px-4 py-3 text-left text-sm font-medium text-cyan-300 hover:bg-gray-700 active:bg-gray-700"
-                  >
-                    👤 Add players
-                  </button>
-                )}
+                {/* Add players + Share link are surfaced in the visible invite strip
+                    below the header (§15); the kebab keeps the niche invite options. */}
                 {isScoremasterRole && (
                   <button
                     onClick={async () => {
                       setShowHeaderMenu(false)
-                      let code = (event?.inviteCode) ?? round.inviteCode
-                      if (!code) {
-                        code = generateInviteCode()
-                        const { error } = await supabase.from('rounds').update({ invite_code: code }).eq('id', roundId)
-                        if (error) {
-                          const { data } = await supabase.from('rounds').select('invite_code').eq('id', roundId).single()
-                          code = data?.invite_code ?? code
-                        }
-                        setRound(prev => prev ? { ...prev, inviteCode: code! } : prev)
-                      }
-                      const title = event ? `Join ${event.name}!` : 'Join my round!'
-                      const url = `${window.location.origin}${window.location.pathname}?join=${code}`
-                      const text = event
-                        ? `Join ${event.name} on Gimme Golf! Code: ${code}\n${url}`
-                        : `Join my round on Gimme Golf! Code: ${code}\n${url}`
-                      if (navigator.share) {
-                        try { await navigator.share({ title, text, url }) } catch {}
-                      } else {
-                        await navigator.clipboard.writeText(url)
-                      }
-                      setInviteToast(`Join link copied · code ${code}`)
-                      setTimeout(() => setInviteToast(null), 5000)
-                    }}
-                    className="w-full px-4 py-3 text-left text-sm font-medium text-cyan-300 hover:bg-gray-700 active:bg-gray-700"
-                  >
-                    🔗 Share join link
-                  </button>
-                )}
-                {isScoremasterRole && (
-                  <button
-                    onClick={async () => {
-                      setShowHeaderMenu(false)
-                      let code = (event?.inviteCode) ?? round.inviteCode
-                      if (!code) {
-                        code = generateInviteCode()
-                        const { error } = await supabase.from('rounds').update({ invite_code: code }).eq('id', roundId)
-                        if (error) {
-                          const { data } = await supabase.from('rounds').select('invite_code').eq('id', roundId).single()
-                          code = data?.invite_code ?? code
-                        }
-                        setRound(prev => prev ? { ...prev, inviteCode: code! } : prev)
-                      }
+                      await ensureInviteCode()
                       setShowQRModal(true)
                     }}
                     className="w-full px-4 py-3 text-left text-sm font-medium text-cyan-300 hover:bg-gray-700 active:bg-gray-700"
@@ -1575,6 +1558,35 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
           </div>
         )}
       </header>
+
+      {/* ── Invite strip (§15): the primary invite path, out of the kebab and into
+          the open. Host-only; shows live roster status. ── */}
+      {isScoremasterRole && !readOnly && (
+        <div className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 px-4 py-2">
+          <div className="max-w-2xl mx-auto flex items-center justify-between gap-2">
+            <p className="text-sm text-gray-600 dark:text-gray-300 min-w-0 truncate">
+              <span className="font-semibold text-gray-800 dark:text-gray-100">{players.length} playing</span>
+              {pendingInviteeIds.size > 0 && (
+                <span className="text-amber-600 dark:text-amber-400"> · {pendingInviteeIds.size} invited</span>
+              )}
+            </p>
+            <div className="flex items-center gap-1.5 flex-shrink-0">
+              <button
+                onClick={shareJoinLink}
+                className="text-sm font-semibold text-navy dark:text-brass px-2 py-1.5 rounded-lg active:opacity-70"
+              >
+                Share link
+              </button>
+              <button
+                onClick={() => setShowInviteModal(true)}
+                className="text-sm font-bold bg-navy text-white dark:bg-brass dark:text-navy px-3 py-1.5 rounded-lg active:opacity-90"
+              >
+                + Add players
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Scores / Leaderboard tab toggle */}
       <div className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 px-4 py-2 sticky top-[5.5rem] z-[6]">
