@@ -463,7 +463,7 @@ function GamePresetsTab({ userId }: { userId: string }) {
 
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Buy-in ($)</label>
+            <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Entry ($)</label>
             <input
               type="number"
               inputMode="decimal"

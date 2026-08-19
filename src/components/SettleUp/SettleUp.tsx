@@ -711,7 +711,7 @@ export function SettleUp({ roundId, userId, eventId, onDone, onContinue }: Props
       const { error } = await supabase.from('buy_ins').update({ status: newStatus, paid_at: newPaidAt }).eq('id', buyIn.id)
       if (error) {
         setBuyIns(prevBuyIns)
-        setMutationError('Failed to update buy-in status. Please try again.')
+        setMutationError('Failed to update entry status. Please try again.')
       }
     }, 4000)
 
@@ -777,7 +777,7 @@ export function SettleUp({ roundId, userId, eventId, onDone, onContinue }: Props
       const { error } = await supabase.from('buy_ins').update({ status: 'marked_paid', paid_at: new Date().toISOString() }).in('id', unpaidIds)
       if (error) {
         setBuyIns(prevBuyIns)
-        setMutationError('Failed to mark all buy-ins as paid. Please try again.')
+        setMutationError('Failed to mark all entries as paid. Please try again.')
       }
     }, 4000)
 
@@ -1027,9 +1027,9 @@ export function SettleUp({ roundId, userId, eventId, onDone, onContinue }: Props
               onClick={() => setShowBuyInDetails(!isExpanded)}
               className="w-full flex items-center justify-between"
             >
-              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Buy-In Status</p>
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Entry Status</p>
               {allBuyInsPaid && !isExpanded ? (
-                <span className="text-green-600 text-sm font-semibold">All buy-ins collected ✓</span>
+                <span className="text-green-600 text-sm font-semibold">All entries collected ✓</span>
               ) : (
                 <span className="text-gray-400 text-sm">{isExpanded ? '▾' : '▸'}</span>
               )}
@@ -1122,7 +1122,7 @@ export function SettleUp({ roundId, userId, eventId, onDone, onContinue }: Props
               <p className={`text-xl font-bold ${isHighRoller ? 'text-white' : 'text-gray-800 dark:text-gray-100'}`}>{players.length}</p>
             </div>
             <div className={`rounded-xl p-3 ${isHighRoller ? 'bg-black/30' : 'bg-gray-50'}`}>
-              <p className={`text-xs ${isHighRoller ? 'text-amber-400' : 'text-gray-500'}`}>{unitNet ? 'Per unit' : isPoints ? 'Entry' : 'Buy-in'}</p>
+              <p className={`text-xs ${isHighRoller ? 'text-amber-400' : 'text-gray-500'}`}>{unitNet ? 'Per unit' : 'Entry'}</p>
               <p className={`text-xl font-bold ${isHighRoller ? 'text-white' : 'text-gray-800 dark:text-gray-100'}`}>{fmt(unitNet ? perUnitCents : game.buyInCents)}</p>
             </div>
             <div className={`rounded-xl p-3 ${isHighRoller ? 'bg-amber-900/40' : 'bg-green-50'}`}>
@@ -1343,7 +1343,7 @@ export function SettleUp({ roundId, userId, eventId, onDone, onContinue }: Props
                 })}
                 {(nassauResult.front.incomplete || nassauResult.back.incomplete || nassauResult.total.incomplete) && (
                   <p className="text-xs text-gray-500 dark:text-gray-400">
-                    Round ended early — {isPoints ? 'entries' : 'buy-ins'} for any leg that wasn't completed are returned, so those legs are a wash.
+                    Round ended early — entries for any leg that wasn't completed are returned, so those legs are a wash.
                   </p>
                 )}
               </div>

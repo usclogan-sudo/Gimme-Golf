@@ -765,7 +765,7 @@ export function EventSetup({ userId, onStart, onCancel, onAddCourse }: Props) {
 
           {/* Buy-in */}
           <section className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 p-4 space-y-3">
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Buy-in</p>
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Entry</p>
             <div className="grid grid-cols-4 gap-2">
               {BUY_IN_PRESETS.map(cents => (
                 <button
