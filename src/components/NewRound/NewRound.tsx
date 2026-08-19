@@ -204,17 +204,20 @@ function CoursePicker({
     })),
   ].sort((a, b) => a.name.localeCompare(b.name))
 
+  // Recently-played courses (in recency order) for a one-tap quick-pick. Hidden while searching.
+  const recentCourses: CourseItem[] = query.trim()
+    ? []
+    : recentNames.map(n => allCourses.find(c => c.name === n)).filter((c): c is CourseItem => !!c)
+
+  // The main list. When not searching, drop the courses already shown in "Recent"
+  // above, so each course appears once instead of twice (§8 course-list dedup).
+  const recentNameSet = new Set(recentCourses.map(c => c.name))
   const filtered = query.trim()
     ? allCourses.filter(c =>
         c.name.toLowerCase().includes(query.toLowerCase()) ||
         (c.city ?? '').toLowerCase().includes(query.toLowerCase())
       )
-    : allCourses
-
-  // Recently-played courses (in recency order) for a one-tap quick-pick. Hidden while searching.
-  const recentCourses: CourseItem[] = query.trim()
-    ? []
-    : recentNames.map(n => allCourses.find(c => c.name === n)).filter((c): c is CourseItem => !!c)
+    : allCourses.filter(c => !recentNameSet.has(c.name))
 
   const handleSelect = async (item: CourseItem) => {
     if (selecting) return
@@ -313,7 +316,7 @@ function CoursePicker({
               key={course.id}
               onClick={() => handleSelect(course)}
               disabled={!!selecting}
-              className="w-full bg-white rounded-2xl p-4 shadow-sm border border-gray-100 text-left active:bg-gray-50 disabled:opacity-60"
+              className="w-full bg-white dark:bg-gray-800 rounded-2xl p-4 shadow-sm border border-gray-100 dark:border-gray-700 text-left active:bg-gray-50 dark:active:bg-gray-700 disabled:opacity-60"
             >
               <div className="flex items-center justify-between">
                 <div>

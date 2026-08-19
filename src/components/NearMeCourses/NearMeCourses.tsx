@@ -87,7 +87,7 @@ export function NearMeCourses({ onAddCourse }: Props) {
       <section>
         <h2 className="font-display font-semibold text-gray-800 dark:text-gray-100 text-base mb-3">Courses Near You</h2>
         <button onClick={requestLocation}
-          className="w-full bg-white border border-gray-200 rounded-2xl px-5 py-4 flex items-center gap-4 shadow-sm active:bg-gray-50">
+          className="w-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-2xl px-5 py-4 flex items-center gap-4 shadow-sm active:bg-gray-50 dark:active:bg-gray-700">
           <div className="w-12 h-12 bg-amber-50 rounded-xl flex items-center justify-center text-2xl flex-shrink-0">📍</div>
           <div className="text-left">
             <p className="font-semibold text-gray-800 dark:text-gray-100">Find courses near me</p>
@@ -102,7 +102,7 @@ export function NearMeCourses({ onAddCourse }: Props) {
     return (
       <section>
         <h2 className="font-display font-semibold text-gray-800 dark:text-gray-100 text-base mb-3">Courses Near You</h2>
-        <div className="bg-white border border-gray-200 rounded-2xl px-5 py-6 text-center shadow-sm">
+        <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-2xl px-5 py-6 text-center shadow-sm">
           <div className="w-8 h-8 border-2 border-amber-500 border-t-transparent rounded-full animate-spin mx-auto mb-3" />
           <p className="text-gray-600 font-medium">{state === 'requesting' ? 'Getting your location…' : 'Finding nearby courses…'}</p>
         </div>
@@ -144,7 +144,7 @@ export function NearMeCourses({ onAddCourse }: Props) {
     return (
       <section>
         <h2 className="font-display font-semibold text-gray-800 dark:text-gray-100 text-base mb-3">Courses Near You</h2>
-        <div className="bg-white border border-gray-200 rounded-2xl px-5 py-5 text-center shadow-sm">
+        <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-2xl px-5 py-5 text-center shadow-sm">
           <p className="text-gray-500">No courses found within 25 miles.</p>
           <button onClick={() => onAddCourse()} className="mt-3 text-amber-600 font-semibold text-sm underline">Add a course manually</button>
         </div>
