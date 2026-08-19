@@ -2,5 +2,7 @@ export { ResultCard, fmtSigned, middleTruncate, formatFormats } from './ResultCa
 export type { ResultCardProps, ResultCardStanding, ResultCardSettlement } from './ResultCard'
 export { exportResultCard } from './exportCard'
 export { renderResultCardToBlob } from './renderToBlob'
+export { buildResultCardProps } from './deriveProps'
+export type { DeriveResultCardInput } from './deriveProps'
 export { selectSubline, SUBLINES, hashStr } from './sublines'
 export type { SublineInput, SublineBucket } from './sublines'

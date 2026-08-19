@@ -73,7 +73,7 @@ import type {
   UserProfile,
   GolfEvent,
 } from '../../types'
-import { ResultCard, renderResultCardToBlob } from '../ResultCard'
+import { ResultCard, renderResultCardToBlob, buildResultCardProps } from '../ResultCard'
 import { shareCard } from '../../lib/share'
 
 interface Props {
@@ -849,50 +849,19 @@ export function SettleUp({ roundId, userId, eventId, onDone, onContinue }: Props
   const allSettled = settlementRecords.length > 0 && owedSettlements.length === 0
 
   // ── ResultCard props (UX v2.0 §3 / v2.1 §4) ────────────────────────────────
-  // The card is pure/presentational and points-only. Convert stored cents→points
-  // the same way fmtAmount does (points mode already stores the point count).
-  const toPoints = (cents: number) => (isPoints ? cents : Math.round(cents / 100))
-  const cardNetByPlayer = new Map<string, number>()
-  players.forEach(p => cardNetByPlayer.set(p.id, 0))
-  if (settlementRecords.length > 0) {
-    settlementRecords.forEach(r => {
-      cardNetByPlayer.set(r.fromPlayerId, (cardNetByPlayer.get(r.fromPlayerId) ?? 0) - r.amountCents)
-      cardNetByPlayer.set(r.toPlayerId, (cardNetByPlayer.get(r.toPlayerId) ?? 0) + r.amountCents)
-    })
-  } else {
-    // Not yet settled — derive net from live payouts so the card matches the board.
-    const buyIn = game?.buyInCents ?? 0
-    players.forEach(p => {
-      const won = payouts.find(pay => pay.playerId === p.id)?.amountCents ?? 0
-      cardNetByPlayer.set(p.id, won - buyIn)
-    })
-  }
-  const rankedForCard = players
-    .map(p => ({ playerId: p.id, displayName: p.name, net: toPoints(cardNetByPlayer.get(p.id) ?? 0) }))
-    .sort((a, b) => b.net - a.net)
-  // Standard competition ranking: ties share a position, the next distinct net skips.
-  let cardPos = 0
-  let cardLastNet: number | null = null
-  const cardStandings = rankedForCard.map((p, i) => {
-    if (cardLastNet === null || p.net !== cardLastNet) { cardPos = i + 1; cardLastNet = p.net }
-    return { ...p, position: cardPos }
-  })
-  const cardSettlements = settlementRecords.map(r => ({
-    fromName: playerById(r.fromPlayerId)?.name ?? 'Player',
-    toName: playerById(r.toPlayerId)?.name ?? 'Player',
-    amount: toPoints(r.amountCents),
-  }))
-  const resultCardProps = {
-    round: {
-      courseName: snapshot.courseName,
-      date: round.date,
-      formats: [gameLabel],
-      holesPlayed: new Set(holeScores.map(h => h.holeNumber)).size,
-    },
-    standings: cardStandings,
-    settlements: cardSettlements,
+  // Shared derivation (buildResultCardProps) so SettleUp and RoundHistory can't drift.
+  const resultCardProps = buildResultCardProps({
     roundId,
-  }
+    courseName: snapshot.courseName,
+    date: round.date,
+    formats: [gameLabel],
+    holesPlayed: new Set(holeScores.map(h => h.holeNumber)).size,
+    players,
+    settlements: settlementRecords,
+    payouts,
+    buyInCents: game?.buyInCents ?? 0,
+    isPoints,
+  })
 
   const onShareCard = async () => {
     if (sharing) return
