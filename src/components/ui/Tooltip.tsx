@@ -17,7 +17,7 @@ const GOLF_TERMS: Record<string, string> = {
   Dots: 'Side bet game awarding dots for achievements (sandies, greenies, etc.)',
   Banker: 'Rotating banker takes on all other players each hole',
   Quota: 'Each player gets a target based on handicap — beat your quota to win',
-  'Buy-in': 'The amount each player puts in before the round (their entry)',
+  Entry: 'The amount each player puts in before the round',
   Pot: 'The total points in play — every player\'s entry combined',
   Carry: 'When a skin is tied, its value carries forward to the next hole',
   'Lone Wolf': 'When the wolf plays alone against all others — double stakes',

@@ -1503,7 +1503,7 @@ function GameSetup({
           <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
             {stakesMode === 'points'
               ? 'Points Per Player'
-              : <><Tooltip term="Buy-in">Buy-in Per Player</Tooltip>{type === 'nassau' ? ' (covers all 3 legs)' : ''}</>}
+              : <><Tooltip term="Entry">Entry Per Player</Tooltip>{type === 'nassau' ? ' (covers all 3 legs)' : ''}</>}
           </p>
 
           <div className="flex items-center gap-2">
@@ -1830,7 +1830,7 @@ function GameSetup({
               <p className="font-semibold">How Dots work:</p>
               <p>• Each dot earned = value from each other player</p>
               <p>• Snake (3-putt) = you pay each other player</p>
-              <p>• Direct settlement — no buy-in needed</p>
+              <p>• Direct settlement — no entry needed</p>
             </div>
           </section>
         )}
@@ -2087,7 +2087,7 @@ function TreasurerAndBuyIns({
           ←
         </button>
         <div className="min-w-0">
-          <h1 className="text-xl font-bold">Buy-ins & Treasurer</h1>
+          <h1 className="text-xl font-bold">Entries & Treasurer</h1>
           <p className="text-gray-300 text-xs truncate">
             Pot {fmtAmount(potCents, game.stakesMode)} · {course.name}
             {game.stakesMode === 'high_roller' && (
@@ -2240,7 +2240,7 @@ function TreasurerAndBuyIns({
               ? 'Choose a Treasurer First'
               : allPaid
               ? '⛳ Tee It Up!'
-              : 'Collect Buy-ins to Start'}
+              : 'Collect Entries to Start'}
           </button>
         </div>
       </div>

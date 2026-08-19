@@ -240,7 +240,7 @@ export function TournamentSetup({ userId, onCreated, onCancel }: Props) {
             )}
 
             <div>
-              <label className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Buy-In (optional)</label>
+              <label className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Entry (optional)</label>
               <div className="flex items-center gap-2 mt-1">
                 <span className="text-gray-500 dark:text-gray-400">pts</span>
                 <input
@@ -285,7 +285,7 @@ export function TournamentSetup({ userId, onCreated, onCancel }: Props) {
                 </div>
               )}
               <div className="flex justify-between py-2">
-                <span className="text-sm text-gray-500 dark:text-gray-400">Buy-in</span>
+                <span className="text-sm text-gray-500 dark:text-gray-400">Entry</span>
                 <span className="text-sm font-semibold text-gray-800 dark:text-gray-100">${buyInAmount}</span>
               </div>
             </div>

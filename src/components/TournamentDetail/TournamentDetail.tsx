@@ -258,7 +258,7 @@ export function TournamentDetail({ tournamentId, onBack, onStartRound }: Props) 
             </div>
             {tournament.config?.buyInCents && (
               <div className="bg-gray-50 dark:bg-gray-700 rounded-xl p-2 text-center">
-                <p className="text-xs text-gray-500 dark:text-gray-400">Buy-in</p>
+                <p className="text-xs text-gray-500 dark:text-gray-400">Entry</p>
                 <p className="font-semibold text-gray-800 dark:text-gray-100">${(tournament.config.buyInCents / 100).toFixed(0)}</p>
               </div>
             )}

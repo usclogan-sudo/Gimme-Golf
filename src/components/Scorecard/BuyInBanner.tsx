@@ -85,14 +85,14 @@ export function BuyInBanner({ buyIn, treasurerPlayer, roundId, playerId, onRepor
   return (
     <div className="mx-4 mt-2 bg-amber-50 border border-amber-200 rounded-xl p-3 space-y-2">
       <p className="text-amber-800 font-semibold text-sm">
-        Buy-in: {fmtAmount(buyIn.amountCents, stakesMode)} to {treasurerPlayer.name}
+        Entry: {fmtAmount(buyIn.amountCents, stakesMode)} to {treasurerPlayer.name}
       </p>
       {hasDigitalPayment && (
         <div onClick={() => setShowConfirm(true)}>
           <PaymentButtons
             toPlayer={treasurerPlayer}
             amountCents={payCents}
-            note="buy-in"
+            note="entry"
             compact
           />
         </div>

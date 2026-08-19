@@ -349,13 +349,6 @@ function Home({
       <main className="px-4 pt-5 max-w-2xl mx-auto space-y-6">
         <InstallBanner />
 
-        {!betaDismissed && (
-          <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-2xl px-4 py-3 flex items-center justify-between">
-            <p className="text-blue-700 dark:text-blue-300 text-sm font-medium">Welcome to the Gimme beta! We're actively building and would love <a href="https://docs.google.com/forms/d/e/1FAIpQLScC3xN8rQcoCBHSPQAG8k1tqiwoB1pz3IFytV2Mvmlikr9w4Q/viewform" target="_blank" rel="noopener noreferrer" className="underline">your feedback</a>.</p>
-            <button onClick={() => { setBetaDismissed(true); localStorage.setItem('gimme_beta_dismissed', '1') }} className="text-blue-400 text-lg leading-none ml-2">&times;</button>
-          </div>
-        )}
-
         {fetchError && (
           <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-2xl px-4 py-3 flex items-center justify-between gap-2">
             <p className="text-red-700 dark:text-red-400 text-sm font-medium flex-1">{fetchError}</p>
@@ -398,6 +391,16 @@ function Home({
             <div className="w-14 h-14 bg-white/15 rounded-2xl flex items-center justify-center text-3xl border border-white/20">🏌️</div>
           </div>
         </button>
+
+        {/* Beta feedback — quiet, below the primary actions, Play tab only (§9e) */}
+        {!betaDismissed && (
+          <div className="bg-gray-50 dark:bg-gray-800/60 border border-gray-200 dark:border-gray-700 rounded-2xl px-4 py-2.5 flex items-center justify-between gap-2">
+            <p className="text-gray-600 dark:text-gray-300 text-sm">
+              In beta — building fast. <a href="https://docs.google.com/forms/d/e/1FAIpQLScC3xN8rQcoCBHSPQAG8k1tqiwoB1pz3IFytV2Mvmlikr9w4Q/viewform" target="_blank" rel="noopener noreferrer" className="font-semibold text-navy dark:text-brass underline">Share feedback</a>
+            </p>
+            <button onClick={() => { setBetaDismissed(true); localStorage.setItem('gimme_beta_dismissed', '1') }} className="text-gray-400 text-xl leading-none flex-shrink-0" aria-label="Dismiss">&times;</button>
+          </div>
+        )}
 
         {unsettledCount > 0 && (
           <button
