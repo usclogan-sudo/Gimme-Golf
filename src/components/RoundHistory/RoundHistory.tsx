@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react'
-import { supabase, rowToRound, rowToHoleScore } from '../../lib/supabase'
-import { buildCourseHandicaps, fmtAmount, strokesOnHole, isUnitGame } from '../../lib/gameLogic'
+import { supabase, rowToRound, rowToHoleScore, rowToSettlementRecord } from '../../lib/supabase'
+import { buildCourseHandicaps, strokesOnHole } from '../../lib/gameLogic'
 import { makePlayableSnapshot, roundToHolesConfig } from '../../lib/holeUtils'
+import { ResultCard, buildResultCardProps } from '../ResultCard'
 import { ConfirmModal } from '../ConfirmModal'
-import type { Round, HoleScore, RoundPlayer, GameType } from '../../types'
+import type { Round, HoleScore, RoundPlayer, GameType, SettlementRecord } from '../../types'
 
 interface Props {
   userId: string
@@ -26,6 +27,12 @@ const GAME_EMOJI: Record<GameType, string> = {
   quota: '📋 Quota',
 }
 
+// Clean format label for the ResultCard (strip the leading emoji from GAME_EMOJI).
+const gameLabelOf = (t: GameType): string => {
+  const label = (GAME_EMOJI[t] ?? t).split(' ').slice(1).join(' ')
+  return label || t
+}
+
 export function RoundHistory({ userId, onBack, onViewSettlements, onPlayAgain }: Props) {
   const [rounds, setRounds] = useState<Round[]>([])
   const [loading, setLoading] = useState(true)
@@ -35,6 +42,10 @@ export function RoundHistory({ userId, onBack, onViewSettlements, onPlayAgain }:
   const [deleting, setDeleting] = useState<string | null>(null)
   const [deleteModal, setDeleteModal] = useState<string | null>(null)
   const [settlementStatus, setSettlementStatus] = useState<Map<string, { owed: number; paid: number }>>(new Map())
+  // Full settlement records + which player id is "me" per round — drives the
+  // outcome each row leads with (UX v2.1 §10).
+  const [settlementsByRound, setSettlementsByRound] = useState<Map<string, SettlementRecord[]>>(new Map())
+  const [myPlayerByRound, setMyPlayerByRound] = useState<Map<string, string>>(new Map())
 
   useEffect(() => {
     supabase
@@ -46,20 +57,36 @@ export function RoundHistory({ userId, onBack, onViewSettlements, onPlayAgain }:
         if (data) {
           const mapped = data.map(rowToRound)
           setRounds(mapped)
-          // Fetch settlement status for all completed rounds
           const ids = mapped.map(r => r.id)
           if (ids.length > 0) {
-            supabase.from('settlements').select('round_id, status').in('round_id', ids).then(({ data: sData }) => {
-              if (sData) {
-                const map = new Map<string, { owed: number; paid: number }>()
-                for (const row of sData) {
-                  const entry = map.get(row.round_id) ?? { owed: 0, paid: 0 }
-                  if (row.status === 'owed') entry.owed++
-                  else if (row.status === 'paid') entry.paid++
-                  map.set(row.round_id, entry)
-                }
-                setSettlementStatus(map)
+            // Settlement records (for status badges + per-round outcome) and
+            // participant rows (to resolve which player is the current user).
+            Promise.all([
+              supabase.from('settlements').select('*').in('round_id', ids),
+              supabase.from('round_participants').select('round_id, player_id, user_id').in('round_id', ids),
+            ]).then(([sRes, pRes]) => {
+              const statusMap = new Map<string, { owed: number; paid: number }>()
+              const recMap = new Map<string, SettlementRecord[]>()
+              for (const row of sRes.data ?? []) {
+                const entry = statusMap.get(row.round_id) ?? { owed: 0, paid: 0 }
+                if (row.status === 'owed') entry.owed++
+                else if (row.status === 'paid') entry.paid++
+                statusMap.set(row.round_id, entry)
+                const rec = rowToSettlementRecord(row)
+                recMap.set(rec.roundId, [...(recMap.get(rec.roundId) ?? []), rec])
               }
+              const meMap = new Map<string, string>()
+              for (const row of pRes.data ?? []) {
+                if (row.user_id === userId) meMap.set(row.round_id, row.player_id)
+              }
+              // Self-created guest rounds have no participant row — the player id
+              // equals the auth user id in the round snapshot.
+              for (const r of mapped) {
+                if (!meMap.has(r.id) && (r.players ?? []).some(p => p.id === userId)) meMap.set(r.id, userId)
+              }
+              setSettlementStatus(statusMap)
+              setSettlementsByRound(recMap)
+              setMyPlayerByRound(meMap)
             })
           }
         }
@@ -73,6 +100,8 @@ export function RoundHistory({ userId, onBack, onViewSettlements, onPlayAgain }:
       return
     }
     setExpandedId(roundId)
+    setExpandedScores([])
+    setExpandedRoundPlayers([])
     const [hsRes, rpRes] = await Promise.all([
       supabase.from('hole_scores').select('*').eq('round_id', roundId),
       supabase.from('round_players').select('*').eq('round_id', roundId),
@@ -139,38 +168,74 @@ export function RoundHistory({ userId, onBack, onViewSettlements, onPlayAgain }:
           const game = round.game
           const players = round.players ?? []
           const isExpanded = expandedId === round.id
-          // Unit games (wolf/banker/hammer/dots) have no pot — buyIn × N is meaningless.
-          const potCents = game && !isUnitGame(game.type) ? game.buyInCents * players.length : 0
           const sStatus = settlementStatus.get(round.id)
+
+          // ── Per-round outcome (UX v2.1 §10) — lead the row with the result ──
+          const recs = settlementsByRound.get(round.id) ?? []
+          const hasOutcome = recs.length > 0 && !!snapshot && !!game
+          const cardProps = hasOutcome
+            ? buildResultCardProps({
+                roundId: round.id,
+                courseName: snapshot!.courseName,
+                date: round.date,
+                formats: [gameLabelOf(game!.type)],
+                holesPlayed: new Set(expandedScores.map(h => h.holeNumber)).size,
+                players,
+                settlements: recs,
+                isPoints: game!.stakesMode === 'points',
+              })
+            : null
+
+          let outcome: { label: string; tone: 'win' | 'loss' | 'even' } | null = null
+          if (cardProps) {
+            const anyPositive = cardProps.standings.some(s => s.net > 0)
+            const winner = cardProps.standings.find(s => s.position === 1) ?? null
+            const myId = myPlayerByRound.get(round.id) ?? null
+            const myNet = myId ? cardProps.standings.find(s => s.playerId === myId)?.net ?? null : null
+            if (!anyPositive) {
+              outcome = { label: 'All square', tone: 'even' }
+            } else if (myNet !== null) {
+              if (myNet > 0) outcome = { label: `You won +${myNet} pts`, tone: 'win' }
+              else if (myNet < 0) outcome = { label: `You lost ${Math.abs(myNet)} pts`, tone: 'loss' }
+              else outcome = { label: 'You broke even', tone: 'even' }
+            } else if (winner) {
+              outcome = { label: `${winner.displayName} won`, tone: 'even' }
+            }
+          }
+          const toneClass = outcome?.tone === 'win'
+            ? 'text-amber-600 dark:text-brass'
+            : outcome?.tone === 'loss'
+              ? 'text-gray-500 dark:text-gray-400'
+              : 'text-gray-700 dark:text-gray-200'
 
           return (
             <div key={round.id} className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden">
               <button
                 onClick={() => toggleExpand(round.id)}
-                className="w-full text-left px-4 py-3 active:bg-gray-50 transition-colors"
+                className="w-full text-left px-4 py-3 active:bg-gray-50 dark:active:bg-gray-700/40 transition-colors"
               >
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="font-semibold text-gray-900 dark:text-gray-100 flex items-center gap-2">
-                      {snapshot?.courseName ?? 'Unknown Course'}
-                      {sStatus && sStatus.owed === 0 && sStatus.paid > 0 && (
-                        <span className="text-xs font-semibold text-green-700 bg-green-100 px-1.5 py-0.5 rounded-full">All Settled</span>
-                      )}
-                      {sStatus && sStatus.owed > 0 && (
-                        <span className="text-xs font-semibold text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded-full">{sStatus.owed} owed</span>
-                      )}
-                    </p>
-                    <p className="text-sm text-gray-500 mt-0.5">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    {outcome ? (
+                      <p className={`font-display text-lg font-semibold leading-tight truncate ${toneClass}`}>{outcome.label}</p>
+                    ) : (
+                      <p className="font-display text-lg font-semibold text-gray-900 dark:text-gray-100 leading-tight truncate">{snapshot?.courseName ?? 'Unknown Course'}</p>
+                    )}
+                    <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5 truncate">
+                      {outcome && <>{snapshot?.courseName ?? 'Unknown Course'} · </>}
                       {new Date(round.date).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
                       {game && <> · {GAME_EMOJI[game.type] ?? game.type}</>}
                       {game?.stakesMode === 'high_roller' && ' 💎'}
+                      {players.length > 0 && <> · {players.length}p</>}
                     </p>
                   </div>
-                  <div className="text-right flex items-center gap-2">
-                    <div>
-                      <p className="text-sm font-semibold text-gray-700">{players.length} players</p>
-                      {potCents > 0 && <p className="text-xs text-green-600 font-medium">{fmtAmount(potCents, game?.stakesMode)}{game?.stakesMode === 'points' ? ' in play' : ' pot'}</p>}
-                    </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    {sStatus && sStatus.owed === 0 && sStatus.paid > 0 && (
+                      <span className="text-xs font-semibold text-green-700 bg-green-100 px-1.5 py-0.5 rounded-full">Settled</span>
+                    )}
+                    {sStatus && sStatus.owed > 0 && (
+                      <span className="text-xs font-semibold text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded-full">{sStatus.owed} owed</span>
+                    )}
                     <svg className={`w-4 h-4 text-gray-400 transition-transform ${isExpanded ? 'rotate-90' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                     </svg>
@@ -179,7 +244,14 @@ export function RoundHistory({ userId, onBack, onViewSettlements, onPlayAgain }:
               </button>
 
               {isExpanded && (
-                <div className="border-t border-gray-100 px-4 py-3 space-y-3">
+                <div className="border-t border-gray-100 dark:border-gray-700 px-4 py-3 space-y-3">
+                  {/* The ResultCard — the shareable hero for this round (UX v2.1 §10) */}
+                  {cardProps && expandedScores.length > 0 && (
+                    <div className="rounded-2xl overflow-hidden shadow-md">
+                      <ResultCard {...cardProps} variant="screen" ratio="feed" />
+                    </div>
+                  )}
+
                   {players.length > 0 && snapshot && (() => {
                     const pSnap = makePlayableSnapshot(snapshot, roundToHolesConfig(round))
                     const courseHcps = buildCourseHandicaps(players, expandedRoundPlayers, snapshot, round.holesMode)
@@ -205,7 +277,7 @@ export function RoundHistory({ userId, onBack, onViewSettlements, onPlayAgain }:
                       <div className="overflow-x-auto -mx-2">
                         <table className="w-full text-sm">
                           <thead>
-                            <tr className="text-xs text-gray-400 uppercase border-b border-gray-200">
+                            <tr className="text-xs text-gray-400 uppercase border-b border-gray-200 dark:border-gray-700">
                               <th className="text-left py-1.5 px-2 font-medium">#</th>
                               <th className="text-left py-1.5 px-2 font-medium">Player</th>
                               <th className="text-center py-1.5 px-2 font-medium">Gross</th>
@@ -215,14 +287,14 @@ export function RoundHistory({ userId, onBack, onViewSettlements, onPlayAgain }:
                           </thead>
                           <tbody>
                             {board.map(({ player, gross, net, vsPar, hasScores }, i) => (
-                              <tr key={player.id} className="border-b border-gray-50">
+                              <tr key={player.id} className="border-b border-gray-50 dark:border-gray-700/50">
                                 <td className="py-1.5 px-2 text-gray-400 font-semibold">{i + 1}</td>
                                 <td className="py-1.5 px-2 font-semibold text-gray-800 dark:text-gray-100">{player.name}</td>
                                 {hasScores ? (
                                   <>
-                                    <td className="py-1.5 px-2 text-center text-gray-700">{gross}</td>
-                                    <td className="py-1.5 px-2 text-center font-semibold text-gray-700">{net}</td>
-                                    <td className={`py-1.5 px-2 text-center font-semibold ${vsPar > 0 ? 'text-red-600' : vsPar < 0 ? 'text-green-600' : 'text-gray-500'}`}>
+                                    <td className="py-1.5 px-2 text-center text-gray-700 dark:text-gray-300">{gross}</td>
+                                    <td className="py-1.5 px-2 text-center font-semibold text-gray-700 dark:text-gray-200">{net}</td>
+                                    <td className={`py-1.5 px-2 text-center font-semibold ${vsPar > 0 ? 'text-gray-500 dark:text-gray-400' : vsPar < 0 ? 'text-amber-600 dark:text-brass' : 'text-gray-500'}`}>
                                       {vsPar > 0 ? '+' : ''}{vsPar}
                                     </td>
                                   </>
@@ -253,7 +325,7 @@ export function RoundHistory({ userId, onBack, onViewSettlements, onPlayAgain }:
                     {onPlayAgain && (
                       <button
                         onClick={() => onPlayAgain(round)}
-                        className="flex-1 h-10 bg-blue-500 text-white text-sm font-semibold rounded-xl active:bg-blue-600 shadow-sm"
+                        className="flex-1 h-10 bg-navy text-white dark:bg-brass dark:text-navy text-sm font-semibold rounded-xl active:opacity-90 shadow-sm"
                       >
                         Play Again
                       </button>
@@ -261,7 +333,7 @@ export function RoundHistory({ userId, onBack, onViewSettlements, onPlayAgain }:
                     <button
                       onClick={() => confirmDelete(round.id)}
                       disabled={deleting === round.id}
-                      className="h-10 px-3 border border-red-200 text-red-600 text-sm font-semibold rounded-xl active:bg-red-50 disabled:opacity-50"
+                      className="h-10 px-3 border border-gray-200 dark:border-gray-600 text-gray-500 dark:text-gray-400 text-sm font-semibold rounded-xl active:bg-gray-50 dark:active:bg-gray-700 disabled:opacity-50"
                     >
                       {deleting === round.id ? '...' : 'Delete'}
                     </button>
