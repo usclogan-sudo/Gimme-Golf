@@ -1588,17 +1588,31 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
         </div>
       )}
 
-      {/* Scores / Leaderboard tab toggle */}
+      {/* Hole / Grid / Leaderboard segmented control (§7g). Grid = batch entry,
+          promoted from a button to a first-class segment; only offered to a
+          scorekeeper with more than one player. Hole & Grid both live under the
+          'scores' tab — showBatchEntry picks which — so all the per-hole/grid
+          render gates below stay untouched. */}
       <div className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 px-4 py-2 sticky top-[5.5rem] z-[6]">
         <div className="max-w-2xl mx-auto flex gap-1">
           <button
-            onClick={() => setScoreTab('scores')}
+            onClick={() => { setScoreTab('scores'); setShowBatchEntry(false) }}
             className={`flex-1 py-2 rounded-lg text-sm font-semibold transition-colors ${
-              scoreTab === 'scores' ? 'bg-gray-800 text-white dark:bg-brass dark:text-navy' : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300'
+              scoreTab === 'scores' && !showBatchEntry ? 'bg-gray-800 text-white dark:bg-brass dark:text-navy' : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300'
             }`}
           >
-            Scores
+            Hole
           </button>
+          {!readOnly && isScoremasterRole && players.length > 1 && (
+            <button
+              onClick={() => { setScoreTab('scores'); setShowBatchEntry(true) }}
+              className={`flex-1 py-2 rounded-lg text-sm font-semibold transition-colors ${
+                scoreTab === 'scores' && showBatchEntry ? 'bg-gray-800 text-white dark:bg-brass dark:text-navy' : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300'
+              }`}
+            >
+              Grid
+            </button>
+          )}
           <button
             onClick={() => setScoreTab('leaderboard')}
             className={`flex-1 py-2 rounded-lg text-sm font-semibold transition-colors ${
@@ -2412,19 +2426,7 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
         )}
         {/* === end game ribbon === */}
 
-        {/* Batch Entry Toggle */}
-        {!readOnly && isScoremasterRole && players.length > 1 && (
-          <button
-            onClick={() => setShowBatchEntry(!showBatchEntry)}
-            className={`w-full py-2.5 rounded-xl text-sm font-semibold transition-colors ${
-              showBatchEntry ? 'bg-navy text-cream dark:bg-brass dark:text-navy' : 'bg-white dark:bg-gray-800 border border-navy/20 text-navy dark:text-cream'
-            }`}
-          >
-            {showBatchEntry ? '← Standard Entry' : '⊞ Batch Entry'}
-          </button>
-        )}
-
-        {/* Batch Entry Grid */}
+        {/* Batch Entry Grid — the "Grid" segment (§7g) */}
         {showBatchEntry && !readOnly && snapshot && (() => {
           const half = Math.ceil(playableHoleNums.length / 2)
           const idx = playableHoleNums.indexOf(currentHole)
