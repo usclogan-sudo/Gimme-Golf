@@ -282,13 +282,13 @@ export function Ledger({ userId, onBack }: Props) {
           <>
             {/* Summary */}
             <div className="grid grid-cols-2 gap-3">
-              <div className="bg-green-50 dark:bg-green-900/20 rounded-2xl p-4 text-center">
-                <p className="text-xs text-green-600 dark:text-green-400 font-semibold uppercase">Owed to you</p>
-                <p className="text-2xl font-bold text-green-700 dark:text-green-300">{fmtAmount(totalOwedToYou, 'points')}</p>
+              <div className="bg-amber-50 dark:bg-amber-900/10 rounded-2xl p-4 text-center">
+                <p className="text-xs text-amber-600 dark:text-brass font-semibold uppercase">Owed to you</p>
+                <p className="text-2xl font-bold text-amber-700 dark:text-brass">{fmtAmount(totalOwedToYou, 'points')}</p>
               </div>
-              <div className="bg-red-50 dark:bg-red-900/20 rounded-2xl p-4 text-center">
-                <p className="text-xs text-red-600 dark:text-red-400 font-semibold uppercase">You owe</p>
-                <p className="text-2xl font-bold text-red-700 dark:text-red-300">{fmtAmount(totalYouOwe, 'points')}</p>
+              <div className="bg-gray-50 dark:bg-gray-700/40 rounded-2xl p-4 text-center">
+                <p className="text-xs text-gray-500 dark:text-gray-400 font-semibold uppercase">You owe</p>
+                <p className="text-2xl font-bold text-gray-800 dark:text-gray-100">{fmtAmount(totalYouOwe, 'points')}</p>
               </div>
             </div>
 
@@ -314,10 +314,10 @@ export function Ledger({ userId, onBack }: Props) {
                             <p className="text-lg font-bold text-gray-400">0 pts</p>
                           ) : (
                             <>
-                              <p className={`text-lg font-bold ${owedToYou ? 'text-green-600' : 'text-red-600'}`}>
+                              <p className={`text-lg font-bold ${owedToYou ? 'text-amber-600 dark:text-brass' : 'text-gray-700 dark:text-gray-200'}`}>
                                 {owedToYou ? '+' : '-'}{fmtAmount(Math.abs(b.netCents), 'points')}
                               </p>
-                              <p className={`text-xs ${owedToYou ? 'text-green-500' : 'text-red-500'}`}>
+                              <p className={`text-xs ${owedToYou ? 'text-amber-500 dark:text-brass/70' : 'text-gray-400 dark:text-gray-500'}`}>
                                 {owedToYou ? 'they owe you' : 'you owe'}
                               </p>
                             </>
@@ -334,12 +334,12 @@ export function Ledger({ userId, onBack }: Props) {
                         {/* Round breakdown */}
                         <div className="pt-3 space-y-2">
                           {b.rounds.map(r => (
-                            <div key={r.roundId} className={`flex items-center justify-between p-3 rounded-xl ${r.amountCents > 0 ? 'bg-green-50 dark:bg-green-900/20' : r.amountCents < 0 ? 'bg-red-50 dark:bg-red-900/20' : 'bg-gray-50 dark:bg-gray-700'}`}>
+                            <div key={r.roundId} className={`flex items-center justify-between p-3 rounded-xl ${r.amountCents > 0 ? 'bg-amber-50 dark:bg-amber-900/10' : r.amountCents < 0 ? 'bg-gray-50 dark:bg-gray-700/40' : 'bg-gray-50 dark:bg-gray-700'}`}>
                               <div>
                                 <p className="text-sm font-semibold text-gray-800 dark:text-gray-200">{r.courseName}</p>
                                 <p className="text-xs text-gray-500">{r.date}</p>
                               </div>
-                              <p className={`font-bold text-sm ${r.amountCents > 0 ? 'text-green-600' : r.amountCents < 0 ? 'text-red-600' : 'text-gray-400'}`}>
+                              <p className={`font-bold text-sm ${r.amountCents > 0 ? 'text-amber-600 dark:text-brass' : r.amountCents < 0 ? 'text-gray-600 dark:text-gray-300' : 'text-gray-400'}`}>
                                 {r.amountCents > 0 ? '+' : ''}{fmtAmount(r.amountCents === 0 ? 0 : Math.abs(r.amountCents), 'points')}
                                 {r.amountCents < 0 && <span className="text-xs font-normal ml-0.5">owed</span>}
                               </p>
