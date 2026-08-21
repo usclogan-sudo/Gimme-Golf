@@ -592,6 +592,10 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
   // the settlement. Lock it once the first score lands.
   const handicapsLocked = holeScores.length > 0
 
+  // A per-hole betting decision (press, Wolf pick) locks once THIS hole has a score:
+  // you cannot make a wager after seeing the hole's outcome (Authority Model §7).
+  const currentHoleHasScore = holeScores.some(s => s.holeNumber === currentHole)
+
   const hole = snapshot?.holes.find(h => h.number === currentHole)
   const par = hole?.par ?? 4
   const strokeIndex = hole?.strokeIndex ?? currentHole
@@ -940,6 +944,10 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
 
   // Press handler (Skins & Nassau)
   const handlePress = async () => {
+    // Lock once this hole is scored (§7) — a press is a wager on the hole from here
+    // forward, so declaring it after the outcome is known is a way to win money that
+    // should not exist. The button is disabled too; this is the backstop.
+    if (currentHoleHasScore) return
     await updateGameState(game => {
       const config = game.config as any
       const presses = [...(config.presses ?? []), { holeNumber: currentHole, playerId: userId }]
@@ -2139,7 +2147,9 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
                 {SHOW_PRESSES && !readOnly && (
                   <button
                     onClick={handlePress}
-                    className="px-3 py-2 bg-navy text-cream dark:bg-brass dark:text-navy text-xs font-bold rounded-xl active:opacity-90 flex-shrink-0"
+                    disabled={currentHoleHasScore}
+                    title={currentHoleHasScore ? 'Presses lock once the hole is scored — press on the next hole' : undefined}
+                    className="px-3 py-2 bg-navy text-cream dark:bg-brass dark:text-navy text-xs font-bold rounded-xl active:opacity-90 flex-shrink-0 disabled:opacity-40 disabled:active:opacity-40"
                   >
                     Press{(game.config as any).presses?.length ? ` (${(game.config as any).presses.length})` : ''}
                   </button>
@@ -2196,7 +2206,9 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
                   {SHOW_PRESSES && !readOnly && (
                     <button
                       onClick={handlePress}
-                      className="px-3 py-2 bg-navy text-cream dark:bg-brass dark:text-navy text-xs font-bold rounded-xl active:opacity-90 flex-shrink-0"
+                      disabled={currentHoleHasScore}
+                      title={currentHoleHasScore ? 'Presses lock once the hole is scored — press on the next hole' : undefined}
+                      className="px-3 py-2 bg-navy text-cream dark:bg-brass dark:text-navy text-xs font-bold rounded-xl active:opacity-90 flex-shrink-0 disabled:opacity-40 disabled:active:opacity-40"
                     >
                       Press{pressCount ? ` (${pressCount})` : ''}
                     </button>
