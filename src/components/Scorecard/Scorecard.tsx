@@ -236,8 +236,6 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
   const [sideBetParticipants, setSideBetParticipants] = useState<string[]>([])
   const [editingHcpPlayerId, setEditingHcpPlayerId] = useState<string | null>(null)
   const [editingHcpValue, setEditingHcpValue] = useState('')
-  const [showHoleConfirm, setShowHoleConfirm] = useState(false)
-  const [confirmParFill, setConfirmParFill] = useState(false)
   const [showMiniBoard, setShowMiniBoard] = useState(false)
   const [showGameStatus, setShowGameStatus] = useState(true)
   // BBB (Bingo Bango Bongo) settles from points, not strokes — so golf-score entry
@@ -281,7 +279,13 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
     message: string
     type: 'info' | 'success' | 'error'
     undo?: { previousScore: number; playerId: string; holeNumber: number }
+    /** Auto-advance undo (§4): the hole to jump back to when tapped. */
+    holeUndo?: number
   } | null>(null)
+  // Pending auto-advance timer, and a per-render snapshot of the guards it needs
+  // (kept in a ref so setScore — defined before permissions — can read them).
+  const holeAdvanceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const advanceCtxRef = useRef<{ can: boolean; holes: number[] }>({ can: false, holes: [] })
   const [showRoundSummary, setShowRoundSummary] = useState(true)
   const [showBatchEntry, setShowBatchEntry] = useState(false)
   const [batchScores, setBatchScores] = useState<Record<string, Record<number, string>>>({})
@@ -586,18 +590,25 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
     message: string,
     type: 'success' | 'error' | 'info',
     undo?: { previousScore: number; playerId: string; holeNumber: number },
+    holeUndo?: number,
   ) => {
     if (scoreToastTimerRef.current) clearTimeout(scoreToastTimerRef.current)
-    setScoreToast({ message, type, undo })
-    const duration = undo ? 4000 : type === 'error' ? 3000 : 2000
+    setScoreToast({ message, type, undo, holeUndo })
+    const duration = undo || holeUndo != null ? 4000 : type === 'error' ? 3000 : 2000
     scoreToastTimerRef.current = setTimeout(() => setScoreToast(null), duration)
   }
 
   const performScoreUndo = () => {
-    const undo = scoreToast?.undo
-    if (!undo) return
+    const t = scoreToast
     if (scoreToastTimerRef.current) clearTimeout(scoreToastTimerRef.current)
     setScoreToast(null)
+    // Auto-advance undo (§4): jump back to the hole (scores are already correct).
+    if (t?.holeUndo != null) {
+      void goToHole(t.holeUndo)
+      return
+    }
+    const undo = t?.undo
+    if (!undo) return
     setHoleScores(prev => prev.map(s =>
       s.playerId === undo.playerId && s.holeNumber === undo.holeNumber
         ? { ...s, grossScore: undo.previousScore }
@@ -750,6 +761,9 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
   const setScore = (playerId: string, grossScore: number) => {
     const holeNumber = currentHole
 
+    // Any score change cancels a pending auto-advance — editing means "I'm still here".
+    if (holeAdvanceTimerRef.current) { clearTimeout(holeAdvanceTimerRef.current); holeAdvanceTimerRef.current = null }
+
     // Optimistic local update so the score input feels instant.
     const existing = holeScores.find(s => s.playerId === playerId && s.holeNumber === holeNumber)
     if (existing) {
@@ -778,6 +792,24 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
       void persistScoreRef.current?.(playerId, holeNumber, grossScore)
     }, 250)
     map.set(key, { timer, data: { playerId, holeNumber, grossScore } })
+
+    // Auto-advance (§4): when a NEW score fills the last blank on this hole, hold
+    // ~450ms so the outcome flash lands, then advance and offer Undo. Only for a
+    // single authoritative scorer on a normal round (guards snapshotted in the ref),
+    // never on an edit to an already-scored player, and never on the final hole.
+    if (!existing) {
+      const { can, holes } = advanceCtxRef.current
+      const idx = holes.indexOf(holeNumber)
+      const allNowScored = players.every(p => p.id === playerId || holeScores.some(s => s.playerId === p.id && s.holeNumber === holeNumber))
+      if (can && allNowScored && idx >= 0 && idx < holes.length - 1) {
+        const nextHole = holes[idx + 1]
+        holeAdvanceTimerRef.current = setTimeout(() => {
+          holeAdvanceTimerRef.current = null
+          void goToHole(nextHole)
+          showScoreToast(`Hole ${holeNumber} saved`, 'success', undefined, holeNumber)
+        }, 450)
+      }
+    }
   }
 
   // On unmount or roundId change, flush any pending debounced writes immediately
@@ -790,12 +822,14 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
         void persistScoreRef.current?.(entry.data.playerId, entry.data.holeNumber, entry.data.grossScore)
       }
       map.clear()
+      if (holeAdvanceTimerRef.current) { clearTimeout(holeAdvanceTimerRef.current); holeAdvanceTimerRef.current = null }
     }
   }, [roundId])
 
   const goToHole = async (holeNum: number) => {
     setSaveError(null)
-    setConfirmParFill(false)
+    // A manual hole change supersedes any pending auto-advance.
+    if (holeAdvanceTimerRef.current) { clearTimeout(holeAdvanceTimerRef.current); holeAdvanceTimerRef.current = null }
     if (isEventRound) {
       // Event rounds: navigate locally, only event manager updates DB
       setLocalHole(holeNum)
@@ -1157,6 +1191,14 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
     myParticipant,
     myEventParticipant,
   } = computeScorecardPermissions(userId, round, roundParticipants, eventParticipants, isEventRound, readOnlyProp)
+
+  // Snapshot the auto-advance guards for setScore (defined earlier). Auto-advance
+  // only for a single authoritative scorer on a normal round, in the Hole view —
+  // never spectators, self-entry, or multi-actor event rounds.
+  advanceCtxRef.current = {
+    can: !readOnly && !selfEntryOnly && !isEventRound && isScoremasterRole && scoreTab === 'scores' && !showBatchEntry,
+    holes: playableHoleNums,
+  }
 
   // Filter scores for game logic: only use approved scores
   const approvedScores = useMemo(() => {
@@ -2760,7 +2802,7 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
 
         {/* Next Hole / End Round — in scrollable content. BBB settles from points,
             so a missing-strokes nag would be noise there. */}
-        {!showBatchEntry && !readOnly && !showHoleConfirm && game?.type !== 'bingo_bango_bongo' && (() => {
+        {!showBatchEntry && !readOnly && game?.type !== 'bingo_bango_bongo' && (() => {
           const missingPlayers = players.filter(p => !holeScores.some(s => s.playerId === p.id && s.holeNumber === currentHole))
           return missingPlayers.length > 0 ? (
             <p className="text-amber-600 text-xs font-medium text-center py-1.5 bg-amber-50 rounded-xl">
@@ -2769,96 +2811,12 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
           ) : null
         })()}
 
-        {/* Hole Confirm Panel */}
-        {!showBatchEntry && showHoleConfirm && (() => {
-          const unscoredPlayers = players.filter(p => !holeScores.some(s => s.playerId === p.id && s.holeNumber === currentHole))
-          const needsParWarning = unscoredPlayers.length > 0 && !confirmParFill
-          return (
-            <div className="bg-blue-50 border border-blue-200 rounded-2xl p-4 space-y-3">
-              <p className="font-bold text-blue-800 text-sm">Confirm Hole {currentHole} Scores</p>
-
-              {/* Par fill warning */}
-              {needsParWarning && (
-                <div className="bg-amber-50 border border-amber-300 rounded-xl p-3 space-y-2">
-                  <p className="text-amber-800 text-sm font-semibold">
-                    {unscoredPlayers.length === 1
-                      ? `${unscoredPlayers[0].name} has no score`
-                      : `${unscoredPlayers.map(p => p.name).join(', ')} have no scores`}
-                  </p>
-                  <p className="text-amber-700 text-xs">
-                    {unscoredPlayers.length === 1 ? 'Score' : 'Scores'} will be recorded as par ({par})
-                  </p>
-                  <div className="flex gap-2">
-                    <button
-                      onClick={() => setConfirmParFill(true)}
-                      className="flex-1 h-10 bg-amber-500 text-white font-bold rounded-xl active:bg-amber-600 text-sm"
-                    >
-                      Record as Par & Next
-                    </button>
-                    <button
-                      onClick={() => { setShowHoleConfirm(false); setConfirmParFill(false) }}
-                      className="flex-1 h-10 bg-gray-100 text-gray-700 font-bold rounded-xl active:bg-gray-200 text-sm"
-                    >
-                      Edit Scores
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              <div className="space-y-1.5">
-                {players.map(p => {
-                  const hs = holeScores.find(s => s.playerId === p.id && s.holeNumber === currentHole)
-                  const score = hs?.grossScore ?? par
-                  const isAssumed = !hs
-                  return (
-                    <div key={p.id} className={`flex items-center justify-between px-3 py-1.5 rounded-lg ${isAssumed ? 'bg-amber-50 border border-amber-200' : 'bg-white'}`}>
-                      <span className="text-sm font-medium text-gray-800 dark:text-gray-100">{p.name}</span>
-                      <span className={`text-sm font-bold ${isAssumed ? 'text-amber-600' : 'text-gray-800 dark:text-gray-100'}`}>
-                        {score} {isAssumed && <span className="text-xs font-normal">(par assumed)</span>}
-                      </span>
-                    </div>
-                  )
-                })}
-              </div>
-              {!needsParWarning && (
-                <div className="flex gap-2">
-                  <button
-                    onClick={async () => {
-                      // Auto-save par for unscored players
-                      if (unscoredPlayers.length > 0) {
-                        await Promise.all(unscoredPlayers.map(p => setScore(p.id, par)))
-                      }
-                      setShowHoleConfirm(false)
-                      setConfirmParFill(false)
-                      const nextIdx = playableHoleNums.indexOf(currentHole) + 1
-                      goToHole(playableHoleNums[nextIdx] ?? currentHole)
-                    }}
-                    className="flex-1 h-12 bg-blue-600 text-white font-bold rounded-xl active:bg-blue-700 text-sm"
-                  >
-                    Confirm & Next →
-                  </button>
-                  <button
-                    onClick={() => { setShowHoleConfirm(false); setConfirmParFill(false) }}
-                    className="flex-1 h-12 bg-gray-100 text-gray-700 font-bold rounded-xl active:bg-gray-200 text-sm"
-                  >
-                    Edit Scores
-                  </button>
-                </div>
-              )}
-            </div>
-          )
-        })()}
-
-        {!showBatchEntry && !showHoleConfirm && (playableHoleNums.indexOf(currentHole) < playableHoleNums.length - 1 ? (
+        {/* Next Hole advances immediately (§4). Completing a hole auto-advances after
+            a brief hold with an Undo, so this button is the manual fallback. */}
+        {!showBatchEntry && (playableHoleNums.indexOf(currentHole) < playableHoleNums.length - 1 ? (
           <button onClick={() => {
-            // Small groups (1-2 players) in non-event rounds: skip confirm
-            const isSmallCasual = players.length <= 2 && !isEventRound
             const nextIdx = playableHoleNums.indexOf(currentHole) + 1
-            if (!readOnly && !selfEntryOnly && isScoremasterRole && !isSmallCasual) {
-              setShowHoleConfirm(true)
-            } else {
-              goToHole(playableHoleNums[nextIdx])
-            }
+            goToHole(playableHoleNums[nextIdx])
           }}
             className="w-full h-14 bg-gray-800 text-white dark:bg-brass dark:text-navy text-lg font-bold rounded-2xl active:bg-gray-900 transition-colors shadow-lg">Next Hole →</button>
         ) : readOnly ? (
@@ -2880,16 +2838,16 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
         </div>
       )}
 
-      {/* Score status toast */}
+      {/* Score status toast — footer, so it never overlaps the invite strip (§4/§8) */}
       {scoreToast && (
-        <div className="fixed top-20 inset-x-0 z-50 flex justify-center pointer-events-none">
-          <div className={`px-4 py-2 rounded-xl shadow-lg text-sm font-semibold flex items-center gap-3 ${
-            scoreToast.type === 'success' ? 'bg-green-600 text-white' :
+        <div className="fixed bottom-6 inset-x-0 z-50 flex justify-center pointer-events-none px-4">
+          <div className={`px-4 py-2.5 rounded-xl shadow-lg text-sm font-semibold flex items-center gap-3 ${
+            scoreToast.type === 'success' ? 'bg-navy text-cream dark:bg-brass dark:text-navy' :
             scoreToast.type === 'error' ? 'bg-red-600 text-white' :
-            'bg-blue-600 text-white'
+            'bg-navy text-cream'
           }`}>
             <span>{scoreToast.message}</span>
-            {scoreToast.undo && (
+            {(scoreToast.undo || scoreToast.holeUndo != null) && (
               <button
                 onClick={performScoreUndo}
                 className="underline font-bold pointer-events-auto active:opacity-70"
