@@ -41,6 +41,7 @@ export function RoundHistory({ userId, onBack, onViewSettlements, onPlayAgain }:
   const [expandedRoundPlayers, setExpandedRoundPlayers] = useState<RoundPlayer[]>([])
   const [deleting, setDeleting] = useState<string | null>(null)
   const [deleteModal, setDeleteModal] = useState<string | null>(null)
+  const [showScoreTable, setShowScoreTable] = useState(false)
   const [settlementStatus, setSettlementStatus] = useState<Map<string, { owed: number; paid: number }>>(new Map())
   // Full settlement records + which player id is "me" per round — drives the
   // outcome each row leads with (UX v2.1 §10).
@@ -102,6 +103,7 @@ export function RoundHistory({ userId, onBack, onViewSettlements, onPlayAgain }:
     setExpandedId(roundId)
     setExpandedScores([])
     setExpandedRoundPlayers([])
+    setShowScoreTable(false)
     const [hsRes, rpRes] = await Promise.all([
       supabase.from('hole_scores').select('*').eq('round_id', roundId),
       supabase.from('round_players').select('*').eq('round_id', roundId),
@@ -252,7 +254,17 @@ export function RoundHistory({ userId, onBack, onViewSettlements, onPlayAgain }:
                     </div>
                   )}
 
-                  {players.length > 0 && snapshot && (() => {
+                  {/* Golf scorecard — collapsed by default; the card above is the hero (§6). */}
+                  {players.length > 0 && snapshot && (
+                    <div>
+                      <button
+                        onClick={() => setShowScoreTable(v => !v)}
+                        className="w-full flex items-center justify-between text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide py-1"
+                      >
+                        <span>Scorecard</span>
+                        <span className="text-gray-400 text-sm">{showScoreTable ? '▾' : '▸'}</span>
+                      </button>
+                  {showScoreTable && (() => {
                     const pSnap = makePlayableSnapshot(snapshot, roundToHolesConfig(round))
                     const courseHcps = buildCourseHandicaps(players, expandedRoundPlayers, snapshot, round.holesMode)
 
@@ -308,34 +320,40 @@ export function RoundHistory({ userId, onBack, onViewSettlements, onPlayAgain }:
                       </div>
                     )
                   })()}
+                    </div>
+                  )}
 
+                  {/* Primary actions — Settle Up is navy, not money-gold (§6). */}
                   <div className="flex gap-2">
                     {onViewSettlements && sStatus && (
                       <button
                         onClick={() => onViewSettlements(round.id)}
-                        className={`flex-1 h-10 text-sm font-semibold rounded-xl transition-colors ${
+                        className={`flex-1 h-11 text-sm font-semibold rounded-xl transition-colors ${
                           sStatus.owed > 0
-                            ? 'bg-amber-500 text-white active:bg-amber-600 shadow-sm'
-                            : 'border border-green-200 text-green-700 active:bg-green-50'
+                            ? 'bg-navy text-cream dark:bg-brass dark:text-navy active:opacity-90 shadow-sm'
+                            : 'border border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-300 active:bg-gray-50 dark:active:bg-gray-700'
                         }`}
                       >
-                        {sStatus.owed > 0 ? '💰 Settle Up' : 'View Settlements'}
+                        {sStatus.owed > 0 ? 'Settle Up' : 'View Settlements'}
                       </button>
                     )}
                     {onPlayAgain && (
                       <button
                         onClick={() => onPlayAgain(round)}
-                        className="flex-1 h-10 bg-navy text-white dark:bg-brass dark:text-navy text-sm font-semibold rounded-xl active:opacity-90 shadow-sm"
+                        className="flex-1 h-11 border border-gray-200 dark:border-gray-600 text-gray-700 dark:text-gray-200 text-sm font-semibold rounded-xl active:bg-gray-50 dark:active:bg-gray-700"
                       >
                         Play Again
                       </button>
                     )}
+                  </div>
+                  {/* Delete is destructive and tertiary — not a peer of the primary action (§6). */}
+                  <div className="text-center">
                     <button
                       onClick={() => confirmDelete(round.id)}
                       disabled={deleting === round.id}
-                      className="h-10 px-3 border border-gray-200 dark:border-gray-600 text-gray-500 dark:text-gray-400 text-sm font-semibold rounded-xl active:bg-gray-50 dark:active:bg-gray-700 disabled:opacity-50"
+                      className="text-xs font-medium text-gray-400 dark:text-gray-500 active:text-gray-600 disabled:opacity-50 py-1"
                     >
-                      {deleting === round.id ? '...' : 'Delete'}
+                      {deleting === round.id ? 'Deleting…' : 'Delete round'}
                     </button>
                   </div>
                 </div>
