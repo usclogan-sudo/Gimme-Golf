@@ -183,10 +183,10 @@ export function LeaderboardTab({
           : gt === 'banker' ? `${v > 0 ? '+' : ''}${v} unit${Math.abs(v) !== 1 ? 's' : ''}`
           : `${v} pt${v !== 1 ? 's' : ''}`
         const title =
-          gt === 'bingo_bango_bongo' ? '⭐ Bingo Bango Bongo · Points'
-          : gt === 'stableford' ? '🎯 Stableford · Points'
-          : gt === 'quota' ? '🎯 Quota · vs Target'
-          : '🏦 Banker · Units'
+          gt === 'bingo_bango_bongo' ? 'Bingo Bango Bongo · Points'
+          : gt === 'stableford' ? 'Stableford · Points'
+          : gt === 'quota' ? 'Quota · vs Target'
+          : 'Banker · Units'
         const ranked = players.slice().sort((a, b) => valueOf(b.id) - valueOf(a.id))
         const pos: number[] = []
         ranked.forEach((p, i) => {

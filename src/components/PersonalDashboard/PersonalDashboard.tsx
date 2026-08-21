@@ -9,17 +9,17 @@ import type {
 } from '../../types'
 
 const GAME_LABELS: Record<GameType, string> = {
-  skins: '⛳ Skins',
-  best_ball: '🤝 Best Ball',
-  nassau: '🏳️ Nassau',
-  wolf: '🐺 Wolf',
-  bingo_bango_bongo: '⭐ BBB',
-  hammer: '🔨 Hammer',
+  skins: 'Skins',
+  best_ball: 'Best Ball',
+  nassau: 'Nassau',
+  wolf: 'Wolf',
+  bingo_bango_bongo: 'BBB',
+  hammer: 'Hammer',
   vegas: 'Vegas',
-  stableford: '📊 Stableford',
-  dots: '🔴 Dots',
-  banker: '🏦 Banker',
-  quota: '📋 Quota',
+  stableford: 'Stableford',
+  dots: 'Dots',
+  banker: 'Banker',
+  quota: 'Quota',
 }
 
 function fmtSigned(cents: number): string {

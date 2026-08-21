@@ -50,17 +50,17 @@ import type { AppNotification, Course, Round, UserProfile, GameType, StakesMode 
 type Screen = 'home' | 'course-catalog' | 'course-setup' | 'new-round' | 'scorecard' | 'settle-up' | 'round-history' | 'stats' | 'settings' | 'onboarding' | 'admin' | 'upgrade-account' | 'player-directory' | 'handicap-detail' | 'join-round' | 'tournament-list' | 'tournament-setup' | 'tournament-detail' | 'personal-dashboard' | 'event-setup' | 'event-leaderboard' | 'ledger' | 'spectate' | 'prop-bets'
 
 const GAME_EMOJI: Record<GameType, string> = {
-  skins: '🎰 Skins',
-  best_ball: '🤝 Best Ball',
-  nassau: '🏳️ Nassau',
-  wolf: '🐺 Wolf',
-  bingo_bango_bongo: '⭐ BBB',
-  hammer: '🔨 Hammer',
-  vegas: '🎲 Vegas',
-  stableford: '📊 Stableford',
-  dots: '🔴 Dots',
-  banker: '🏦 Banker',
-  quota: '📋 Quota',
+  skins: 'Skins',
+  best_ball: 'Best Ball',
+  nassau: 'Nassau',
+  wolf: 'Wolf',
+  bingo_bango_bongo: 'BBB',
+  hammer: 'Hammer',
+  vegas: 'Vegas',
+  stableford: 'Stableford',
+  dots: 'Dots',
+  banker: 'Banker',
+  quota: 'Quota',
 }
 
 function totalPar(course: Course) {
