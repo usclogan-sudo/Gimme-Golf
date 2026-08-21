@@ -6,7 +6,9 @@ import type { Round, Player, UserProfile, PinnedFriend } from '../../types'
 
 interface Props {
   userId: string
-  onBack: () => void
+  onBack?: () => void
+  /** Rendered inline as the Group tab's content — hides its own header (§3). */
+  embedded?: boolean
 }
 
 interface PlayerEntry {
@@ -25,7 +27,7 @@ interface PlayerEntry {
   paypalEmail?: string
 }
 
-export function PlayerDirectory({ userId, onBack }: Props) {
+export function PlayerDirectory({ userId, onBack, embedded }: Props) {
   const [players, setPlayers] = useState<PlayerEntry[]>([])
   const [pinnedIds, setPinnedIds] = useState<Set<string>>(new Set())
   const [loading, setLoading] = useState(true)
@@ -156,14 +158,16 @@ export function PlayerDirectory({ userId, onBack }: Props) {
   const guests = filtered.filter(p => !pinnedIds.has(p.id) && !frequent.includes(p) && !p.isRegistered)
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 pb-8">
-      <header className="app-header text-white px-4 py-4 sticky top-0 z-10 shadow-xl flex items-center gap-3">
-        <button onClick={onBack} className="min-w-[44px] min-h-[44px] flex items-center justify-center rounded-full hover:bg-gray-800 text-xl" aria-label="Back">←</button>
-        <h1 className="text-xl font-bold">Players</h1>
-        <span className="text-sm text-gray-300 ml-auto">{players.length} total</span>
-      </header>
+    <div className={embedded ? '' : 'min-h-screen bg-gray-50 dark:bg-gray-900 pb-8'}>
+      {!embedded && (
+        <header className="app-header text-white px-4 py-4 sticky top-0 z-10 shadow-xl flex items-center gap-3">
+          <button onClick={onBack} className="min-w-[44px] min-h-[44px] flex items-center justify-center rounded-full hover:bg-gray-800 text-xl" aria-label="Back">←</button>
+          <h1 className="text-xl font-bold">Players</h1>
+          <span className="text-sm text-gray-300 ml-auto">{players.length} total</span>
+        </header>
+      )}
 
-      <div className="px-4 py-5 max-w-2xl mx-auto space-y-4">
+      <div className={embedded ? 'space-y-4' : 'px-4 py-5 max-w-2xl mx-auto space-y-4'}>
         <input
           type="text"
           placeholder="Search players..."

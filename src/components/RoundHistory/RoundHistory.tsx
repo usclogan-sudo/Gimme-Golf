@@ -8,9 +8,11 @@ import type { Round, HoleScore, RoundPlayer, GameType, SettlementRecord } from '
 
 interface Props {
   userId: string
-  onBack: () => void
+  onBack?: () => void
   onViewSettlements?: (roundId: string) => void
   onPlayAgain?: (round: Round) => void
+  /** Rendered inline as the Rounds tab's content — hides its own header (§3). */
+  embedded?: boolean
 }
 
 const GAME_EMOJI: Record<GameType, string> = {
@@ -33,7 +35,7 @@ const gameLabelOf = (t: GameType): string => {
   return label || t
 }
 
-export function RoundHistory({ userId, onBack, onViewSettlements, onPlayAgain }: Props) {
+export function RoundHistory({ userId, onBack, onViewSettlements, onPlayAgain, embedded }: Props) {
   const [rounds, setRounds] = useState<Round[]>([])
   const [loading, setLoading] = useState(true)
   const [expandedId, setExpandedId] = useState<string | null>(null)
@@ -143,20 +145,22 @@ export function RoundHistory({ userId, onBack, onViewSettlements, onPlayAgain }:
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center">
+      <div className={embedded ? 'flex justify-center py-16' : 'min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center'}>
         <div className="w-8 h-8 border-2 border-amber-500 border-t-transparent rounded-full animate-spin" />
       </div>
     )
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 pb-8">
-      <header className="app-header text-white px-4 py-4 sticky top-0 z-10 shadow-xl flex items-center gap-3">
-        <button onClick={onBack} className="min-w-[44px] min-h-[44px] flex items-center justify-center rounded-full hover:bg-gray-600 text-xl" aria-label="Back">←</button>
-        <h1 className="text-xl font-bold">Round History</h1>
-      </header>
+    <div className={embedded ? '' : 'min-h-screen bg-gray-50 dark:bg-gray-900 pb-8'}>
+      {!embedded && (
+        <header className="app-header text-white px-4 py-4 sticky top-0 z-10 shadow-xl flex items-center gap-3">
+          <button onClick={onBack} className="min-w-[44px] min-h-[44px] flex items-center justify-center rounded-full hover:bg-gray-600 text-xl" aria-label="Back">←</button>
+          <h1 className="text-xl font-bold">Round History</h1>
+        </header>
+      )}
 
-      <div className="px-4 py-5 max-w-2xl mx-auto space-y-3">
+      <div className={embedded ? 'space-y-3' : 'px-4 py-5 max-w-2xl mx-auto space-y-3'}>
         {rounds.length === 0 && (
           <div className="text-center py-12">
             <p className="text-3xl mb-3">📋</p>

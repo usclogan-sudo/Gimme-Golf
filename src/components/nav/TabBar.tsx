@@ -26,7 +26,7 @@ function Icon({ tab, active }: { tab: HomeTab; active: boolean }) {
 const TABS: { key: HomeTab; label: string }[] = [
   { key: 'play', label: 'Play' },
   { key: 'rounds', label: 'Rounds' },
-  { key: 'group', label: 'Group' },
+  { key: 'group', label: 'Players' },
   { key: 'you', label: 'You' },
 ]
 

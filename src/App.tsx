@@ -121,9 +121,6 @@ function Home({
   onResumeRound,
   onEditCourse,
   onDeleteCourse,
-  onRoundHistory,
-  onStats,
-  onPlayers,
   onSettings,
   onSignOut,
   isAdmin,
@@ -134,12 +131,12 @@ function Home({
   onViewRound,
   onViewProps,
   onJoinRound,
-  notificationCount,
   onTournaments,
   onPersonalDashboard,
   onCreateEvent,
   onLedger,
   onPlayAgain,
+  onViewSettlements,
 }: {
 
   userId: string
@@ -149,9 +146,6 @@ function Home({
   onResumeRound: (roundId: string) => void
   onEditCourse: (course: Course) => void
   onDeleteCourse: (courseId: string) => void
-  onRoundHistory: () => void
-  onStats: () => void
-  onPlayers: () => void
   onSettings: () => void
   onSignOut: () => void
   isAdmin: boolean
@@ -161,8 +155,8 @@ function Home({
   onEndRound?: (roundId: string) => void
   onViewRound?: (roundId: string) => void
   onViewProps?: (roundId: string) => void
-  notificationCount?: number
   onJoinRound: (code?: string) => void
+  onViewSettlements: (roundId: string) => void
   onTournaments: () => void
   onPersonalDashboard: () => void
   onCreateEvent: () => void
@@ -185,6 +179,7 @@ function Home({
   const [betaDismissed, setBetaDismissed] = useState(() => localStorage.getItem('gimme_beta_dismissed') === '1')
   const [retryKey, setRetryKey] = useState(0)
   const [homeTab, setHomeTab] = useState<HomeTab>('play') // bottom tab nav (§9a)
+  const [roundsSeg, setRoundsSeg] = useState<'history' | 'leaderboard'>('history') // Rounds tab segmented control (§3)
 
   const guardAnon = (action: () => void) => {
     if (isAnonymous) { setShowAnonBlock(true); return }
@@ -608,21 +603,42 @@ function Home({
         )}
         </>)}
 
-        {/* ── ROUNDS tab (§9a) — the record ── */}
+        {/* ── ROUNDS tab — lands on the record; Leaderboard is a segmented control,
+            not a menu item (§3) ── */}
         {homeTab === 'rounds' && (
-          <div className="space-y-3">
-            <NavCard label="Round History" sublabel="Every round you've played" onClick={onRoundHistory} badge={(notificationCount ?? 0) > 0 ? String(notificationCount) : undefined} />
-            <NavCard label="Leaderboard" sublabel="Lifetime standings across your group" onClick={onStats} />
-            <NavCard label="Ledger" sublabel="Cross-round balances" onClick={onLedger} />
-            <NavCard label="Tournaments" sublabel="Multi-round competitions" onClick={() => guardAnon(onTournaments)} />
+          <div className="space-y-4">
+            <div className="flex gap-1 bg-gray-100 dark:bg-gray-800 rounded-xl p-1">
+              {(['history', 'leaderboard'] as const).map(seg => (
+                <button
+                  key={seg}
+                  onClick={() => setRoundsSeg(seg)}
+                  className={`flex-1 py-2 rounded-lg text-sm font-semibold transition-colors ${
+                    roundsSeg === seg ? 'bg-gray-800 text-white dark:bg-brass dark:text-navy' : 'text-gray-600 dark:text-gray-300'
+                  }`}
+                >
+                  {seg === 'history' ? 'History' : 'Leaderboard'}
+                </button>
+              ))}
+            </div>
+            <Suspense fallback={<div className="flex justify-center py-16"><div className="w-8 h-8 border-2 border-amber-500 border-t-transparent rounded-full animate-spin" /></div>}>
+              {roundsSeg === 'history'
+                ? <RoundHistory userId={userId} embedded onViewSettlements={onViewSettlements} onPlayAgain={onPlayAgain} />
+                : <Stats userId={userId} embedded />}
+            </Suspense>
+            {/* Ledger + Tournaments stay reachable here until they find their homes
+                (Ledger → Players per §7; Tournaments → §9 product decision). */}
+            <div className="space-y-3 pt-1">
+              <NavCard label="Ledger" sublabel="Cross-round balances" onClick={onLedger} />
+              <NavCard label="Tournaments" sublabel="Multi-round competitions" onClick={() => guardAnon(onTournaments)} />
+            </div>
           </div>
         )}
 
-        {/* ── GROUP tab (§9a) ── */}
+        {/* ── GROUP tab — lands directly on the roster, not a menu (§3) ── */}
         {homeTab === 'group' && (
-          <div className="space-y-3">
-            <NavCard label="Players" sublabel="Everyone you've played with" onClick={onPlayers} />
-          </div>
+          <Suspense fallback={<div className="flex justify-center py-16"><div className="w-8 h-8 border-2 border-amber-500 border-t-transparent rounded-full animate-spin" /></div>}>
+            <PlayerDirectory userId={userId} embedded />
+          </Suspense>
         )}
 
         {/* ── YOU tab (§9a) ── */}
@@ -700,7 +716,6 @@ function Home({
         </button>
         </>)}
 
-        <p className="text-center text-xs text-gray-400 pb-8">Gimme Golf · Beta</p>
       </main>
       <TabBar tab={homeTab} onTab={setHomeTab} />
 
@@ -757,7 +772,7 @@ export default function App() {
   const [activeEventId, setActiveEventId] = useState<string | null>(null)
   const [spectateCode, setSpectateCode] = useState<string | null>(null)
   const [showResetPassword, setShowResetPassword] = useState(false)
-  const { unreadCount: notificationCount, latestToast, dismissToast, markRead } = useNotifications(session?.user?.id ?? null)
+  const { latestToast, dismissToast, markRead } = useNotifications(session?.user?.id ?? null)
 
   // Derived early so hooks can safely reference it in dependency arrays
   // Empty string is a typesafe sentinel — all consumers below are gated behind
@@ -1250,9 +1265,7 @@ export default function App() {
       onEditCourse={(course: Course) => { setEditingCourse(course); setScreen('course-setup') }}
       onDeleteCourse={handleDeleteCourse}
       onResumeRound={roundId => { setScorecardReadOnly(false); setActiveRoundId(roundId); setScreen('scorecard') }}
-      onRoundHistory={() => setScreen('round-history')}
-      onStats={() => setScreen('stats')}
-      onPlayers={() => setScreen('player-directory')}
+      onViewSettlements={(id) => { setActiveRoundId(id); setScreen('settle-up') }}
       onSettings={() => setScreen('settings')}
       onSignOut={() => supabase.auth.signOut()}
       isAdmin={userProfile?.isAdmin ?? false}
@@ -1266,7 +1279,6 @@ export default function App() {
         if (code) setPendingJoinCode(code)
         setScreen('join-round')
       }}
-      notificationCount={notificationCount}
       onTournaments={() => setScreen('tournament-list')}
       onPersonalDashboard={() => setScreen('personal-dashboard')}
       onCreateEvent={() => setScreen('event-setup')}
