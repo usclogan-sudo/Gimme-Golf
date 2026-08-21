@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react'
 import { ScoringDistribution } from '../ScoringDistribution'
-import { supabase, rowToRound, rowToHoleScore, rowToRoundPlayer, rowToJunkRecord } from '../../lib/supabase'
-import { buildCourseHandicaps, calculateSkinsPayouts, calculateSkins, calculateBestBallPayouts, calculateBestBall, calculateNassauPayouts, calculateNassau, calculateWolfPayouts, calculateWolf, calculateBBBPayouts, calculateBBB, calculateJunks } from '../../lib/gameLogic'
+import { supabase, rowToRound, rowToHoleScore, rowToRoundPlayer, rowToJunkRecord, rowToSideBet } from '../../lib/supabase'
+import { computeRoundPlayerNets } from '../../lib/roundNet'
 import { makePlayableSnapshot, roundToHolesConfig } from '../../lib/holeUtils'
-import type { Round, HoleScore, RoundPlayer, Player, CourseSnapshot, SkinsConfig, BestBallConfig, NassauConfig, WolfConfig, BBBPoint, JunkRecord } from '../../types'
+import type { Round, HoleScore, RoundPlayer, Player, CourseSnapshot, BBBPoint, JunkRecord, SideBet } from '../../types'
 
 interface Props {
   userId: string
@@ -14,6 +14,7 @@ interface PlayerStats {
   id: string
   name: string
   roundsPlayed: number
+  roundsWithGame: number
   totalGross: number
   bestGross: number | null
   totalWinningsCents: number
@@ -65,11 +66,13 @@ export function Stats({ userId, onBack }: Props) {
 
     const roundIds = rounds.map(r => r.id)
 
-    const [scoresRes, rpRes, bbbRes, junkRes] = await Promise.all([
+    const [scoresRes, rpRes, bbbRes, junkRes, sbRes, partRes] = await Promise.all([
       supabase.from('hole_scores').select('*').in('round_id', roundIds),
       supabase.from('round_players').select('*').in('round_id', roundIds),
       supabase.from('bbb_points').select('*').in('round_id', roundIds),
       supabase.from('junk_records').select('*').in('round_id', roundIds),
+      supabase.from('side_bets').select('*').in('round_id', roundIds),
+      supabase.from('round_participants').select('round_id, player_id, user_id').eq('user_id', userId).eq('status', 'accepted'),
     ])
 
     const allScores: HoleScore[] = (scoresRes.data ?? []).map(rowToHoleScore)
@@ -79,8 +82,12 @@ export function Stats({ userId, onBack }: Props) {
       bingo: r.bingo, bango: r.bango, bongo: r.bongo,
     }))
     const allJunkRecords: JunkRecord[] = (junkRes.data ?? []).map(rowToJunkRecord)
+    const allSideBets: SideBet[] = (sbRes.data ?? []).map(rowToSideBet)
+    // round_id → the current user's player id in that round (for their distribution).
+    const partMap = new Map<string, string>()
+    for (const p of (partRes.data ?? [])) partMap.set(p.round_id, p.player_id)
 
-    const playerMap = new Map<string, { name: string; roundsPlayed: number; grossTotals: number[]; winningsCents: number; roundsWon: number }>()
+    const playerMap = new Map<string, { name: string; roundsPlayed: number; roundsWithGame: number; grossTotals: number[]; winningsCents: number; roundsWon: number }>()
     const dist: ScoreDistribution = { eagles: 0, birdies: 0, pars: 0, bogeys: 0, doubles: 0, worse: 0 }
     const courseCounts = new Map<string, number>()
 
@@ -93,90 +100,59 @@ export function Stats({ userId, onBack }: Props) {
       const roundScores = allScores.filter(s => s.roundId === round.id)
       const roundPlayers = allRoundPlayers.filter(rp => rp.roundId === round.id)
 
+      // Which player is the current user this round (for their own distribution).
+      let myId = players.find(p => p.id === userId)?.id
+      if (!myId) myId = partMap.get(round.id)
+
+      // ONE shared net computation for the whole round — the same helper My Stats
+      // uses, so the two screens agree across all 11 game types (not just 5).
+      const { netByPlayer, hasGame } = computeRoundPlayerNets({
+        round,
+        roundScores,
+        roundPlayers,
+        bbbPoints: allBbbPoints.filter(b => b.roundId === round.id),
+        junkRecords: allJunkRecords.filter(jr => jr.roundId === round.id),
+        sideBets: allSideBets.filter(sb => sb.roundId === round.id),
+      })
+
       for (const player of players) {
         const pScores = roundScores.filter(s => s.playerId === player.id)
         const gross = pScores.reduce((s, sc) => s + sc.grossScore, 0)
 
         if (!playerMap.has(player.id)) {
-          playerMap.set(player.id, { name: player.name, roundsPlayed: 0, grossTotals: [], winningsCents: 0, roundsWon: 0 })
+          playerMap.set(player.id, { name: player.name, roundsPlayed: 0, roundsWithGame: 0, grossTotals: [], winningsCents: 0, roundsWon: 0 })
         }
         const entry = playerMap.get(player.id)!
         entry.roundsPlayed++
         if (pScores.length >= pSnap.holes.length) {
           entry.grossTotals.push(gross)
         }
+        // Net + win rate: identical definition to My Stats (games contested; a win
+        // is coming out ahead on the round).
+        entry.winningsCents += netByPlayer[player.id] ?? 0
+        if (hasGame) {
+          entry.roundsWithGame++
+          if ((netByPlayer[player.id] ?? 0) > 0) entry.roundsWon++
+        }
 
-        for (const sc of pScores) {
-          const hole = pSnap.holes.find(h => h.number === sc.holeNumber)
-          if (!hole) continue
-          const diff = sc.grossScore - hole.par
-          if (sc.grossScore === 1 || diff <= -2) dist.eagles++
-          else if (diff === -1) dist.birdies++
-          else if (diff === 0) dist.pars++
-          else if (diff === 1) dist.bogeys++
-          else if (diff === 2) dist.doubles++
-          else dist.worse++
+        // Scoring distribution — the current user's holes only, matching My Stats.
+        if (player.id === myId) {
+          for (const sc of pScores) {
+            const hole = pSnap.holes.find(h => h.number === sc.holeNumber)
+            if (!hole) continue
+            const diff = sc.grossScore - hole.par
+            if (sc.grossScore === 1 || diff <= -2) dist.eagles++
+            else if (diff === -1) dist.birdies++
+            else if (diff === 0) dist.pars++
+            else if (diff === 1) dist.bogeys++
+            else if (diff === 2) dist.doubles++
+            else dist.worse++
+          }
         }
       }
 
       if (snapshot.courseName) {
         courseCounts.set(snapshot.courseName, (courseCounts.get(snapshot.courseName) ?? 0) + 1)
-      }
-
-      if (round.game && round.game.buyInCents > 0) {
-        const chm = buildCourseHandicaps(players, roundPlayers, snapshot, round.holesMode)
-        let payouts: { playerId: string; amountCents: number }[] = []
-
-        try {
-          const game = round.game
-          if (game.type === 'skins') {
-            const result = calculateSkins(players, roundScores, pSnap, game.config as SkinsConfig, chm)
-            payouts = calculateSkinsPayouts(result, game, players.length)
-          } else if (game.type === 'best_ball') {
-            const result = calculateBestBall(players, roundScores, pSnap, game.config as BestBallConfig, chm)
-            payouts = calculateBestBallPayouts(result, game.config as BestBallConfig, game, players)
-          } else if (game.type === 'nassau') {
-            const result = calculateNassau(players, roundScores, pSnap, game.config as NassauConfig, chm)
-            payouts = calculateNassauPayouts(result, game, players, roundScores, pSnap, chm)
-          } else if (game.type === 'wolf') {
-            const result = calculateWolf(players, roundScores, pSnap, game.config as WolfConfig, chm)
-            payouts = calculateWolfPayouts(result, game, players)
-          } else if (game.type === 'bingo_bango_bongo') {
-            const roundBbb = allBbbPoints.filter(b => b.roundId === round.id)
-            const result = calculateBBB(players, roundBbb)
-            payouts = calculateBBBPayouts(result, game, players)
-          }
-        } catch {
-          // Skip rounds with calculation errors
-        }
-
-        const buyIn = round.game.buyInCents
-        for (const payout of payouts) {
-          const entry = playerMap.get(payout.playerId)
-          if (entry) {
-            entry.winningsCents += (payout.amountCents - buyIn)
-            if (payout.amountCents > buyIn) entry.roundsWon++
-          }
-        }
-        for (const player of players) {
-          const hasPayout = payouts.some(p => p.playerId === player.id)
-          if (!hasPayout) {
-            const entry = playerMap.get(player.id)
-            if (entry) entry.winningsCents -= buyIn
-          }
-        }
-      }
-
-      if (round.junkConfig) {
-        const roundJunks = allJunkRecords.filter(jr => jr.roundId === round.id)
-        if (roundJunks.length > 0) {
-          const junkResult = calculateJunks(players, roundJunks, round.junkConfig)
-          for (const player of players) {
-            const entry = playerMap.get(player.id)
-            const junkNet = junkResult.netCents[player.id] ?? 0
-            if (entry) entry.winningsCents += junkNet
-          }
-        }
       }
     }
 
@@ -192,6 +168,7 @@ export function Stats({ userId, onBack }: Props) {
       id,
       name: data.name,
       roundsPlayed: data.roundsPlayed,
+      roundsWithGame: data.roundsWithGame,
       totalGross: data.grossTotals.length > 0
         ? Math.round(data.grossTotals.reduce((a, b) => a + b, 0) / data.grossTotals.length)
         : 0,
@@ -252,7 +229,7 @@ export function Stats({ userId, onBack }: Props) {
             </div>
 
             <section className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm p-4">
-              <h2 className="font-display font-semibold text-gray-800 dark:text-gray-100 text-base mb-3">Scoring Distribution</h2>
+              <h2 className="font-display font-semibold text-gray-800 dark:text-gray-100 text-base mb-3">Your Scoring Distribution</h2>
               <ScoringDistribution {...scoreDist} />
             </section>
 
@@ -280,7 +257,7 @@ export function Stats({ userId, onBack }: Props) {
                           {player.roundsPlayed} round{player.roundsPlayed !== 1 ? 's' : ''}
                           {player.totalGross > 0 && ` · Avg ${player.totalGross}`}
                           {player.bestGross && ` · Best ${player.bestGross}`}
-                          {player.roundsPlayed > 0 && ` · ${Math.round((player.roundsWon / player.roundsPlayed) * 100)}% win`}
+                          {player.roundsWithGame > 0 && ` · ${Math.round((player.roundsWon / player.roundsWithGame) * 100)}% win`}
                         </p>
                       </div>
                       <div className="text-right">

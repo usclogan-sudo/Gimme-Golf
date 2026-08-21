@@ -1,19 +1,10 @@
 import { useEffect, useState } from 'react'
 import { ScoringDistribution } from '../ScoringDistribution'
 import { supabase, rowToRound, rowToHoleScore, rowToRoundPlayer, rowToJunkRecord, rowToBBBPoint, rowToSideBet } from '../../lib/supabase'
-import {
-  buildCourseHandicaps,
-  calculateSkins, calculateSkinsPayouts,
-  calculateBestBall, calculateBestBallPayouts,
-  calculateNassau, calculateNassauPayouts,
-  calculateWolf, calculateWolfPayouts,
-  calculateBBB, calculateBBBPayouts,
-  calculateJunks,
-} from '../../lib/gameLogic'
+import { computeRoundPlayerNets } from '../../lib/roundNet'
 import { makePlayableSnapshot, roundToHolesConfig } from '../../lib/holeUtils'
 import type {
   Round, HoleScore, RoundPlayer, Player,
-  SkinsConfig, BestBallConfig, NassauConfig, WolfConfig,
   BBBPoint, JunkRecord, SideBet, GameType,
 } from '../../types'
 
@@ -200,72 +191,40 @@ export function PersonalDashboard({ userId, onBack }: { userId: string; onBack: 
         else dist.worse++
       }
 
-      // Compute net winnings per player for this round
-      const pNet = new Map<string, number>()
-      players.forEach(p => pNet.set(p.id, 0))
+      // Per-player net for this round — ONE shared computation across all 11 game
+      // types (skins…quota), including junk + side bets. Matches SettleUp and the
+      // Leaderboard, so the two stat screens can never disagree.
+      const { netByPlayer, hasGame } = computeRoundPlayerNets({
+        round,
+        roundScores: rScores,
+        roundPlayers: rPlayers,
+        bbbPoints: allBbb.filter(b => b.roundId === round.id),
+        junkRecords: allJunks.filter(jr => jr.roundId === round.id),
+        sideBets: allSB.filter(sb => sb.roundId === round.id),
+      })
+      const myNet = netByPlayer[myId!] ?? 0
+      netWinnings += myNet
 
-      if (round.game && round.game.buyInCents > 0) {
+      // Win rate = wins ÷ games contested (any game type, money or points); a "win"
+      // is coming out ahead on the round. Computed identically on the Leaderboard.
+      if (hasGame && round.game) {
         roundsWithGame++
-        const chm = buildCourseHandicaps(players, rPlayers, snap, round.holesMode)
-        let payouts: { playerId: string; amountCents: number }[] = []
-        try {
-          const g = round.game
-          if (g.type === 'skins') {
-            payouts = calculateSkinsPayouts(calculateSkins(players, rScores, pSnap, g.config as SkinsConfig, chm), g, players.length)
-          } else if (g.type === 'best_ball') {
-            payouts = calculateBestBallPayouts(calculateBestBall(players, rScores, pSnap, g.config as BestBallConfig, chm), g.config as BestBallConfig, g, players)
-          } else if (g.type === 'nassau') {
-            payouts = calculateNassauPayouts(calculateNassau(players, rScores, pSnap, g.config as NassauConfig, chm), g, players, rScores, pSnap, chm)
-          } else if (g.type === 'wolf') {
-            payouts = calculateWolfPayouts(calculateWolf(players, rScores, pSnap, g.config as WolfConfig, chm), g, players)
-          } else if (g.type === 'bingo_bango_bongo') {
-            payouts = calculateBBBPayouts(calculateBBB(players, allBbb.filter(b => b.roundId === round.id)), g, players)
-          }
-        } catch { /* skip rounds with calc errors */ }
-
-        const buyIn = round.game.buyInCents
-        for (const p of players) {
-          const po = payouts.find(x => x.playerId === p.id)
-          pNet.set(p.id, (pNet.get(p.id) ?? 0) + (po ? po.amountCents - buyIn : -buyIn))
-        }
-
-        // Game type tracking
+        if (myNet > 0) roundsWon++
         const gt = round.game.type
         const e = gtMap.get(gt) ?? { rounds: 0, wins: 0, netCents: 0 }
         e.rounds++
-        const myPo = payouts.find(x => x.playerId === myId)
-        e.netCents += myPo ? myPo.amountCents - buyIn : -buyIn
-        if (myPo && myPo.amountCents > buyIn) { e.wins++; roundsWon++ }
+        e.netCents += myNet
+        if (myNet > 0) e.wins++
         gtMap.set(gt, e)
       }
 
-      // Junk
-      if (round.junkConfig) {
-        const rj = allJunks.filter(jr => jr.roundId === round.id)
-        if (rj.length > 0) {
-          const jr = calculateJunks(players, rj, round.junkConfig)
-          for (const p of players) pNet.set(p.id, (pNet.get(p.id) ?? 0) + (jr.netCents[p.id] ?? 0))
-        }
-      }
-
-      // Side bets
-      const rsb = allSB.filter(sb => sb.roundId === round.id && sb.status === 'resolved' && sb.winnerPlayerId)
-      for (const sb of rsb) {
-        const losers = sb.participants.filter(id => id !== sb.winnerPlayerId)
-        if (sb.winnerPlayerId) pNet.set(sb.winnerPlayerId, (pNet.get(sb.winnerPlayerId) ?? 0) + sb.amountCents * losers.length)
-        for (const lid of losers) pNet.set(lid, (pNet.get(lid) ?? 0) - sb.amountCents)
-      }
-
-      const myNet = pNet.get(myId!) ?? 0
-      netWinnings += myNet
-
-      // H2H
+      // H2H — from the shared per-player nets.
       for (const opp of players) {
         if (opp.id === myId) continue
         const entry = h2hMap.get(opp.id) ?? { name: opp.name, wins: 0, losses: 0, ties: 0, netCents: 0, rounds: 0 }
         entry.rounds++
         entry.netCents += myNet
-        const oppNet = pNet.get(opp.id) ?? 0
+        const oppNet = netByPlayer[opp.id] ?? 0
         if (myNet > oppNet) entry.wins++
         else if (myNet < oppNet) entry.losses++
         else entry.ties++
@@ -393,7 +352,8 @@ export function PersonalDashboard({ userId, onBack }: { userId: string; onBack: 
         {/* Head-to-Head */}
         {data.h2h.length > 0 && (
           <section className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm p-4">
-            <h2 className="font-display font-semibold text-gray-800 dark:text-gray-100 text-base mb-3">Head-to-Head</h2>
+            <h2 className="font-display font-semibold text-gray-800 dark:text-gray-100 text-base">Head-to-Head</h2>
+            <p className="text-xs text-gray-400 dark:text-gray-500 mb-3">Lifetime net across rounds together — not your current unsettled balance (see the Ledger).</p>
             <div className="divide-y divide-gray-100 dark:divide-gray-700">
               {data.h2h.map(h => (
                 <div key={h.id} className="flex items-center justify-between py-2.5">
