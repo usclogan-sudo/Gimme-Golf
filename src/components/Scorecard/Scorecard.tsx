@@ -2800,6 +2800,43 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
           )
         })()}
 
+        {/* Wolf per-hole outcome — every completed hole states a result, including
+            the unresolved "needs a partner" case that used to show nothing (§5). */}
+        {!showBatchEntry && game?.type === 'wolf' && wolfResult && (() => {
+          const hr = wolfResult.holeResults.find(h => h.holeNumber === currentHole)
+          const allScored = players.length > 0 && players.every(p => holeScores.some(s => s.playerId === p.id && s.holeNumber === currentHole))
+          const decisions = (game.config as { holeDecisions?: Record<number, { partnerId: string | null }> }).holeDecisions
+          const partnerDecided = decisions?.[currentHole] !== undefined
+          const wolfName = hr ? players.find(p => p.id === hr.wolfId)?.name : null
+
+          // Scored, but the wolf never picked — the silent-failure case, now named.
+          if (allScored && !partnerDecided) {
+            return (
+              <div key={`wolf-np-${currentHole}`} className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-2xl px-4 py-3 text-center shadow-sm">
+                <p className="font-semibold text-amber-800 dark:text-amber-300">
+                  {wolfName ?? 'The wolf'} still needs a partner — pick one to settle hole {currentHole}.
+                </p>
+              </div>
+            )
+          }
+          if (!hr) return null
+          if (hr.tied) {
+            return (
+              <div key={`wolf-tie-${currentHole}`} className="bg-navy dark:bg-gray-800 border border-brass/40 rounded-2xl px-4 py-3 text-center shadow-sm motion-safe:animate-[brass-flash_0.45s_ease-out]">
+                <p className="font-bold text-cream dark:text-gray-200">Hole halved — no units change hands</p>
+              </div>
+            )
+          }
+          if (hr.wolfTeamWon === null) return null // still waiting on scores
+          const partnerName = hr.partnerId ? players.find(p => p.id === hr.partnerId)?.name : null
+          const team = hr.loneWolf ? `${wolfName} (lone wolf)` : `${wolfName} + ${partnerName}`
+          return (
+            <div key={`wolf-${currentHole}`} className="bg-navy dark:bg-gray-800 border border-brass/40 rounded-2xl px-4 py-3 text-center shadow-sm motion-safe:animate-[brass-flash_0.45s_ease-out]">
+              <p className="font-bold text-brass">{team} {hr.wolfTeamWon ? 'win the hole' : 'lose the hole'}</p>
+            </div>
+          )
+        })()}
+
         {/* Next Hole / End Round — in scrollable content. BBB settles from points,
             so a missing-strokes nag would be noise there. */}
         {!showBatchEntry && !readOnly && game?.type !== 'bingo_bango_bongo' && (() => {

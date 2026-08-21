@@ -56,13 +56,45 @@ export function LeaderboardTab({
   snapshot, players, holeScores, courseHcps, game, round,
   skinsResult, bestBallResult, nassauResult, wolfResult, bbbResult,
   hammerResult, vegasResult, stablefordResult, bankerResult, quotaResult,
-  skinsResultAlt, bestBallResultAlt, nassauResultAlt, wolfResultAlt,
-  vegasResultAlt, stablefordResultAlt, bankerResultAlt,
   primaryMode = 'net',
 }: Props) {
   const [sharing, setSharing] = useState(false)
+  // Show one set of units — the game's primary mode. (The opposite-mode "Alt"
+  // duplicate that printed identical values was removed. §5)
   const primaryLabel = primaryMode === 'net' ? 'Net' : 'Gross'
-  const altLabel = primaryMode === 'net' ? 'Gross' : 'Net'
+
+  // Per-player net from the GAME result (money/points) — the same net the
+  // settlement engine records. This, not stroke score, decides who's winning, so
+  // the leaderboard ranks and brass-highlights by it (§5). Unit games (wolf/
+  // banker/hammer) settle head-to-head from a signed net; pot games are payout −
+  // buy-in.
+  const gameNetByPlayer: Map<string, number> = (() => {
+    const m = new Map<string, number>()
+    players.forEach(p => m.set(p.id, 0))
+    if (!game) return m
+    const unitRaw =
+      game.type === 'wolf' ? wolfResult ?? undefined
+      : game.type === 'banker' ? bankerResult ?? undefined
+      : game.type === 'hammer' ? hammerResult ?? undefined
+      : undefined
+    if (isUnitGame(game.type) && unitRaw) {
+      Object.entries(unitGameNet(game.type, game.buyInCents, unitRaw)).forEach(([pid, c]) => m.set(pid, (m.get(pid) ?? 0) + c))
+    } else {
+      let payouts: PlayerPayout[] = []
+      if (game.type === 'skins' && skinsResult) payouts = calculateSkinsPayouts(skinsResult, game, players.length)
+      else if (game.type === 'best_ball' && bestBallResult) payouts = calculateBestBallPayouts(bestBallResult, game.config as BestBallConfig, game, players)
+      else if (game.type === 'nassau' && nassauResult) payouts = calculateNassauPayouts(nassauResult, game, players, holeScores, snapshot, courseHcps)
+      else if (game.type === 'bingo_bango_bongo' && bbbResult) payouts = calculateBBBPayouts(bbbResult, game, players)
+      else if (game.type === 'vegas' && vegasResult) payouts = calculateVegasPayouts(vegasResult, game.config as VegasConfig, game, players)
+      else if (game.type === 'stableford' && stablefordResult) payouts = calculateStablefordPayouts(stablefordResult, game, players)
+      else if (game.type === 'quota' && quotaResult) payouts = calculateQuotaPayouts(quotaResult, game, players)
+      if (payouts.length > 0 && game.buyInCents > 0) {
+        Object.entries(netFromPayouts(payouts, players, game.buyInCents)).forEach(([pid, c]) => m.set(pid, c))
+      }
+    }
+    return m
+  })()
+  const hasGameResult = Array.from(gameNetByPlayer.values()).some(v => v !== 0)
 
   const board = players.map(p => {
     const pScores = holeScores.filter(s => s.playerId === p.id)
@@ -77,70 +109,25 @@ export function LeaderboardTab({
       return s + (hole?.par ?? 0)
     }, 0)
     return { player: p, gross, net: gross - netStrokes, vsPar: gross - scoredPar, thru: pScores.length }
-  }).sort((a, b) => a.net - b.net)
+  }).sort((a, b) =>
+    // Rank by game result once there is one; before that, by stroke net.
+    hasGameResult
+      ? (gameNetByPlayer.get(b.player.id) ?? 0) - (gameNetByPlayer.get(a.player.id) ?? 0)
+      : a.net - b.net
+  )
 
+  const rankKey = (e: (typeof board)[number]) => hasGameResult ? (gameNetByPlayer.get(e.player.id) ?? 0) : e.net
   const positions: number[] = []
   board.forEach((entry, idx) => {
-    positions.push(idx === 0 ? 1 : entry.net === board[idx - 1].net ? positions[idx - 1] : idx + 1)
+    positions.push(idx === 0 ? 1 : rankKey(entry) === rankKey(board[idx - 1]) ? positions[idx - 1] : idx + 1)
   })
 
-  // In-round per-player net cents for the off-screen share card.
-  // - Hammer / Banker / Dots are direct-settlement: result.netCents per player is zero-sum.
-  // - Pot-based games: every player implicitly pays buyInCents in; winners receive a slice
-  //   of the pot via calculateXxxPayouts.
-  // Net per player = (received from pot) − (buyInCents stake) + (direct-settlement netCents).
-  // Points-only, like fmtAmount: points mode stores the point count; legacy money
-  // mode stores cents.
+  // Points-only, like fmtAmount: points mode stores the point count; money mode cents.
   const toPoints = (cents: number) => (game?.stakesMode === 'points' ? cents : Math.round(cents / 100))
   const cardStandings: ResultCardStanding[] = (() => {
-    if (!game) return []
-    const netByPlayer = new Map<string, number>()
-    players.forEach(p => netByPlayer.set(p.id, 0))
-
-    // Use the SAME net the settlement engine records, so in-round standings match
-    // Settle Up. Unit games (hammer/dots/banker/wolf) settle head-to-head from a
-    // signed net (wolf/banker units × per-unit stake; hammer real cents); pot games
-    // are payout − buy-in.
-    const unitRaw =
-      game.type === 'wolf' ? wolfResult ?? undefined
-      : game.type === 'banker' ? bankerResult ?? undefined
-      : game.type === 'hammer' ? hammerResult ?? undefined
-      : undefined
-    if (isUnitGame(game.type) && unitRaw) {
-      Object.entries(unitGameNet(game.type, game.buyInCents, unitRaw)).forEach(([pid, c]) => {
-        netByPlayer.set(pid, (netByPlayer.get(pid) ?? 0) + c)
-      })
-    } else {
-      // Pot-based dispatch — mirrors SettleUp.payouts
-      let payouts: PlayerPayout[] = []
-      if (game.type === 'skins' && skinsResult) {
-        payouts = calculateSkinsPayouts(skinsResult, game, players.length)
-      } else if (game.type === 'best_ball' && bestBallResult) {
-        payouts = calculateBestBallPayouts(bestBallResult, game.config as BestBallConfig, game, players)
-      } else if (game.type === 'nassau' && nassauResult) {
-        payouts = calculateNassauPayouts(nassauResult, game, players, holeScores, snapshot, courseHcps)
-      } else if (game.type === 'bingo_bango_bongo' && bbbResult) {
-        payouts = calculateBBBPayouts(bbbResult, game, players)
-      } else if (game.type === 'vegas' && vegasResult) {
-        payouts = calculateVegasPayouts(vegasResult, game.config as VegasConfig, game, players)
-      } else if (game.type === 'stableford' && stablefordResult) {
-        payouts = calculateStablefordPayouts(stablefordResult, game, players)
-      } else if (game.type === 'quota' && quotaResult) {
-        payouts = calculateQuotaPayouts(quotaResult, game, players)
-      }
-
-      if (payouts.length > 0 && game.buyInCents > 0) {
-        Object.entries(netFromPayouts(payouts, players, game.buyInCents)).forEach(([pid, c]) => {
-          netByPlayer.set(pid, c)
-        })
-      }
-    }
-
-    // Drop empty standings — keeps "All square." path for unscored rounds clean.
-    const allZero = Array.from(netByPlayer.values()).every(v => v === 0)
-    if (allZero) return []
+    if (!game || !hasGameResult) return []
     const ranked = players
-      .map(p => ({ playerId: p.id, displayName: p.name, net: toPoints(netByPlayer.get(p.id) ?? 0) }))
+      .map(p => ({ playerId: p.id, displayName: p.name, net: toPoints(gameNetByPlayer.get(p.id) ?? 0) }))
       .sort((a, b) => b.net - a.net)
     // Standard competition ranking: ties share a position, next distinct skips.
     let pos = 0
@@ -276,23 +263,6 @@ export function LeaderboardTab({
             </div>
           </div>
         )}
-        {skinsResultAlt && (
-          <div className="mt-2 pl-2 border-l-2 border-gray-200">
-            <p className="text-xs font-medium text-gray-400 uppercase mb-1">
-              Skins ({altLabel}) — {skinsResultAlt.totalSkins} won
-            </p>
-            <div className="flex flex-wrap gap-2">
-              {players.filter(p => (skinsResultAlt.skinsWon[p.id] ?? 0) > 0).map(p => (
-                <span key={p.id} className="text-xs text-gray-500 px-2 py-0.5 rounded bg-gray-50">
-                  {p.name}: {skinsResultAlt.skinsWon[p.id]}
-                </span>
-              ))}
-              {skinsResultAlt.totalSkins === 0 && (
-                <span className="text-xs text-gray-400">No skins won yet</span>
-              )}
-            </div>
-          </div>
-        )}
 
         {/* Best Ball — Stroke Play (total) shows strokes to match the payout; Match
             Play shows holes won. */}
@@ -305,19 +275,6 @@ export function LeaderboardTab({
                 {isTotal
                   ? `Team A: ${bestBallResult.totalScore.A} · Team B: ${bestBallResult.totalScore.B} strokes`
                   : `Team A: ${bestBallResult.holesWon.A}W · Team B: ${bestBallResult.holesWon.B}W · Tied: ${bestBallResult.holesWon.tied}`}
-              </p>
-            </div>
-          )
-        })()}
-        {bestBallResultAlt && game && (() => {
-          const isTotal = (game.config as BestBallConfig).scoring === 'total'
-          return (
-            <div className="mt-2 pl-2 border-l-2 border-gray-200">
-              <p className="text-xs font-medium text-gray-400 uppercase mb-1">Best Ball ({altLabel})</p>
-              <p className="text-sm text-gray-500">
-                {isTotal
-                  ? `Team A: ${bestBallResultAlt.totalScore.A} · Team B: ${bestBallResultAlt.totalScore.B} strokes`
-                  : `Team A: ${bestBallResultAlt.holesWon.A}W · Team B: ${bestBallResultAlt.holesWon.B}W · Tied: ${bestBallResultAlt.holesWon.tied}`}
               </p>
             </div>
           )
@@ -345,27 +302,6 @@ export function LeaderboardTab({
             </div>
           </div>
         )}
-        {nassauResultAlt && (
-          <div className="mt-2 pl-2 border-l-2 border-gray-200">
-            <p className="text-xs font-medium text-gray-400 uppercase mb-1">Nassau ({altLabel})</p>
-            <div className="space-y-0.5">
-              {[
-                { label: 'Front', seg: nassauResultAlt.front },
-                { label: 'Back', seg: nassauResultAlt.back },
-                { label: 'Total', seg: nassauResultAlt.total },
-              ].map(({ label, seg }) => {
-                const leader = seg.winner ? players.find(p => p.id === seg.winner)?.name : null
-                const tiedNames = seg.tiedPlayers.map(id => players.find(p => p.id === id)?.name).filter(Boolean).join(', ')
-                return (
-                  <p key={label} className="text-xs text-gray-500">
-                    <span className="font-medium">{label}:</span>{' '}
-                    {seg.incomplete ? 'In progress' : leader ?? (tiedNames ? `Tied (${tiedNames})` : '—')}
-                  </p>
-                )
-              })}
-            </div>
-          </div>
-        )}
 
         {/* Wolf */}
         {wolfResult && (
@@ -376,21 +312,6 @@ export function LeaderboardTab({
                 const u = wolfResult.netUnits[p.id] ?? 0
                 return (
                   <span key={p.id} className={`text-xs font-semibold px-2 py-1 rounded-lg ${u > 0 ? 'bg-purple-50 text-purple-700' : u < 0 ? 'bg-red-50 text-red-600' : 'bg-gray-50 text-gray-500'}`}>
-                    {p.name}: {u > 0 ? '+' : ''}{u}
-                  </span>
-                )
-              })}
-            </div>
-          </div>
-        )}
-        {wolfResultAlt && (
-          <div className="mt-2 pl-2 border-l-2 border-gray-200">
-            <p className="text-xs font-medium text-gray-400 uppercase mb-1">Wolf ({altLabel}) — Units</p>
-            <div className="flex flex-wrap gap-2">
-              {players.slice().sort((a, b) => (wolfResultAlt.netUnits[b.id] ?? 0) - (wolfResultAlt.netUnits[a.id] ?? 0)).map(p => {
-                const u = wolfResultAlt.netUnits[p.id] ?? 0
-                return (
-                  <span key={p.id} className="text-xs text-gray-500 px-2 py-0.5 rounded bg-gray-50">
                     {p.name}: {u > 0 ? '+' : ''}{u}
                   </span>
                 )
@@ -428,15 +349,6 @@ export function LeaderboardTab({
             </p>
           </div>
         )}
-        {vegasResultAlt && (
-          <div className="mt-2 pl-2 border-l-2 border-gray-200">
-            <p className="text-xs font-medium text-gray-400 uppercase mb-1">Vegas ({altLabel})</p>
-            <p className="text-xs text-gray-500">
-              Team A: {vegasResultAlt.netPoints.A} pts · Team B: {vegasResultAlt.netPoints.B} pts
-              {vegasResultAlt.winner !== 'tie' ? ` · Winner: Team ${vegasResultAlt.winner}` : ' · Tied'}
-            </p>
-          </div>
-        )}
 
         {/* Stableford */}
         {stablefordResult && (
@@ -446,18 +358,6 @@ export function LeaderboardTab({
               {players.slice().sort((a, b) => (stablefordResult.points[b.id] ?? 0) - (stablefordResult.points[a.id] ?? 0)).map(p => (
                 <span key={p.id} className="text-xs font-semibold px-2 py-1 rounded-lg bg-indigo-50 text-indigo-700">
                   {p.name}: {stablefordResult.points[p.id] ?? 0} pts
-                </span>
-              ))}
-            </div>
-          </div>
-        )}
-        {stablefordResultAlt && (
-          <div className="mt-2 pl-2 border-l-2 border-gray-200">
-            <p className="text-xs font-medium text-gray-400 uppercase mb-1">Stableford ({altLabel})</p>
-            <div className="flex flex-wrap gap-2">
-              {players.slice().sort((a, b) => (stablefordResultAlt.points[b.id] ?? 0) - (stablefordResultAlt.points[a.id] ?? 0)).map(p => (
-                <span key={p.id} className="text-xs text-gray-500 px-2 py-0.5 rounded bg-gray-50">
-                  {p.name}: {stablefordResultAlt.points[p.id] ?? 0} pts
                 </span>
               ))}
             </div>
@@ -473,21 +373,6 @@ export function LeaderboardTab({
                 const net = bankerResult.netCents[p.id] ?? 0
                 return (
                   <span key={p.id} className={`text-xs font-semibold px-2 py-1 rounded-lg ${net > 0 ? 'bg-emerald-50 text-emerald-700' : net < 0 ? 'bg-red-50 text-red-600' : 'bg-gray-50 text-gray-500'}`}>
-                    {p.name}: {net > 0 ? '+' : ''}{fmtAmount(Math.abs(net), game?.stakesMode)}
-                  </span>
-                )
-              })}
-            </div>
-          </div>
-        )}
-        {bankerResultAlt && (
-          <div className="mt-2 pl-2 border-l-2 border-gray-200">
-            <p className="text-xs font-medium text-gray-400 uppercase mb-1">Banker ({altLabel})</p>
-            <div className="flex flex-wrap gap-2">
-              {players.slice().sort((a, b) => (bankerResultAlt.netCents[b.id] ?? 0) - (bankerResultAlt.netCents[a.id] ?? 0)).map(p => {
-                const net = bankerResultAlt.netCents[p.id] ?? 0
-                return (
-                  <span key={p.id} className="text-xs text-gray-500 px-2 py-0.5 rounded bg-gray-50">
                     {p.name}: {net > 0 ? '+' : ''}{fmtAmount(Math.abs(net), game?.stakesMode)}
                   </span>
                 )
