@@ -193,7 +193,7 @@ export function Ledger({ userId, onBack }: Props) {
   const yearOptions = Array.from({ length: 5 }, (_, i) => currentYear - i)
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 pb-28">
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 pb-8">
       <header className="app-header text-white px-4 py-5 sticky top-0 z-10 shadow-xl">
         <div className="max-w-2xl mx-auto flex items-center gap-3">
           <button onClick={onBack} className="min-w-[44px] min-h-[44px] flex items-center justify-center rounded-full hover:bg-black/20 text-xl">←</button>
@@ -377,12 +377,6 @@ export function Ledger({ userId, onBack }: Props) {
             </div>
           </>
         )}
-      </div>
-
-      <div className="fixed bottom-0 inset-x-0 p-4 bg-white/95 dark:bg-gray-800/95 backdrop-blur-sm border-t border-gray-200 dark:border-gray-700 safe-bottom">
-        <div className="max-w-2xl mx-auto">
-          <button onClick={onBack} className="w-full h-14 bg-gray-800 text-white dark:bg-brass dark:text-navy text-lg font-bold rounded-2xl active:bg-gray-900">← Back</button>
-        </div>
       </div>
 
       <ConfirmModal
