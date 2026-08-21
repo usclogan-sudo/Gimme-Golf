@@ -377,6 +377,21 @@ function Home({
           </div>
         </button>
 
+        {/* Play Again — promoted to a primary action when a prior round exists, so
+            replaying the same group is one tap, not six (§9). */}
+        {lastRoundObj?.courseSnapshot && onPlayAgain && (
+          <button onClick={() => onPlayAgain(lastRoundObj)}
+            className="w-full rounded-2xl shadow-lg overflow-hidden active:scale-[0.98] transition-transform bg-white dark:bg-gray-800 border border-brass/40">
+            <div className="px-6 py-4 flex items-center justify-between gap-3">
+              <div className="text-left min-w-0">
+                <p className="font-display font-bold text-gray-900 dark:text-gray-100 text-xl">Play Again</p>
+                <p className="text-gray-500 dark:text-gray-400 text-sm mt-0.5 truncate">{lastRoundObj.courseSnapshot.courseName} · {lastRoundObj.players?.length ?? 0} players · same setup</p>
+              </div>
+              <div className="w-14 h-14 bg-brass/15 dark:bg-brass/20 rounded-2xl flex items-center justify-center text-3xl border border-brass/30 text-brass flex-shrink-0">↻</div>
+            </div>
+          </button>
+        )}
+
         <button onClick={() => guardAnon(onCreateEvent)}
           className="w-full rounded-2xl shadow-lg overflow-hidden active:scale-[0.98] transition-transform"
           style={{ background: 'linear-gradient(135deg, #0f172a 0%, #1e40af 100%)' }}>
@@ -587,22 +602,6 @@ function Home({
           </div>
         </div>
 
-        {/* Play Again — below the fold for repeat players */}
-        {lastRoundObj?.courseSnapshot && onPlayAgain && (
-          <button
-            onClick={() => onPlayAgain(lastRoundObj)}
-            className="w-full bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 px-4 py-3 text-left active:bg-gray-50 dark:active:bg-gray-700 transition-colors flex items-center justify-between"
-          >
-            <div className="flex items-center gap-3">
-              <span className="text-2xl">🔄</span>
-              <div>
-                <p className="font-semibold text-gray-800 dark:text-gray-100 text-sm">Play Again</p>
-                <p className="text-xs text-gray-500 dark:text-gray-400">{lastRoundObj.courseSnapshot.courseName} · {lastRoundObj.players?.length ?? 0} players</p>
-              </div>
-            </div>
-            <span className="text-xs text-amber-600 font-semibold">Go →</span>
-          </button>
-        )}
         </>)}
 
         {/* ── ROUNDS tab — lands on the record; Leaderboard is a segmented control,
