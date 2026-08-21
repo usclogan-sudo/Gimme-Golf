@@ -577,6 +577,12 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
     return buildCourseHandicaps(players, roundPlayers, snapshot, round?.holesMode)
   }, [players, roundPlayers, snapshot, round?.holesMode])
 
+  // Handicap lock (Authority Model §5c): handicap drives strokes → net → who owes,
+  // so it is a money lever. It is free to edit while setting up, but the moment ANY
+  // score is entered the round is underway and a later change would silently rewrite
+  // the settlement. Lock it once the first score lands.
+  const handicapsLocked = holeScores.length > 0
+
   const hole = snapshot?.holes.find(h => h.number === currentHole)
   const par = hole?.par ?? 4
   const strokeIndex = hole?.strokeIndex ?? currentHole
@@ -1135,6 +1141,9 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
 
   const saveHandicapEdit = async () => {
     if (!editingHcpPlayerId || !round) return
+    // Backstop for the §5c lock — refuse the write if scoring has started, even if
+    // an editor was somehow left open when the first score landed.
+    if (handicapsLocked) { setEditingHcpPlayerId(null); return }
     const newHcp = parseHandicap(editingHcpValue)
     if (newHcp === null || newHcp < -10 || newHcp > 54) return // plus handicaps (down to +10) allowed
     // Update the player snapshot in the round
@@ -2775,16 +2784,19 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
                       <button onClick={() => setEditingHcpPlayerId(null)} className="text-xs text-gray-500">Cancel</button>
                     </div>
                   ) : (
-                    <p className={`text-sm text-gray-500 ${!readOnly ? 'cursor-pointer active:text-amber-600' : ''}`}
+                    <p className={`text-sm text-gray-500 ${!readOnly && !handicapsLocked ? 'cursor-pointer active:text-amber-600' : ''}`}
+                      title={handicapsLocked ? 'Handicaps lock once scoring starts' : undefined}
                       onClick={() => {
-                        if (readOnly) return
+                        if (readOnly || handicapsLocked) return
                         setEditingHcpPlayerId(player.id)
                         setEditingHcpValue(fmtHandicap(player.handicapIndex))
                       }}
                     >
                       HCP {fmtHandicap(player.handicapIndex)}
                       {strokesGiven > 0 && <span className="ml-2 text-amber-600 font-semibold">receives {strokesGiven}</span>}
-                      {!readOnly && <span className="ml-1 text-gray-300 text-xs">✎</span>}
+                      {!readOnly && (handicapsLocked
+                        ? <span className="ml-1 text-gray-300 text-xs" aria-label="locked">&#128274;</span>
+                        : <span className="ml-1 text-gray-300 text-xs">&#9998;</span>)}
                     </p>
                   )}
                 </div>
