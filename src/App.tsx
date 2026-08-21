@@ -131,7 +131,6 @@ function Home({
   onViewRound,
   onViewProps,
   onJoinRound,
-  onTournaments,
   onPersonalDashboard,
   onCreateEvent,
   onLedger,
@@ -161,7 +160,6 @@ function Home({
   onViewProps?: (roundId: string) => void
   onJoinRound: (code?: string) => void
   onViewSettlements: (roundId: string) => void
-  onTournaments: () => void
   onPersonalDashboard: () => void
   onCreateEvent: () => void
   onLedger: () => void
@@ -626,11 +624,10 @@ function Home({
                 ? <RoundHistory userId={userId} embedded onViewSettlements={onViewSettlements} onPlayAgain={onPlayAgain} />
                 : <Stats userId={userId} embedded />}
             </Suspense>
-            {/* Ledger + Tournaments stay reachable here until they find their homes
-                (Ledger → Players per §7; Tournaments → §9 product decision). */}
-            <div className="space-y-3 pt-1">
+            {/* Ledger → Players per §7 (still a link for now). Tournaments removed
+                pending the object-model decision (§9) — code kept, entry point pulled. */}
+            <div className="pt-1">
               <NavCard label="Ledger" sublabel="Cross-round balances" onClick={onLedger} />
-              <NavCard label="Tournaments" sublabel="Multi-round competitions" onClick={() => guardAnon(onTournaments)} />
             </div>
           </div>
         )}
@@ -1288,7 +1285,6 @@ export default function App() {
         if (code) setPendingJoinCode(code)
         setScreen('join-round')
       }}
-      onTournaments={() => setScreen('tournament-list')}
       onPersonalDashboard={() => setScreen('personal-dashboard')}
       onCreateEvent={() => setScreen('event-setup')}
       onLedger={() => setScreen('ledger')}
