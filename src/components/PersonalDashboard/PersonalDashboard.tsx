@@ -340,7 +340,7 @@ export function PersonalDashboard({ userId, onBack }: { userId: string; onBack: 
                     <p className="font-medium text-gray-900 dark:text-gray-100">{GAME_LABELS[g.type] ?? g.type}</p>
                     <p className="text-sm text-gray-500 dark:text-gray-400">{g.rounds} round{g.rounds !== 1 ? 's' : ''} · {g.wins} win{g.wins !== 1 ? 's' : ''}</p>
                   </div>
-                  <p className={`font-bold font-display ${g.netCents > 0 ? 'text-green-600' : g.netCents < 0 ? 'text-red-500' : 'text-gray-400'}`}>
+                  <p className={`font-bold font-display ${g.netCents > 0 ? 'text-amber-600 dark:text-brass' : 'text-gray-500 dark:text-gray-400'}`}>
                     {fmtSigned(g.netCents)}
                   </p>
                 </div>
@@ -368,7 +368,7 @@ export function PersonalDashboard({ userId, onBack }: { userId: string; onBack: 
                       <span className="text-gray-400 dark:text-gray-500 ml-1.5">({h.rounds} rounds)</span>
                     </p>
                   </div>
-                  <p className={`font-bold font-display ${h.netCents > 0 ? 'text-green-600' : h.netCents < 0 ? 'text-red-500' : 'text-gray-400'}`}>
+                  <p className={`font-bold font-display ${h.netCents > 0 ? 'text-amber-600 dark:text-brass' : 'text-gray-500 dark:text-gray-400'}`}>
                     {fmtSigned(h.netCents)}
                   </p>
                 </div>
@@ -407,7 +407,7 @@ export function PersonalDashboard({ userId, onBack }: { userId: string; onBack: 
                         {r.vsPar > 0 ? `+${r.vsPar}` : r.vsPar === 0 ? 'E' : r.vsPar}
                       </span>
                     )}
-                    <span className={`text-sm font-bold ${r.netCents > 0 ? 'text-green-600' : r.netCents < 0 ? 'text-red-500' : 'text-gray-400'}`}>
+                    <span className={`text-sm font-bold ${r.netCents > 0 ? 'text-amber-600 dark:text-brass' : 'text-gray-500 dark:text-gray-400'}`}>
                       {fmtSigned(r.netCents)}
                     </span>
                   </div>

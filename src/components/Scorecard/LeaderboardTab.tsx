@@ -248,7 +248,7 @@ export function LeaderboardTab({
                 <td className="py-2.5 px-1 text-center text-gray-500">{entry.thru}</td>
                 <td className="py-2.5 px-1 text-center font-semibold text-gray-700">{entry.gross || '—'}</td>
                 <td className="py-2.5 px-1 text-center font-semibold text-gray-700">{entry.net || '—'}</td>
-                <td className={`py-2.5 px-1 text-center font-semibold ${entry.vsPar > 0 ? 'text-red-600' : entry.vsPar < 0 ? 'text-green-600' : 'text-gray-400'}`}>
+                <td className={`py-2.5 px-1 text-center font-semibold ${entry.vsPar > 0 ? 'text-gray-500 dark:text-gray-400' : entry.vsPar < 0 ? 'text-amber-600 dark:text-brass' : 'text-gray-400'}`}>
                   {entry.thru > 0 ? `${entry.vsPar > 0 ? '+' : ''}${entry.vsPar}` : '—'}
                 </td>
               </tr>
