@@ -6,6 +6,7 @@ import type { AppNotification } from '../../types'
 import { PaymentButtons, getPreferredPayment } from '../PaymentButtons'
 import { Tooltip } from '../ui/Tooltip'
 import { safeWrite } from '../../lib/safeWrite'
+import { canConfirmSettlementReceived } from '../../lib/settlementAuthority'
 import {
   buildCourseHandicaps,
   strokesOnHole,
@@ -643,6 +644,25 @@ export function SettleUp({ roundId, userId, eventId, onDone, onContinue }: Props
       ?? (treasurerId && (userId === round?.createdBy) ? treasurerId : null)
   }, [participantMap, userId, treasurerId, round?.createdBy, players])
 
+  // Who may clear a settlement's "received" side (Authority Model §5a). Confirming
+  // receipt is the action that clears someone's obligation, so it belongs to the
+  // payee — the person owed. The hinge is whether the payee is on their own device:
+  //   • Device-bound payee → ONLY they can confirm. Not the treasurer, not the payer.
+  //     This is the core fix: a third party can no longer clear a debt owed to a
+  //     player who is present to speak for themselves (§2).
+  //   • Non-device-bound payee (roster-added guest) → the treasurer confirms by proxy,
+  //     since the guest has no device to confirm on. This keeps the common
+  //     single-device round working: the scorekeeper settles for everyone not present.
+  // The payer only ever "Marks sent" (a soft report) — marking that you sent money
+  // acts against your own interest, so it needs no approval and clears nothing.
+  const canConfirmReceived = useCallback((s: SettlementRecord) =>
+    canConfirmSettlementReceived(s, {
+      myPlayerId,
+      isTreasurer,
+      isPayeeDeviceBound: participantMap.has(s.toPlayerId),
+    }),
+  [myPlayerId, isTreasurer, participantMap])
+
   // Report settlement payment (non-treasurer player)
   const [reportingSettlementId, setReportingSettlementId] = useState<string | null>(null)
   const reportSettlementPayment = async (settlement: SettlementRecord, method: string) => {
@@ -787,7 +807,9 @@ export function SettleUp({ roundId, userId, eventId, onDone, onContinue }: Props
   const markAllSettlementsPaid = () => {
     cancelPendingAction()
     const prevRecords = [...settlementRecords]
-    const owedIds = settlementRecords.filter(s => s.status === 'owed').map(s => s.id)
+    // Only clear debts this user is authorised to confirm received (owed to them,
+    // or proxied for a non-device-bound payee) — never third-party debts (§5a).
+    const owedIds = settlementRecords.filter(s => s.status === 'owed' && canConfirmReceived(s)).map(s => s.id)
     if (owedIds.length === 0) return
     const paidAt = new Date().toISOString()
 
@@ -846,6 +868,8 @@ export function SettleUp({ roundId, userId, eventId, onDone, onContinue }: Props
 
   const owedSettlements = settlementRecords.filter(s => s.status === 'owed')
   const paidSettlements = settlementRecords.filter(s => s.status === 'paid')
+  // Debts the current viewer may confirm received — the only ones "Mark all" clears.
+  const confirmableOwed = owedSettlements.filter(canConfirmReceived)
   const allSettled = settlementRecords.length > 0 && owedSettlements.length === 0
 
   // ── ResultCard props (UX v2.0 §3 / v2.1 §4) ────────────────────────────────
@@ -1609,12 +1633,12 @@ export function SettleUp({ roundId, userId, eventId, onDone, onContinue }: Props
               {/* Mark-all is an administrative shortcut → a quiet text action, not a
                   filled button. Recalculate removed from the UI: a visible recalc on a
                   settlement screen implies the math might be wrong. (UX v2.1 §4) */}
-              {isTreasurer && owedSettlements.length > 1 && (
+              {confirmableOwed.length > 1 && (
                 <button
                   onClick={() => setShowMarkAllSettlementsConfirm(true)}
                   className="text-xs text-navy/70 dark:text-cream/70 font-semibold active:text-navy dark:active:text-cream px-1 py-1.5"
                 >
-                  Mark all as settled
+                  Confirm all received
                 </button>
               )}
             </div>
@@ -1637,11 +1661,11 @@ export function SettleUp({ roundId, userId, eventId, onDone, onContinue }: Props
             })()}
             {showMarkAllSettlementsConfirm && (
               <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 space-y-3">
-                <p className="text-sm font-semibold text-amber-900">Mark all {owedSettlements.length} settlements as paid?</p>
+                <p className="text-sm font-semibold text-amber-900">Confirm all {confirmableOwed.length} settlements received?</p>
                 <p className="text-xs text-amber-700">You'll have 4 seconds to undo.</p>
                 <div className="flex gap-2">
                   <button onClick={() => setShowMarkAllSettlementsConfirm(false)} className="flex-1 h-10 bg-gray-200 text-gray-700 text-sm font-semibold rounded-xl active:bg-gray-300">Cancel</button>
-                  <button onClick={markAllSettlementsPaid} className="flex-1 h-10 bg-emerald-600 text-white text-sm font-semibold rounded-xl active:bg-emerald-700">Mark all paid</button>
+                  <button onClick={markAllSettlementsPaid} className="flex-1 h-10 bg-emerald-600 text-white text-sm font-semibold rounded-xl active:bg-emerald-700">Confirm all</button>
                 </div>
               </div>
             )}
@@ -1651,7 +1675,11 @@ export function SettleUp({ roundId, userId, eventId, onDone, onContinue }: Props
               if (!fromPlayer || !toPlayer) return null
               const isPaid = s.status === 'paid'
               const playerReported = !!s.playerReportedAt && !isPaid
-              const isMyDebt = s.fromPlayerId === myPlayerId && !isPaid
+              const iAmPayer = s.fromPlayerId === myPlayerId
+              const isMyDebt = iAmPayer && !isPaid
+              const canConfirm = canConfirmReceived(s)
+              // Treasurer confirming for a payee who isn't on their own device.
+              const isProxyConfirm = canConfirm && s.toPlayerId !== myPlayerId
               const roundNote = `${snapshot.courseName} · ${gameLabel}${s.reason ? ` — ${s.reason}` : ''}`
               return (
                 <div key={s.id} className={`space-y-2 p-3 rounded-xl ${isPaid ? 'bg-green-50' : playerReported ? 'bg-amber-50' : 'bg-gray-50'}`}>
@@ -1676,7 +1704,8 @@ export function SettleUp({ roundId, userId, eventId, onDone, onContinue }: Props
                       </div>
                       {playerReported && (
                         <p className="text-xs text-amber-600 font-semibold mt-0.5">
-                          {fromPlayer.name} says they paid via {s.reportedMethod ?? 'cash'}
+                          {fromPlayer.name} marked sent via {s.reportedMethod ?? 'cash'}
+                          {canConfirm ? ' — confirm when received' : ` — ${toPlayer.name} to confirm`}
                         </p>
                       )}
                       {!isPaid && !playerReported && (() => {
@@ -1688,7 +1717,7 @@ export function SettleUp({ roundId, userId, eventId, onDone, onContinue }: Props
                     </div>
                     <div className="flex items-center gap-2">
                       <p className={`text-2xl font-bold ${isPaid ? 'text-brass' : 'text-gray-800 dark:text-gray-100'}`}>{fmt(s.amountCents)}</p>
-                      {isTreasurer ? (
+                      {canConfirm ? (
                         <button
                           onClick={() => toggleSettlementPaid(s)}
                           className={`px-3 py-1.5 rounded-xl text-sm font-semibold transition-colors ${
@@ -1699,11 +1728,11 @@ export function SettleUp({ roundId, userId, eventId, onDone, onContinue }: Props
                               : 'bg-amber-100 text-amber-700 active:bg-amber-200'
                           }`}
                         >
-                          {isPaid ? 'Paid' : playerReported ? 'Confirm' : 'Mark Paid'}
+                          {isPaid ? 'Received' : isProxyConfirm ? `Confirm for ${toPlayer.name}` : 'Confirm received'}
                         </button>
                       ) : (
                         <span className={`px-2 py-1 rounded-xl text-xs font-semibold ${isPaid ? 'text-brass' : playerReported ? 'text-amber-600' : 'text-gray-500'}`}>
-                          {isPaid ? 'Paid' : playerReported ? 'Reported' : 'Owed'}
+                          {isPaid ? 'Paid' : playerReported ? 'Sent' : 'Owed'}
                         </span>
                       )}
                     </div>
@@ -1712,8 +1741,10 @@ export function SettleUp({ roundId, userId, eventId, onDone, onContinue }: Props
                   {!isPaid && !playerReported && (
                     <PaymentButtons toPlayer={toPlayer} amountCents={toPayCents(s.amountCents)} note={roundNote} compact />
                   )}
-                  {/* "I Paid" button for non-treasurer players on their own debts */}
-                  {!isTreasurer && isMyDebt && !playerReported && (() => {
+                  {/* "Mark sent" for the payer on their own debt (§5a). Marking that you
+                      sent money acts against your own interest, so it needs no approval —
+                      but it does NOT clear the debt. Only the payee confirms received. */}
+                  {isMyDebt && !playerReported && !canConfirm && (() => {
                     const isReporting = reportingSettlementId === s.id
                     const hasDigitalPayment = !!(toPlayer.venmoUsername || toPlayer.zelleIdentifier || toPlayer.cashAppUsername || toPlayer.paypalEmail)
                     const defaultMethod = toPlayer.venmoUsername ? 'venmo' : toPlayer.zelleIdentifier ? 'zelle' : toPlayer.cashAppUsername ? 'cashapp' : toPlayer.paypalEmail ? 'paypal' : 'cash'
@@ -1725,7 +1756,7 @@ export function SettleUp({ roundId, userId, eventId, onDone, onContinue }: Props
                             disabled={isReporting}
                             className="flex-1 h-10 bg-green-600 text-white font-semibold rounded-xl text-sm active:bg-green-700 disabled:opacity-50"
                           >
-                            {isReporting ? 'Reporting...' : "I've Paid"}
+                            {isReporting ? 'Marking...' : 'Mark sent'}
                           </button>
                         )}
                         <button
@@ -1733,20 +1764,20 @@ export function SettleUp({ roundId, userId, eventId, onDone, onContinue }: Props
                           disabled={isReporting}
                           className={`${hasDigitalPayment ? 'px-4' : 'flex-1'} h-10 bg-gray-700 text-white font-semibold rounded-xl text-sm active:bg-gray-800 disabled:opacity-50`}
                         >
-                          {isReporting ? 'Reporting...' : hasDigitalPayment ? 'Cash' : "I've Paid (Cash)"}
+                          {isReporting ? 'Marking...' : hasDigitalPayment ? 'Cash' : 'Mark sent · cash'}
                         </button>
                       </div>
                     )
                   })()}
-                  {/* Player reported — waiting state for the payer */}
-                  {!isTreasurer && isMyDebt && playerReported && (
+                  {/* Payer marked sent — waiting on the payee to confirm receipt */}
+                  {isMyDebt && playerReported && !canConfirm && (
                     <div className="flex items-center gap-2 text-sm">
-                      <span className="text-green-600">&#10003;</span>
-                      <span className="text-green-700 font-semibold">Reported as paid via {s.reportedMethod ?? 'cash'}</span>
-                      <span className="text-gray-400 text-xs">— waiting for confirmation</span>
+                      <span className="text-brass">&#10003;</span>
+                      <span className="text-brass font-semibold">Sent via {s.reportedMethod ?? 'cash'}</span>
+                      <span className="text-gray-400 text-xs">— waiting on {toPlayer.name} to confirm</span>
                     </div>
                   )}
-                  {!isPaid && isTreasurer && (
+                  {!isPaid && (isTreasurer || s.toPlayerId === myPlayerId) && (
                     <NudgeButton
                       playerName={fromPlayer.name}
                       amountCents={s.amountCents}
