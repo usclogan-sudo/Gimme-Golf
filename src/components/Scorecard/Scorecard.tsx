@@ -2195,7 +2195,7 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
               const nonWolfs = players.filter(p => p.id !== wolfId)
               return (
                 <div className="bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl p-3 space-y-2">
-                  <p className="font-bold text-gray-800 dark:text-gray-100 text-sm">🐺 Wolf: {wolfPlayer?.name}</p>
+                  <p className="font-bold text-gray-800 dark:text-gray-100 text-sm">Wolf: {wolfPlayer?.name}</p>
                   <p className="text-xs text-gray-500 dark:text-gray-400">Pick a partner after tee shots, or go Lone Wolf:</p>
                   <div className="flex flex-wrap gap-2">
                     {nonWolfs.map(p => (
@@ -2219,7 +2219,7 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
                           : 'bg-white dark:bg-gray-700 border border-brass/40 text-amber-700 dark:text-brass'
                       }`}
                     >
-                      Lone Wolf 🐺
+                      Lone Wolf
                     </button>
                   </div>
                   {wolfDecision && (
@@ -2248,7 +2248,7 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
               return (
                 <div className="bg-orange-50 border border-orange-200 rounded-xl p-3 space-y-2">
                   <div className="flex items-center justify-between">
-                    <p className="font-bold text-orange-800 text-sm">🔨 Hammer</p>
+                    <p className="font-bold text-gray-800 dark:text-gray-100 text-sm">Hammer</p>
                     <span className="text-xs font-semibold text-orange-600 bg-orange-100 px-2 py-0.5 rounded-full">
                       Hole value: {fmtAmount(holeValue, game?.stakesMode)}
                     </span>
@@ -2283,7 +2283,7 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
                             disabled={!canThrow}
                             className="flex-1 py-2 rounded-lg text-sm font-bold bg-orange-500 text-white active:bg-orange-600 disabled:opacity-40"
                           >
-                            🔨 Throw Hammer
+                            Throw Hammer
                           </button>
                           {canDecline && (
                             <button
@@ -2348,7 +2348,7 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
               )
               return (
                 <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 space-y-3">
-                  <p className="font-bold text-amber-800 text-sm">⭐ Bingo Bango Bongo — Hole {currentHole}</p>
+                  <p className="font-bold text-gray-800 dark:text-gray-100 text-sm">Bingo Bango Bongo — Hole {currentHole}</p>
                   <BBBRow category="bingo" icon="🟢" label="Bingo — First on green" />
                   <BBBRow category="bango" icon="📍" label="Bango — Closest to pin" />
                   <BBBRow category="bongo" icon="🏆" label="Bongo — First to hole out" />
@@ -2595,7 +2595,7 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
             onClick={() => setShowScoreEntry(v => !v)}
             className="w-full text-sm font-semibold text-gray-500 py-2.5 rounded-xl bg-gray-50 dark:bg-gray-800 active:bg-gray-100 transition-colors"
           >
-            {showScoreEntry ? 'Hide golf scores' : '⛳ Enter golf scores (optional) ▸'}
+            {showScoreEntry ? 'Hide golf scores' : 'Enter golf scores (optional) ▸'}
           </button>
         )}
 

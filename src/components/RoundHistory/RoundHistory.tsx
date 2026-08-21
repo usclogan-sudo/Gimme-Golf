@@ -16,22 +16,22 @@ interface Props {
 }
 
 const GAME_EMOJI: Record<GameType, string> = {
-  skins: '⛳ Skins',
-  best_ball: '🤝 Best Ball',
-  nassau: '🏳️ Nassau',
-  wolf: '🐺 Wolf',
-  bingo_bango_bongo: '⭐ BBB',
-  hammer: '🔨 Hammer',
-  vegas: '🎲 Vegas',
-  stableford: '📊 Stableford',
-  dots: '🔴 Dots',
-  banker: '🏦 Banker',
-  quota: '📋 Quota',
+  skins: 'Skins',
+  best_ball: 'Best Ball',
+  nassau: 'Nassau',
+  wolf: 'Wolf',
+  bingo_bango_bongo: 'BBB',
+  hammer: 'Hammer',
+  vegas: 'Vegas',
+  stableford: 'Stableford',
+  dots: 'Dots',
+  banker: 'Banker',
+  quota: 'Quota',
 }
 
-// Clean format label for the ResultCard (strip the leading emoji from GAME_EMOJI).
+// Clean game label (emoji dropped per brand — no emoji, §8).
 const gameLabelOf = (t: GameType): string => {
-  const label = (GAME_EMOJI[t] ?? t).split(' ').slice(1).join(' ')
+  const label = GAME_EMOJI[t] ?? t
   return label || t
 }
 
