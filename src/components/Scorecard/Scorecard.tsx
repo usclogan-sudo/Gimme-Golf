@@ -2703,11 +2703,11 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
           if (grossScore >= par + 5) warnings.push(`That's +${grossScore - par} over par — verify score`)
 
           return (
-            <div key={player.id} className={`bg-white dark:bg-gray-800 rounded-2xl shadow-sm border p-4 ${isPending ? 'border-yellow-300' : isRejected ? 'border-red-300' : 'border-gray-100 dark:border-gray-700'}`}>
-              <div className="flex items-start justify-between mb-3">
+            <div key={player.id} className={`bg-white dark:bg-gray-800 rounded-2xl shadow-sm border px-3 py-2.5 ${isPending ? 'border-yellow-300' : isRejected ? 'border-red-300' : 'border-gray-100 dark:border-gray-700'}`}>
+              <div className="flex items-start justify-between mb-2">
                 <div>
                   <div className="flex items-center gap-2">
-                    <p className="font-bold text-gray-800 dark:text-gray-100 text-lg">{player.name}</p>
+                    <p className="font-bold text-gray-800 dark:text-gray-100 text-base">{player.name}</p>
                     {pendingInviteeIds.has(player.id) && (
                       <span
                         className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-100 text-amber-700"
