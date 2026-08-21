@@ -7,7 +7,9 @@ import type { Round, HoleScore, RoundPlayer, Player, CourseSnapshot, BBBPoint, J
 
 interface Props {
   userId: string
-  onBack: () => void
+  onBack?: () => void
+  /** Rendered inline as a Rounds-tab segment — hides its own header (§3). */
+  embedded?: boolean
 }
 
 interface PlayerStats {
@@ -30,7 +32,7 @@ interface ScoreDistribution {
   worse: number
 }
 
-export function Stats({ userId, onBack }: Props) {
+export function Stats({ userId, onBack, embedded }: Props) {
   const [loading, setLoading] = useState(true)
   const [stats, setStats] = useState<PlayerStats[]>([])
   const [totalRounds, setTotalRounds] = useState(0)
@@ -192,13 +194,15 @@ export function Stats({ userId, onBack }: Props) {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 pb-8">
-      <header className="app-header text-white px-4 py-4 sticky top-0 z-10 shadow-xl flex items-center gap-3">
-        <button onClick={onBack} className="min-w-[44px] min-h-[44px] flex items-center justify-center rounded-full hover:bg-gray-600 text-xl" aria-label="Back">←</button>
-        <h1 className="text-xl font-bold">Leaderboard</h1>
-      </header>
+    <div className={embedded ? '' : 'min-h-screen bg-gray-50 dark:bg-gray-900 pb-8'}>
+      {!embedded && (
+        <header className="app-header text-white px-4 py-4 sticky top-0 z-10 shadow-xl flex items-center gap-3">
+          <button onClick={onBack} className="min-w-[44px] min-h-[44px] flex items-center justify-center rounded-full hover:bg-gray-600 text-xl" aria-label="Back">←</button>
+          <h1 className="text-xl font-bold">Leaderboard</h1>
+        </header>
+      )}
 
-      <div className="px-4 py-5 max-w-2xl mx-auto space-y-5">
+      <div className={embedded ? 'space-y-5' : 'px-4 py-5 max-w-2xl mx-auto space-y-5'}>
         {loading ? (
           <div className="flex justify-center py-16">
             <div className="w-8 h-8 border-2 border-amber-500 border-t-transparent rounded-full animate-spin" />
