@@ -577,6 +577,15 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
     return buildCourseHandicaps(players, roundPlayers, snapshot, round?.holesMode)
   }, [players, roundPlayers, snapshot, round?.holesMode])
 
+  // Resolve an actor's user id to a display name, for score provenance (§5b). The
+  // creator's own player uses their auth user id as its player id (see NewRound), so
+  // an unmatched uid falls through to that.
+  const nameByUserId = (uid?: string | null): string | null => {
+    if (!uid) return null
+    const pid = roundParticipants.find(rp => rp.userId === uid)?.playerId ?? uid
+    return players.find(p => p.id === pid)?.name ?? null
+  }
+
   // Handicap lock (Authority Model §5c): handicap drives strokes → net → who owes,
   // so it is a money lever. It is free to edit while setting up, but the moment ANY
   // score is entered the round is underway and a later change would silently rewrite
@@ -688,7 +697,9 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
       } else if (existing && !String(existing.id).startsWith('temp-')) {
         const prevScore = existing.grossScore
         setHoleScores(prev => prev.map(s => s.id === existing.id ? { ...s, grossScore } : s))
-        const query = supabase.from('hole_scores').update({ gross_score: grossScore }).eq('id', existing.id)
+        // Record the author on edits too (§5b): submitted_by tracks who LAST touched
+        // the score, so a proxy edit is attributable — not just the original enterer.
+        const query = supabase.from('hole_scores').update({ gross_score: grossScore, submitted_by: userId }).eq('id', existing.id)
         if (existing.updatedAt) query.eq('updated_at', existing.updatedAt)
         const { data, error } = await query.select()
         if (error) throw error
@@ -715,7 +726,7 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
         // (uuid) row, then INSERT. Previously the placeholder was mistaken for an
         // existing DB row and UPDATE'd by an id that only exists client-side
         // (0 rows matched) → scores never persisted → settle voided to all-square.
-        const newScore: HoleScore = { id: uuidv4(), roundId, playerId, holeNumber, grossScore }
+        const newScore: HoleScore = { id: uuidv4(), roundId, playerId, holeNumber, grossScore, submittedBy: userId }
         setHoleScores(prev => {
           const idx = prev.findIndex(s => s.playerId === playerId && s.holeNumber === holeNumber)
           return idx >= 0 ? prev.map((s, i) => (i === idx ? newScore : s)) : [...prev, newScore]
@@ -734,7 +745,7 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
           enqueue({
             table: 'hole_scores',
             method: 'update',
-            data: { gross_score: grossScore },
+            data: { gross_score: grossScore, submitted_by: userId },
             matchColumn: 'id',
             matchValue: live.id,
             _expectedUpdatedAt: live.updatedAt,
@@ -743,7 +754,7 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
           enqueue({
             table: 'hole_scores',
             method: 'insert',
-            data: holeScoreToRow({ id: uuidv4(), roundId, playerId, holeNumber, grossScore }, userId),
+            data: holeScoreToRow({ id: uuidv4(), roundId, playerId, holeNumber, grossScore, submittedBy: userId }, userId),
           })
         }
         setPendingCount(getPending())
@@ -2639,6 +2650,17 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
           const strokesGiven = strokesOnHole(courseHcp, strokeIndex)
           const netScore = grossScore - strokesGiven
 
+          // Score provenance (§5b): surface when a player's score was entered/edited
+          // by someone OTHER than the player themselves — but only when that player is
+          // on their own device (device-bound). In a single-device round the scorekeeper
+          // enters everyone's score by design, so labelling every row would be noise;
+          // the owner-not-device-bound case stays unlabelled.
+          const scoreRow = holeScores.find(s => s.playerId === player.id && s.holeNumber === currentHole)
+          const ownerUserId = roundParticipants.find(rp => rp.playerId === player.id)?.userId
+          const enteredByName = (scoreRow?.submittedBy && ownerUserId && scoreRow.submittedBy !== ownerUserId)
+            ? nameByUserId(scoreRow.submittedBy)
+            : null
+
           // Running total through current hole
           const scoredHoles = holeScores.filter(s => s.playerId === player.id)
           const runningGross = scoredHoles.reduce((sum, s) => sum + s.grossScore, 0)
@@ -2798,6 +2820,9 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
                         ? <span className="ml-1 text-gray-300 text-xs" aria-label="locked">&#128274;</span>
                         : <span className="ml-1 text-gray-300 text-xs">&#9998;</span>)}
                     </p>
+                  )}
+                  {enteredByName && (
+                    <p className="text-[11px] text-gray-400 dark:text-gray-500 mt-0.5">entered by {enteredByName}</p>
                   )}
                 </div>
                 {/* §7b: badges deleted (outcome lives in the selected chip); the cryptic
