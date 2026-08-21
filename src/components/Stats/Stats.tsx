@@ -262,8 +262,7 @@ export function Stats({ userId, onBack }: Props) {
                       </div>
                       <div className="text-right">
                         <p className={`font-bold font-display text-lg ${
-                          player.totalWinningsCents > 0 ? 'text-green-700 dark:text-green-400' :
-                          player.totalWinningsCents < 0 ? 'text-red-600 dark:text-red-400' :
+                          player.totalWinningsCents > 0 ? 'text-amber-600 dark:text-brass' :
                           'text-gray-500 dark:text-gray-400'
                         }`}>
                           {player.totalWinningsCents === 0 ? '0 pts' : fmtPts(player.totalWinningsCents)}

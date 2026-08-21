@@ -251,9 +251,9 @@ export function LiveLeaderboard({ inviteCode, onBack }: Props) {
                   ? `+${entry.toPar}`
                   : `${entry.toPar}`
                 const toParColor = entry.toPar < 0
-                  ? 'text-red-600'
+                  ? 'text-amber-600 dark:text-brass'
                   : entry.toPar > 0
-                  ? 'text-blue-600'
+                  ? 'text-gray-500 dark:text-gray-400'
                   : 'text-gray-700 dark:text-gray-300'
                 const isLeader = idx === 0 && entry.holesScored > 0
 
