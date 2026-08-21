@@ -2194,9 +2194,9 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
               const wolfPlayer = players.find(p => p.id === wolfId)
               const nonWolfs = players.filter(p => p.id !== wolfId)
               return (
-                <div className="bg-purple-50 border border-purple-200 rounded-xl p-3 space-y-2">
-                  <p className="font-bold text-purple-800 text-sm">🐺 Wolf: {wolfPlayer?.name}</p>
-                  <p className="text-xs text-purple-600">Pick a partner after tee shots, or go Lone Wolf:</p>
+                <div className="bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl p-3 space-y-2">
+                  <p className="font-bold text-gray-800 dark:text-gray-100 text-sm">🐺 Wolf: {wolfPlayer?.name}</p>
+                  <p className="text-xs text-gray-500 dark:text-gray-400">Pick a partner after tee shots, or go Lone Wolf:</p>
                   <div className="flex flex-wrap gap-2">
                     {nonWolfs.map(p => (
                       <button
@@ -2204,8 +2204,8 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
                         onClick={() => updateWolfDecision(currentHole, p.id)}
                         className={`px-3 py-1.5 rounded-lg text-sm font-semibold transition-colors ${
                           wolfDecision?.partnerId === p.id
-                            ? 'bg-purple-600 text-white'
-                            : 'bg-white border border-purple-200 text-purple-700'
+                            ? 'bg-navy text-cream dark:bg-brass dark:text-navy'
+                            : 'bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 text-gray-700 dark:text-gray-200'
                         }`}
                       >
                         {p.name}
@@ -2215,15 +2215,15 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
                       onClick={() => updateWolfDecision(currentHole, null)}
                       className={`px-3 py-1.5 rounded-lg text-sm font-semibold transition-colors ${
                         wolfDecision !== undefined && wolfDecision.partnerId === null
-                          ? 'bg-red-500 text-white'
-                          : 'bg-white border border-red-200 text-red-600'
+                          ? 'bg-brass text-navy'
+                          : 'bg-white dark:bg-gray-700 border border-brass/40 text-amber-700 dark:text-brass'
                       }`}
                     >
                       Lone Wolf 🐺
                     </button>
                   </div>
                   {wolfDecision && (
-                    <p className="text-xs text-purple-500">
+                    <p className="text-xs text-gray-500 dark:text-gray-400">
                       {wolfDecision.partnerId === null
                         ? `${wolfPlayer?.name} going LONE WOLF`
                         : `${wolfPlayer?.name} + ${players.find(p => p.id === wolfDecision.partnerId)?.name}`}
