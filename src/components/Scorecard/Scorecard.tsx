@@ -2759,7 +2759,7 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
                       }}
                     >
                       HCP {fmtHandicap(player.handicapIndex)}
-                      {strokesGiven > 0 && <span className="ml-2 text-amber-600 font-semibold">+{strokesGiven} stroke{strokesGiven !== 1 ? 's' : ''}</span>}
+                      {strokesGiven > 0 && <span className="ml-2 text-amber-600 font-semibold">receives {strokesGiven}</span>}
                       {!readOnly && <span className="ml-1 text-gray-300 text-xs">✎</span>}
                     </p>
                   )}

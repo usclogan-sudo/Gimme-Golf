@@ -316,7 +316,10 @@ function Home({
         <div className="max-w-2xl mx-auto flex items-center justify-between gap-2">
           <div className="min-w-0">
             <h1 className="font-display text-2xl font-800 tracking-tight leading-none">Gimme</h1>
-            <p className="text-[#C2A24C] text-[11px] font-medium mt-0.5 tracking-wide">SIDE GAMES · SCORES · SETTLED</p>
+            {/* Tagline only on Play — elsewhere it's noise; Sign Out lives in You (§8). */}
+            {homeTab === 'play' && (
+              <p className="text-[#C2A24C] text-[11px] font-medium mt-0.5 tracking-wide">SIDE GAMES · SCORES · SETTLED</p>
+            )}
           </div>
           <div className="flex items-center gap-2 flex-shrink-0">
             {isAdmin && (
@@ -330,12 +333,6 @@ function Home({
             )}
             <button onClick={onSettings} aria-label="Settings">
               <UserAvatar url={userProfile?.avatarUrl} preset={userProfile?.avatarPreset} name={userProfile?.displayName} size="sm" />
-            </button>
-            <button
-              onClick={onSignOut}
-              className="text-gray-300 text-xs font-medium px-3 py-1.5 rounded-lg hover:bg-gray-600 border border-gray-500"
-            >
-              Sign Out
             </button>
           </div>
         </div>
