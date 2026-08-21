@@ -137,6 +137,10 @@ function Home({
   onLedger,
   onPlayAgain,
   onViewSettlements,
+  homeTab,
+  setHomeTab,
+  roundsSeg,
+  setRoundsSeg,
 }: {
 
   userId: string
@@ -162,6 +166,10 @@ function Home({
   onCreateEvent: () => void
   onLedger: () => void
   onPlayAgain: (round: Round) => void
+  homeTab: HomeTab
+  setHomeTab: (t: HomeTab) => void
+  roundsSeg: 'history' | 'leaderboard'
+  setRoundsSeg: (s: 'history' | 'leaderboard') => void
 }) {
   const [courses, setCourses] = useState<Course[]>([])
   const [activeRounds, setActiveRounds] = useState<Round[]>([])
@@ -178,9 +186,6 @@ function Home({
   const [feedbackOpen, setFeedbackOpen] = useState(false)
   const [betaDismissed, setBetaDismissed] = useState(() => localStorage.getItem('gimme_beta_dismissed') === '1')
   const [retryKey, setRetryKey] = useState(0)
-  const [homeTab, setHomeTab] = useState<HomeTab>('play') // bottom tab nav (§9a)
-  const [roundsSeg, setRoundsSeg] = useState<'history' | 'leaderboard'>('history') // Rounds tab segmented control (§3)
-
   const guardAnon = (action: () => void) => {
     if (isAnonymous) { setShowAnonBlock(true); return }
     action()
@@ -758,6 +763,10 @@ export default function App() {
   const [newRoundStakesMode, setNewRoundStakesMode] = useState<StakesMode>('points')
   const [editingCourse, setEditingCourse] = useState<Course | undefined>(undefined)
   const [homeKey, setHomeKey] = useState(0)
+  // Home tab + Rounds segment live at App level so goHome's remount (homeKey) keeps
+  // you on the tab you came from, instead of snapping back to Play (§3 back-to-origin).
+  const [homeTab, setHomeTab] = useState<HomeTab>('play')
+  const [roundsSeg, setRoundsSeg] = useState<'history' | 'leaderboard'>('history')
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null)
   const [profileLoading, setProfileLoading] = useState(true)
   const [profileError, setProfileError] = useState(false)
@@ -1247,6 +1256,10 @@ export default function App() {
     <>
     <Home
       key={homeKey}
+      homeTab={homeTab}
+      setHomeTab={setHomeTab}
+      roundsSeg={roundsSeg}
+      setRoundsSeg={setRoundsSeg}
       userId={userId}
       userProfile={userProfile}
       onNewRound={() => { setNewRoundStakesMode('points'); setScreen('new-round') }}
