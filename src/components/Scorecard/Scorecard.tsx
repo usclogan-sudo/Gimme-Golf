@@ -897,6 +897,12 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
 
   // Wolf decision handler
   const updateWolfDecision = async (holeNumber: number, partnerId: string | null) => {
+    // Integrity lock (Authority Model §7): once ANY score is entered for the hole,
+    // the outcome starts to become known — freeze the pick so a late choice can't
+    // cherry-pick the winning team (a way to win money that should not exist). The
+    // picker is also hidden in the UI once locked; this is the backstop that also
+    // covers a second device racing the lock.
+    if (holeScores.some(s => s.holeNumber === holeNumber)) return
     await updateGameState(game => {
       if (game.type !== 'wolf') return game
       const wolfConfig = game.config as WolfConfig
@@ -2193,41 +2199,59 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
             {showGameStatus && !readOnly && wolfConfig && wolfId && (() => {
               const wolfPlayer = players.find(p => p.id === wolfId)
               const nonWolfs = players.filter(p => p.id !== wolfId)
+              // Pick locks the moment the first score for this hole lands (§7).
+              const holeLocked = holeScores.some(s => s.holeNumber === currentHole)
+              const decisionSummary = wolfDecision && (
+                wolfDecision.partnerId === null
+                  ? `${wolfPlayer?.name} going LONE WOLF`
+                  : `${wolfPlayer?.name} + ${players.find(p => p.id === wolfDecision.partnerId)?.name}`
+              )
               return (
                 <div className="bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl p-3 space-y-2">
                   <p className="font-bold text-gray-800 dark:text-gray-100 text-sm">Wolf: {wolfPlayer?.name}</p>
-                  <p className="text-xs text-gray-500 dark:text-gray-400">Pick a partner after tee shots, or go Lone Wolf:</p>
-                  <div className="flex flex-wrap gap-2">
-                    {nonWolfs.map(p => (
-                      <button
-                        key={p.id}
-                        onClick={() => updateWolfDecision(currentHole, p.id)}
-                        className={`px-3 py-1.5 rounded-lg text-sm font-semibold transition-colors ${
-                          wolfDecision?.partnerId === p.id
-                            ? 'bg-navy text-cream dark:bg-brass dark:text-navy'
-                            : 'bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 text-gray-700 dark:text-gray-200'
-                        }`}
-                      >
-                        {p.name}
-                      </button>
-                    ))}
-                    <button
-                      onClick={() => updateWolfDecision(currentHole, null)}
-                      className={`px-3 py-1.5 rounded-lg text-sm font-semibold transition-colors ${
-                        wolfDecision !== undefined && wolfDecision.partnerId === null
-                          ? 'bg-brass text-navy'
-                          : 'bg-white dark:bg-gray-700 border border-brass/40 text-amber-700 dark:text-brass'
-                      }`}
-                    >
-                      Lone Wolf
-                    </button>
-                  </div>
-                  {wolfDecision && (
-                    <p className="text-xs text-gray-500 dark:text-gray-400">
-                      {wolfDecision.partnerId === null
-                        ? `${wolfPlayer?.name} going LONE WOLF`
-                        : `${wolfPlayer?.name} + ${players.find(p => p.id === wolfDecision.partnerId)?.name}`}
-                    </p>
+                  {holeLocked ? (
+                    <>
+                      <p className="text-xs text-gray-500 dark:text-gray-400">
+                        {wolfDecision
+                          ? 'Locked — scoring has started.'
+                          : 'Locked — scoring started before a partner was picked.'}
+                      </p>
+                      {decisionSummary && (
+                        <p className="text-xs font-semibold text-gray-700 dark:text-gray-200">{decisionSummary}</p>
+                      )}
+                    </>
+                  ) : (
+                    <>
+                      <p className="text-xs text-gray-500 dark:text-gray-400">Pick a partner after tee shots, or go Lone Wolf:</p>
+                      <div className="flex flex-wrap gap-2">
+                        {nonWolfs.map(p => (
+                          <button
+                            key={p.id}
+                            onClick={() => updateWolfDecision(currentHole, p.id)}
+                            className={`px-3 py-1.5 rounded-lg text-sm font-semibold transition-colors ${
+                              wolfDecision?.partnerId === p.id
+                                ? 'bg-navy text-cream dark:bg-brass dark:text-navy'
+                                : 'bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 text-gray-700 dark:text-gray-200'
+                            }`}
+                          >
+                            {p.name}
+                          </button>
+                        ))}
+                        <button
+                          onClick={() => updateWolfDecision(currentHole, null)}
+                          className={`px-3 py-1.5 rounded-lg text-sm font-semibold transition-colors ${
+                            wolfDecision !== undefined && wolfDecision.partnerId === null
+                              ? 'bg-brass text-navy'
+                              : 'bg-white dark:bg-gray-700 border border-brass/40 text-amber-700 dark:text-brass'
+                          }`}
+                        >
+                          Lone Wolf
+                        </button>
+                      </div>
+                      {decisionSummary && (
+                        <p className="text-xs text-gray-500 dark:text-gray-400">{decisionSummary}</p>
+                      )}
+                    </>
                   )}
                 </div>
               )
@@ -2809,12 +2833,14 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
           const partnerDecided = decisions?.[currentHole] !== undefined
           const wolfName = hr ? players.find(p => p.id === hr.wolfId)?.name : null
 
-          // Scored, but the wolf never picked — the silent-failure case, now named.
+          // Scored with no partner picked. The pick locks on the first score (§7),
+          // so this hole can no longer be resolved — state that plainly rather than
+          // telling them to pick something they can't.
           if (allScored && !partnerDecided) {
             return (
               <div key={`wolf-np-${currentHole}`} className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-2xl px-4 py-3 text-center shadow-sm">
                 <p className="font-semibold text-amber-800 dark:text-amber-300">
-                  {wolfName ?? 'The wolf'} still needs a partner — pick one to settle hole {currentHole}.
+                  No partner was picked before scoring — hole {currentHole} won't settle for Wolf.
                 </p>
               </div>
             )
