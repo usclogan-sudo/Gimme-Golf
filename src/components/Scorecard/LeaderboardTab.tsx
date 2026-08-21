@@ -203,7 +203,7 @@ export function LeaderboardTab({
                     <tr key={p.id} className={`border-b border-gray-50 ${pos[i] === 1 ? 'bg-amber-50' : ''}`}>
                       <td className={`py-2.5 px-1 font-bold w-8 ${pos[i] === 1 ? 'text-amber-600' : 'text-gray-500'}`}>{pos[i]}</td>
                       <td className="py-2.5 px-1 font-semibold text-gray-800 dark:text-gray-100">{p.name}</td>
-                      <td className={`py-2.5 px-1 text-right font-bold text-lg ${gt === 'quota' && v < 0 ? 'text-red-500' : gt === 'banker' && v < 0 ? 'text-red-500' : 'text-purple-600'}`}>{fmtVal(v)}</td>
+                      <td className={`py-2.5 px-1 text-right font-bold text-lg ${v < 0 ? 'text-gray-500 dark:text-gray-400' : 'text-amber-600 dark:text-brass'}`}>{fmtVal(v)}</td>
                     </tr>
                   )
                 })}
@@ -295,7 +295,7 @@ export function LeaderboardTab({
                 return (
                   <p key={label} className="text-sm text-gray-700">
                     <span className="font-semibold">{label}:</span>{' '}
-                    {seg.incomplete ? <span className="text-gray-400">In progress</span> : leader ? <span className="text-teal-700 font-semibold">{leader}</span> : tiedNames ? <span className="text-gray-500">Tied ({tiedNames})</span> : '—'}
+                    {seg.incomplete ? <span className="text-gray-400">In progress</span> : leader ? <span className="text-amber-600 dark:text-brass font-semibold">{leader}</span> : tiedNames ? <span className="text-gray-500">Tied ({tiedNames})</span> : '—'}
                   </p>
                 )
               })}
@@ -311,7 +311,7 @@ export function LeaderboardTab({
               {players.slice().sort((a, b) => (wolfResult.netUnits[b.id] ?? 0) - (wolfResult.netUnits[a.id] ?? 0)).map(p => {
                 const u = wolfResult.netUnits[p.id] ?? 0
                 return (
-                  <span key={p.id} className={`text-xs font-semibold px-2 py-1 rounded-lg ${u > 0 ? 'bg-purple-50 text-purple-700' : u < 0 ? 'bg-red-50 text-red-600' : 'bg-gray-50 text-gray-500'}`}>
+                  <span key={p.id} className={`text-xs font-semibold px-2 py-1 rounded-lg ${u > 0 ? 'bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-brass' : u < 0 ? 'bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400' : 'bg-gray-50 dark:bg-gray-700/50 text-gray-500'}`}>
                     {p.name}: {u > 0 ? '+' : ''}{u}
                   </span>
                 )
@@ -330,7 +330,7 @@ export function LeaderboardTab({
               {players.slice().sort((a, b) => (hammerResult.netCents[b.id] ?? 0) - (hammerResult.netCents[a.id] ?? 0)).map(p => {
                 const net = hammerResult.netCents[p.id] ?? 0
                 return (
-                  <span key={p.id} className={`text-xs font-semibold px-2 py-1 rounded-lg ${net > 0 ? 'bg-orange-50 text-orange-700' : net < 0 ? 'bg-red-50 text-red-600' : 'bg-gray-50 text-gray-500'}`}>
+                  <span key={p.id} className={`text-xs font-semibold px-2 py-1 rounded-lg ${net > 0 ? 'bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-brass' : net < 0 ? 'bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400' : 'bg-gray-50 dark:bg-gray-700/50 text-gray-500'}`}>
                     {p.name}: {net > 0 ? '+' : ''}{fmtAmount(Math.abs(net), game?.stakesMode)}
                   </span>
                 )
@@ -356,7 +356,7 @@ export function LeaderboardTab({
             <p className="text-xs font-semibold text-gray-500 uppercase mb-2">Stableford ({primaryLabel})</p>
             <div className="flex flex-wrap gap-2">
               {players.slice().sort((a, b) => (stablefordResult.points[b.id] ?? 0) - (stablefordResult.points[a.id] ?? 0)).map(p => (
-                <span key={p.id} className="text-xs font-semibold px-2 py-1 rounded-lg bg-indigo-50 text-indigo-700">
+                <span key={p.id} className="text-xs font-semibold px-2 py-1 rounded-lg bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-brass">
                   {p.name}: {stablefordResult.points[p.id] ?? 0} pts
                 </span>
               ))}
@@ -372,7 +372,7 @@ export function LeaderboardTab({
               {players.slice().sort((a, b) => (bankerResult.netCents[b.id] ?? 0) - (bankerResult.netCents[a.id] ?? 0)).map(p => {
                 const net = bankerResult.netCents[p.id] ?? 0
                 return (
-                  <span key={p.id} className={`text-xs font-semibold px-2 py-1 rounded-lg ${net > 0 ? 'bg-emerald-50 text-emerald-700' : net < 0 ? 'bg-red-50 text-red-600' : 'bg-gray-50 text-gray-500'}`}>
+                  <span key={p.id} className={`text-xs font-semibold px-2 py-1 rounded-lg ${net > 0 ? 'bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-brass' : net < 0 ? 'bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400' : 'bg-gray-50 dark:bg-gray-700/50 text-gray-500'}`}>
                     {p.name}: {net > 0 ? '+' : ''}{fmtAmount(Math.abs(net), game?.stakesMode)}
                   </span>
                 )
@@ -390,7 +390,7 @@ export function LeaderboardTab({
               {players.slice().sort((a, b) => (quotaResult.netPoints[b.id] ?? 0) - (quotaResult.netPoints[a.id] ?? 0)).map(p => {
                 const net = quotaResult.netPoints[p.id] ?? 0
                 return (
-                  <span key={p.id} className={`text-xs font-semibold px-2 py-1 rounded-lg ${net > 0 ? 'bg-blue-50 text-blue-700' : net < 0 ? 'bg-red-50 text-red-600' : 'bg-gray-50 text-gray-500'}`}>
+                  <span key={p.id} className={`text-xs font-semibold px-2 py-1 rounded-lg ${net > 0 ? 'bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-brass' : net < 0 ? 'bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400' : 'bg-gray-50 dark:bg-gray-700/50 text-gray-500'}`}>
                     {p.name}: {net > 0 ? '+' : ''}{net}
                   </span>
                 )
