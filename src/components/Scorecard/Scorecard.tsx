@@ -25,6 +25,7 @@ import { DotsPanel } from './DotsPanel'
 import { PropBetsPanel } from './PropBetsPanel'
 import {
   buildCourseHandicaps,
+  computeCourseHandicap,
   calculateSkins,
   calculateBestBall,
   calculateNassau,
@@ -1174,6 +1175,19 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
     setEditingHcpValue('')
     // Persist: update round's player snapshot
     safeWrite(supabase.from('rounds').update({ players: updatedPlayers }).eq('id', roundId), 'update round players')
+    // Re-freeze the derived course handicap for this player (§2.1). Only reachable
+    // before the first score lands (handicapsLocked), so the frozen value can still
+    // move here — after that it is immutable for the life of the round.
+    if (snapshot) {
+      const edited = updatedPlayers.find(p => p.id === editingHcpPlayerId)
+      const rp = roundPlayers.find(x => x.playerId === editingHcpPlayerId)
+      safeWrite(
+        supabase.from('round_players')
+          .update({ course_handicap: computeCourseHandicap(newHcp, rp?.teePlayed ?? edited?.tee ?? 'White', snapshot, round.holesMode) })
+          .eq('round_id', roundId).eq('player_id', editingHcpPlayerId),
+        'refreeze course handicap',
+      )
+    }
     // Also update the player in the players table
     safeWrite(supabase.from('players').update({ handicap_index: newHcp }).eq('id', editingHcpPlayerId), 'update player handicap')
   }
@@ -3005,6 +3019,8 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
           currentUserId={userId}
           existingPlayerIds={players.map((p: any) => p.id)}
           startHole={currentHole}
+          courseSnapshot={snapshot}
+          holesMode={round.holesMode}
           onClose={() => setShowInviteModal(false)}
           onInvited={name => {
             setInviteToast(`Invited ${name}`); setTimeout(() => setInviteToast(null), 3000)

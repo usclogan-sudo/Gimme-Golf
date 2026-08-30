@@ -4,7 +4,7 @@ import { supabase, courseToRow, playerToRow, roundToRow, roundPlayerToRow, buyIn
 import { safeWrite } from '../../lib/safeWrite'
 import { reportSupabaseError } from '../../lib/sentry'
 import { SHOW_HOLE_BETS, SHOW_EXTRA_GAMES, SHOW_DOTS, SHOW_BEST_BALL_STROKE_PLAY } from '../../lib/featureFlags'
-import { fmtMoney, fmtAmount, fmtHandicap, JUNK_LABELS, DOT_LABELS } from '../../lib/gameLogic'
+import { fmtMoney, fmtAmount, fmtHandicap, computeCourseHandicap, JUNK_LABELS, DOT_LABELS } from '../../lib/gameLogic'
 import { parseDollarsToCents, parsePointsValue } from '../../lib/money'
 import { venturaCourses } from '../../data/venturaCourses'
 import { NearMeCourses } from '../NearMeCourses/NearMeCourses'
@@ -2022,11 +2022,15 @@ function TreasurerAndBuyIns({
         ...(paid[p.id] ? { paidAt: new Date() } : {}),
       }))
 
+      // §2.1 handicap freeze: snapshot each player's course handicap onto the round at
+      // setup. Settlement reads this frozen value, so a GHIN sync or a profile edit after
+      // the first tee shot cannot change what the round settles to.
       const roundPlayers = players.map(p => ({
         id: uuidv4(),
         roundId,
         playerId: p.id,
         teePlayed: p.tee,
+        courseHandicap: computeCourseHandicap(p.handicapIndex, p.tee, round.courseSnapshot!, round.holesMode),
       }))
 
       // Insert the round first, then the child rows in parallel — round_players
@@ -2325,11 +2329,15 @@ export function NewRound({ userId, onStart, onCancel, onAddCourse, initialStakes
         holesMode: holesMode !== 'full_18' ? holesMode : undefined,
         startingHole: holesMode === 'full_18' && startingHole > 1 ? startingHole : undefined,
       }
+      // §2.1 handicap freeze: snapshot each player's course handicap onto the round at
+      // setup. Settlement reads this frozen value, so a GHIN sync or a profile edit after
+      // the first tee shot cannot change what the round settles to.
       const roundPlayers = players.map(p => ({
         id: uuidv4(),
         roundId,
         playerId: p.id,
         teePlayed: p.tee,
+        courseHandicap: computeCourseHandicap(p.handicapIndex, p.tee, round.courseSnapshot!, round.holesMode),
       }))
       // Parent first, then child — round_players has an FK on rounds(id),
       // and Promise.all races caused fk_round_players_round violations.

@@ -78,26 +78,54 @@ export function fmtHandicap(index: number | null | undefined): string {
   return index < 0 ? `+${-index}` : `${index}`
 }
 
+/** The effective course handicap a player plays off for a round: the USGA course
+ *  handicap for the tee they're on, halved for a nine-hole round. This is the value
+ *  that gets FROZEN onto `round_players.course_handicap` at setup (§2.1) — settlement
+ *  must never recompute it from a live profile once the round is under way.
+ *
+ *  `snapshot` is the FULL course snapshot (par is the 18-hole par even in a nine-hole
+ *  round — the halving happens after), matching what settlement passes. */
+export function computeCourseHandicap(
+  handicapIndex: number,
+  teeName: string,
+  snapshot: CourseSnapshot,
+  holesMode?: HolesMode,
+): number {
+  const par = snapshot.holes.reduce((s, h) => s + h.par, 0)
+  const tee = snapshot.tees.find(t => t.name === teeName)
+  let hcp = tee
+    ? calcCourseHandicap(handicapIndex, tee.slope, tee.rating, par)
+    : Math.round(handicapIndex)
+  if (holesMode === 'front_9' || holesMode === 'back_9') hcp = Math.round(hcp / 2)
+  return hcp
+}
+
 /** Build playerId → courseHandicap map for all players in a round.
- *  When holesMode is front_9 or back_9, the course handicap is halved. */
+ *
+ *  §2.1 (handicap freeze): prefers the frozen `round_players.course_handicap` written
+ *  at setup. A round that carries the snapshot settles off it forever, so a GHIN sync
+ *  or a profile edit after the first tee shot cannot move the money, and recomputing
+ *  the round any number of days later reproduces the same output.
+ *
+ *  The recompute path is the LEGACY fallback only, for rounds created before the
+ *  freeze shipped (their column is null). It reads `Player.handicapIndex` off the
+ *  round's own embedded `rounds.players` snapshot — never the live players table —
+ *  so even the fallback is stable for a given round row. */
 export function buildCourseHandicaps(
   players: Player[],
   roundPlayers: RoundPlayer[],
   snapshot: CourseSnapshot,
   holesMode?: HolesMode,
 ): Record<string, number> {
-  const par = snapshot.holes.reduce((s, h) => s + h.par, 0)
-  const is9 = holesMode === 'front_9' || holesMode === 'back_9'
   const map: Record<string, number> = {}
   for (const p of players) {
     const rp = roundPlayers.find(x => x.playerId === p.id)
-    const teeName = rp?.teePlayed ?? p.tee
-    const tee = snapshot.tees.find(t => t.name === teeName)
-    let hcp = tee
-      ? calcCourseHandicap(p.handicapIndex, tee.slope, tee.rating, par)
-      : Math.round(p.handicapIndex)
-    if (is9) hcp = Math.round(hcp / 2)
-    map[p.id] = hcp
+    map[p.id] = rp?.courseHandicap ?? computeCourseHandicap(
+      p.handicapIndex,
+      rp?.teePlayed ?? p.tee,
+      snapshot,
+      holesMode,
+    )
   }
   return map
 }
@@ -310,7 +338,9 @@ export function calculateSkinsNet(
 
   const netS: Record<string, number> = {}
   players.forEach(p => (netS[p.id] = winningsS[p.id] - anteS[p.id]))
-  return divideZeroSum(netS, divisor)
+  const net = divideZeroSum(netS, divisor)
+  assertZeroSum('skins', net)   // §2.2 — after rounding, before return
+  return net
 }
 
 // ─── Best Ball ────────────────────────────────────────────────────────────────
@@ -574,23 +604,45 @@ export function calculateNassauPayouts(
   // NOT won — an incomplete leg on a round that ended early, or the floor remainder
   // — must be refunded, or the standings won't sum to zero (the "both players at
   // −25, all square" bug on a partial round).
+  // §2.2 — last place across the whole round is the highest total-segment score.
+  // Nassau's segment scores are strokes, so higher is worse.
+  const lastPlaceId = lowestInStandings(result.total.scores, { higherIsWorse: true })
+
   let baseWon = 0
   for (const { seg, label } of segs) {
     const winners = seg.incomplete ? [] : seg.winner ? [seg.winner] : seg.tiedPlayers
     if (winners.length === 0) continue
     const perWinner = Math.floor(segPot / winners.length)
-    let rem = segPot - perWinner * winners.length
     for (const id of winners) {
-      const extra = rem > 0 ? 1 : 0
-      rem = Math.max(0, rem - extra)
-      map[id].amount += perWinner + extra
-      baseWon += perWinner + extra
+      map[id].amount += perWinner
+      baseWon += perWinner
       map[id].reasons.push(winners.length > 1 ? `${label} (split)` : label)
+    }
+    // §2.2 — the split remainder goes to the bottom of the standings, not a winner.
+    // Whatever is left over falls through to the baseRefund below when nobody takes it.
+    const segRem = segPot - perWinner * winners.length
+    if (segRem > 0 && lastPlaceId) {
+      map[lastPlaceId].amount += segRem
+      baseWon += segRem
+      map[lastPlaceId].reasons.push('Rounding remainder')
     }
   }
 
   // Refund the unwon base pot evenly so the base game is exactly zero-sum. When no
   // leg completed at all this returns every player's full entry (net 0 each).
+  // §2.2 — totalPot rarely divides by three. That floor remainder is a rounding
+  // artifact and goes to last place undivided; only genuinely unwon leg pots are
+  // refunded to the table.
+  // `baseWon > 0` guard: if not a single leg resolved there was no contest, so there
+  // are no standings and the whole pot is returned to the table rather than tipped
+  // toward whoever happened to be behind over a handful of holes.
+  const floorRem = totalPot - segPot * 3
+  if (floorRem > 0 && baseWon > 0 && lastPlaceId) {
+    map[lastPlaceId].amount += floorRem
+    baseWon += floorRem
+    map[lastPlaceId].reasons.push('Rounding remainder')
+  }
+
   const baseRefund = totalPot - baseWon
   if (baseRefund > 0) {
     const per = Math.floor(baseRefund / players.length)
@@ -629,12 +681,15 @@ export function calculateNassauPayouts(
     const winners = seg.winner ? [seg.winner] : seg.tiedPlayers
     if (winners.length === 0) continue
     const perWinner = Math.floor(pressPot / winners.length)
-    let rem = pressPot - perWinner * winners.length
     for (const id of winners) {
-      const extra = rem > 0 ? 1 : 0
-      rem = Math.max(0, rem - extra)
-      map[id].amount += perWinner + extra
+      map[id].amount += perWinner
       map[id].reasons.push(`Press ${holeRange}`)
+    }
+    // §2.2 — press remainder to the bottom of the standings too.
+    const pressRem = pressPot - perWinner * winners.length
+    if (pressRem > 0 && lastPlaceId) {
+      map[lastPlaceId].amount += pressRem
+      map[lastPlaceId].reasons.push('Rounding remainder')
     }
   }
 
@@ -770,21 +825,19 @@ export function calculateWolfPayouts(
     return refundEvenly(players, totalPot, 'Wolf — all square, refund')
   }
 
-  const centsPerUnit = Math.floor(totalPot / positiveUnits)
-  let remainder = totalPot - centsPerUnit * positiveUnits
-
-  return Object.entries(result.netUnits)
+  // Exact share per winning unit, floored per player (see the note in
+  // calculateSkinsPayouts on why the per-unit rate is not floored first).
+  let distributed = 0
+  const payouts = Object.entries(result.netUnits)
     .filter(([, u]) => u > 0)
     .sort((a, b) => b[1] - a[1])
     .map(([playerId, u]) => {
-      const extra = remainder > 0 ? Math.min(u, remainder) : 0
-      remainder = Math.max(0, remainder - extra)
-      return {
-        playerId,
-        amountCents: u * centsPerUnit + extra,
-        reason: `Wolf +${u} unit${u !== 1 ? 's' : ''}`,
-      }
+      const share = Math.floor((totalPot * u) / positiveUnits)
+      distributed += share
+      return { playerId, amountCents: share, reason: `Wolf +${u} unit${u !== 1 ? 's' : ''}` }
     })
+  // §2.2 — fewest net units is last place.
+  return withRemainderToLastPlace(payouts, totalPot - distributed, result.netUnits)
 }
 
 // ─── Bingo Bango Bongo ────────────────────────────────────────────────────────
@@ -847,13 +900,8 @@ export function calculateBBBPayouts(
     }
   })
 
-  // Distribute remainder cents to top earners
-  for (let i = 0; i < payouts.length && remainder > 0; i++) {
-    payouts[i].amountCents++
-    remainder--
-  }
-
-  return payouts
+  // §2.2 — fewest points is last place.
+  return withRemainderToLastPlace(payouts, remainder, result.pointsWon)
 }
 
 // ─── Hammer ──────────────────────────────────────────────────────────────────
@@ -1059,13 +1107,15 @@ export function calculateVegasPayouts(
   const winTeam = result.winner
   const winnerIds = players.filter(p => config.teams[p.id] === winTeam).map(p => p.id)
   const perWinner = Math.floor(potCents / winnerIds.length)
-  let remainder = potCents - perWinner * winnerIds.length
+  const remainder = potCents - perWinner * winnerIds.length
 
-  return winnerIds.map(pid => {
-    const extra = Math.min(remainder, 1)
-    remainder -= extra
-    return { playerId: pid, amountCents: perWinner + extra, reason: `Vegas winner (Team ${winTeam})` }
-  })
+  const payouts = winnerIds.map(pid => ({
+    playerId: pid, amountCents: perWinner, reason: `Vegas winner (Team ${winTeam})`,
+  }))
+  // §2.2 — last place is the losing side; ties break on playerId.
+  const standing: Record<string, number> = {}
+  for (const p of players) standing[p.id] = config.teams[p.id] === winTeam ? 1 : 0
+  return withRemainderToLastPlace(payouts, remainder, standing)
 }
 
 // ─── Stableford ──────────────────────────────────────────────────────────────
@@ -1149,12 +1199,8 @@ export function calculateStablefordPayouts(
       return { playerId, amountCents: share, reason: `${pts} Stableford point${pts !== 1 ? 's' : ''}` }
     })
 
-  for (let i = 0; i < payouts.length && remainder > 0; i++) {
-    payouts[i].amountCents++
-    remainder--
-  }
-
-  return payouts
+  // §2.2 — fewest points is last place.
+  return withRemainderToLastPlace(payouts, remainder, result.points)
 }
 
 // ─── Dots ────────────────────────────────────────────────────────────────────
@@ -1322,17 +1368,18 @@ export function calculateBankerPayouts(
     return refundEvenly(players, totalPot, 'Banker — all square, refund')
   }
 
-  const centsPerUnit = Math.floor(totalPot / positiveUnits)
-  let remainder = totalPot - centsPerUnit * positiveUnits
-
-  return Object.entries(result.netCents)
+  // Exact share per winning unit, floored per player (see calculateSkinsPayouts).
+  let distributed = 0
+  const payouts = Object.entries(result.netCents)
     .filter(([, u]) => u > 0)
     .sort((a, b) => b[1] - a[1])
     .map(([playerId, u]) => {
-      const extra = Math.min(remainder, u)
-      remainder -= extra
-      return { playerId, amountCents: u * centsPerUnit + extra, reason: `Banker +${u} unit${u !== 1 ? 's' : ''}` }
+      const share = Math.floor((totalPot * u) / positiveUnits)
+      distributed += share
+      return { playerId, amountCents: share, reason: `Banker +${u} unit${u !== 1 ? 's' : ''}` }
     })
+  // §2.2 — fewest net units is last place.
+  return withRemainderToLastPlace(payouts, totalPot - distributed, result.netCents)
 }
 
 // ─── Quota ───────────────────────────────────────────────────────────────────
@@ -1428,12 +1475,92 @@ export function calculateQuotaPayouts(
       return { playerId, amountCents: share, reason: `Quota +${n} over target` }
     })
 
-  for (let i = 0; i < payouts.length && remainder > 0; i++) {
-    payouts[i].amountCents++
-    remainder--
-  }
+  // §2.2 — furthest under quota is last place.
+  return withRemainderToLastPlace(payouts, remainder, result.netPoints)
+}
 
-  return payouts
+// ─── §2.2 Rounding convention ────────────────────────────────────────────────
+
+/** Thrown when a settlement produces a ledger that cannot be paid out as written.
+ *  A non-zero-sum or fractional ledger is a defect in the game's math, not a
+ *  condition to be handled — it must surface at the point it is produced. */
+export class SettlementError extends Error {
+  gameId: string
+  constructor(gameId: string, message: string) {
+    super(`[${gameId}] ${message}`)
+    this.name = 'SettlementError'
+    this.gameId = gameId
+  }
+}
+
+/**
+ * §2.2: the player lowest in the standings — the one who takes any rounding
+ * remainder, undivided.
+ *
+ * `ranking` is playerId → standing value. By default a HIGHER value is a BETTER
+ * standing (skins won, points, units); pass `higherIsWorse` for stroke-style
+ * rankings where low is good.
+ *
+ * Ties break on playerId, not roster order. That matters: roster order changes when
+ * someone joins mid-round, and §2.1 requires that replaying a round reproduces a
+ * byte-identical result forever.
+ */
+export function lowestInStandings(
+  ranking: Record<string, number>,
+  opts: { higherIsWorse?: boolean } = {},
+): string | null {
+  const ids = Object.keys(ranking).sort()
+  if (ids.length === 0) return null
+  const isWorse = (a: number, b: number) => (opts.higherIsWorse ? a > b : a < b)
+  return ids.reduce((worst, id) => (isWorse(ranking[id], ranking[worst]) ? id : worst), ids[0])
+}
+
+/**
+ * §2.2: hand `remainder` units to the player lowest in the standings, undivided.
+ *
+ * Splitting the remainder reproduces the fractions the whole convention exists to
+ * remove, and dripping it to the leaders makes the app look like it is picking
+ * favourites. Pushing it to the bottom of the standings is the only version that is
+ * defensible out loud.
+ */
+function withRemainderToLastPlace(
+  payouts: PlayerPayout[],
+  remainder: number,
+  ranking: Record<string, number>,
+  opts: { higherIsWorse?: boolean } = {},
+): PlayerPayout[] {
+  if (remainder <= 0) return payouts
+  const id = lowestInStandings(ranking, opts)
+  if (!id) return payouts
+  if (payouts.some(p => p.playerId === id)) {
+    return payouts.map(p =>
+      p.playerId === id ? { ...p, amountCents: p.amountCents + remainder } : p)
+  }
+  return [...payouts, { playerId: id, amountCents: remainder, reason: 'Rounding remainder' }]
+}
+
+/**
+ * §2.2: assert a settled ledger is payable — whole units, summing to exactly zero.
+ * Called AFTER rounding, immediately before the net is returned.
+ *
+ * Throws in development so a broken game fails loudly at the point of the defect.
+ * In production it reports and returns, because a thrown error here would blank the
+ * settle screen on a card that is merely a cent out — worse for the group than a
+ * slightly wrong total they can see and argue about.
+ */
+export function assertZeroSum(gameId: string, net: Record<string, number>): void {
+  const entries = Object.entries(net)
+  const fractional = entries.find(([, v]) => !Number.isInteger(v))
+  const sum = entries.reduce((a, [, v]) => a + v, 0)
+  if (!fractional && sum === 0) return
+  const err = new SettlementError(
+    gameId,
+    fractional
+      ? `non-integer amount for ${fractional[0]}: ${fractional[1]}`
+      : `ledger not zero-sum after rounding (off by ${sum})`,
+  )
+  if (import.meta.env?.DEV) throw err
+  console.error(err)
 }
 
 // ─── Payouts ──────────────────────────────────────────────────────────────────
@@ -1471,22 +1598,27 @@ export function calculateSkinsPayouts(
 
   // Total pot increases with presses: each press adds the base pot
   const totalPot = basePotCents * (1 + presses.length)
-  const centsPerUnit = Math.floor(totalPot / totalWeighted)
-  let remainder = totalPot - centsPerUnit * totalWeighted
-
-  return Object.entries(weightedWon)
+  // Each winner's share is floored from their EXACT slice of the pot, not from a
+  // floored per-unit rate. Flooring the rate first discards up to (totalWeighted − 1)
+  // units — on a 25-point buy-in that is a tenth of the pot, which is a bug, not a
+  // rounding remainder. Flooring exact shares leaves a true remainder of at most
+  // (winners − 1), which §2.2 then hands to last place.
+  let distributed = 0
+  const payouts = Object.entries(weightedWon)
     .filter(([, w]) => w > 0)
     .sort((a, b) => b[1] - a[1])
     .map(([playerId, w]) => {
-      const extra = Math.min(remainder, w)
-      remainder -= extra
+      const share = Math.floor((totalPot * w) / totalWeighted)
+      distributed += share
       const skins = result.skinsWon[playerId] ?? 0
       return {
         playerId,
-        amountCents: w * centsPerUnit + extra,
+        amountCents: share,
         reason: `${skins} skin${skins !== 1 ? 's' : ''}${presses.length > 0 ? ` (${presses.length} press${presses.length !== 1 ? 'es' : ''})` : ''}`,
       }
     })
+  // §2.2 — fewest skins is last place.
+  return withRemainderToLastPlace(payouts, totalPot - distributed, result.skinsWon)
 }
 
 export function calculateBestBallPayouts(
@@ -1504,17 +1636,17 @@ export function calculateBestBallPayouts(
   const winTeam = result.winner
   const winnerIds = players.filter(p => config.teams[p.id] === winTeam).map(p => p.id)
   const perWinner = Math.floor(potCents / winnerIds.length)
-  let remainder = potCents - perWinner * winnerIds.length
+  const remainder = potCents - perWinner * winnerIds.length
 
-  return winnerIds.map(pid => {
-    const extra = Math.min(remainder, 1)
-    remainder -= extra
-    return {
-      playerId: pid,
-      amountCents: perWinner + extra,
-      reason: `Best Ball winner (Team ${winTeam})`,
-    }
-  })
+  const payouts = winnerIds.map(pid => ({
+    playerId: pid,
+    amountCents: perWinner,
+    reason: `Best Ball winner (Team ${winTeam})`,
+  }))
+  // §2.2 — in a team game last place is the losing side; ties break on playerId.
+  const standing: Record<string, number> = {}
+  for (const p of players) standing[p.id] = config.teams[p.id] === winTeam ? 1 : 0
+  return withRemainderToLastPlace(payouts, remainder, standing)
 }
 
 // ─── Settlement (treasurer-based) ─────────────────────────────────────────────
@@ -1807,6 +1939,7 @@ export function unitGameNet(
   const scale = gameType === 'wolf' || gameType === 'banker' ? buyInCents : 1
   const out: Record<string, number> = {}
   for (const [id, v] of Object.entries(source)) out[id] = v * scale
+  assertZeroSum(gameType, out)   // §2.2 — after rounding, before return
   return out
 }
 
@@ -1837,6 +1970,7 @@ export function netFromPayouts(
     net[p.id] = -(perAnte + extra)
   })
   for (const p of payouts) net[p.playerId] = (net[p.playerId] ?? 0) + p.amountCents
+  assertZeroSum('pot', net)   // §2.2 — after rounding, before return
   return net
 }
 

@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import { supabase, rowToUserProfile } from '../lib/supabase'
 import { reportSupabaseError } from '../lib/sentry'
-import type { UserProfile } from '../types'
+import { computeCourseHandicap } from '../lib/gameLogic'
+import type { UserProfile, CourseSnapshot, HolesMode } from '../types'
 
 interface Props {
   /** Round invite — pass roundId. Event invite — pass eventId instead. */
@@ -13,6 +14,10 @@ interface Props {
   /** Current hole — when adding mid-round, stamps the new player's start_hole so the
    *  settlement prorates their ante (Option A). Omit / 1 for a not-yet-started round. */
   startHole?: number
+  /** Round's course snapshot + holes mode. Needed to freeze the joiner's course
+   *  handicap onto their round_players row (§2.1), the same way round creation does. */
+  courseSnapshot?: CourseSnapshot
+  holesMode?: HolesMode
   onClose: () => void
   onInvited?: (name: string) => void
 }
@@ -23,7 +28,7 @@ interface Props {
  * Registered users' player_id equals their auth uuid, so we pass userId for both
  * p_user_id and p_player_id.
  */
-export function InvitePlayerModal({ roundId, eventId, currentUserId, existingPlayerIds, startHole, onClose, onInvited }: Props) {
+export function InvitePlayerModal({ roundId, eventId, currentUserId, existingPlayerIds, startHole, courseSnapshot, holesMode, onClose, onInvited }: Props) {
   const [users, setUsers] = useState<UserProfile[]>([])
   const [search, setSearch] = useState('')
   const [busy, setBusy] = useState<string | null>(null)
@@ -55,12 +60,23 @@ export function InvitePlayerModal({ roundId, eventId, currentUserId, existingPla
       return
     }
     // Mid-round add: stamp the new player's start hole so the settlement prorates
-    // their ante (Option A). The host owns round_players rows, so this update is
-    // allowed by RLS. Only meaningful past hole 1; harmless otherwise.
-    if (roundId && startHole && startHole > 1) {
+    // their ante (Option A), and freeze their course handicap (§2.1) the same way round
+    // creation does — invite_to_round inserts the round_players row without either.
+    // The host owns round_players rows, so these updates are allowed by RLS.
+    if (roundId && (startHole && startHole > 1 || courseSnapshot)) {
+      const patch: Record<string, unknown> = {}
+      if (startHole && startHole > 1) patch.start_hole = startHole
+      if (courseSnapshot) {
+        patch.course_handicap = computeCourseHandicap(
+          u.handicapIndex ?? 0,
+          u.tee ?? 'White',
+          courseSnapshot,
+          holesMode,
+        )
+      }
       const { error: shErr } = await supabase.from('round_players')
-        .update({ start_hole: startHole }).eq('round_id', roundId).eq('player_id', u.userId)
-      if (shErr) reportSupabaseError(shErr, 'set_start_hole', { roundId, invitee: u.userId, startHole })
+        .update(patch).eq('round_id', roundId).eq('player_id', u.userId)
+      if (shErr) reportSupabaseError(shErr, 'set_round_player_snapshot', { roundId, invitee: u.userId, startHole })
     }
     setInvited(prev => new Set(prev).add(u.userId))
     setMsg(`Invited ${u.displayName}`)

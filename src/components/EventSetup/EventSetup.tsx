@@ -5,7 +5,7 @@ import { safeWrite } from '../../lib/safeWrite'
 import { reportSupabaseError } from '../../lib/sentry'
 // Events store buy-in in cents (money mode); fmtAmount with no stakesMode
 // converts cents -> points for display (1 pt = $1), so no $ surfaces.
-import { fmtAmount, fmtHandicap } from '../../lib/gameLogic'
+import { fmtAmount, fmtHandicap, computeCourseHandicap } from '../../lib/gameLogic'
 import { autoAssignGroups, autoAssignShotgunStarts, MAX_PER_GROUP } from '../../lib/eventUtils'
 import { parseDollarsToCents } from '../../lib/money'
 import { venturaCourses } from '../../data/venturaCourses'
@@ -255,12 +255,14 @@ export function EventSetup({ userId, onStart, onCancel, onAddCourse }: Props) {
         status: 'unpaid' as const,
       }))
 
-      // Create round players
+      // Create round players. §2.1 handicap freeze: the course handicap is snapshotted
+      // here at setup so settlement never recomputes it from a live profile.
       const roundPlayers = selectedPlayers.map(p => ({
         id: uuidv4(),
         roundId,
         playerId: p.id,
         teePlayed: p.tee,
+        courseHandicap: computeCourseHandicap(p.handicapIndex, p.tee, round.courseSnapshot!, round.holesMode),
       }))
 
       // Insert event first (round references it), then the round (parent), then

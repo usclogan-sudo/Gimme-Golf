@@ -17,11 +17,15 @@ import {
   parseHandicap,
   fmtHandicap,
   buildCourseHandicaps,
+  computeCourseHandicap,
   calculateSkins,
   calculateStableford,
   calculateQuota,
   calculateJunks,
   calculateSkinsPayouts,
+  lowestInStandings,
+  assertZeroSum,
+  SettlementError,
   calculateSkinsNet,
   calculateBBBPayouts,
   calculateWolfPayouts,
@@ -168,6 +172,61 @@ describe('buildCourseHandicaps', () => {
     ]
     const result = buildCourseHandicaps([players[0]], roundPlayers, snapshot)
     expect(result['p1']).toBe(10)
+  })
+})
+
+// ─── §2.1 Handicap freeze ───────────────────────────────────────────────────
+
+describe('§2.1 handicap freeze', () => {
+  const frozen: RoundPlayer[] = [
+    { id: 'rp1', roundId: 'r1', playerId: 'p1', teePlayed: 'White', courseHandicap: 12 },
+    { id: 'rp2', roundId: 'r1', playerId: 'p2', teePlayed: 'White', courseHandicap: 23 },
+  ]
+
+  it('reads the frozen snapshot on the round record, not the player profile', () => {
+    // Same round rows, but the profile handicaps have since moved a long way.
+    const drifted: Player[] = [
+      { ...players[0], handicapIndex: 30 },
+      { ...players[1], handicapIndex: 0 },
+    ]
+    const result = buildCourseHandicaps(drifted, frozen, snapshot)
+    expect(result['p1']).toBe(12)
+    expect(result['p2']).toBe(23)
+  })
+
+  it('a GHIN sync or manual edit mid-round does not alter that round settlement', () => {
+    const before = buildCourseHandicaps(players.slice(0, 2), frozen, snapshot)
+    // GHIN drops Alice five shots and bumps Bob two, mid-round.
+    const after = buildCourseHandicaps(
+      [{ ...players[0], handicapIndex: 5 }, { ...players[1], handicapIndex: 22 }],
+      frozen,
+      snapshot,
+    )
+    expect(after).toEqual(before)
+  })
+
+  it('recomputing a completed round any number of times is byte-identical', () => {
+    const runs = Array.from({ length: 5 }, () =>
+      JSON.stringify(buildCourseHandicaps(players.slice(0, 2), frozen, snapshot)))
+    expect(new Set(runs).size).toBe(1)
+  })
+
+  it('falls back to recomputation only for legacy rounds with no frozen value', () => {
+    const legacy: RoundPlayer[] = [
+      { id: 'rp1', roundId: 'r1', playerId: 'p1', teePlayed: 'White' },
+    ]
+    expect(buildCourseHandicaps([players[0]], legacy, snapshot)['p1']).toBe(12)
+  })
+
+  it('freezes a nine-hole round at half the course handicap', () => {
+    // Alice's 18-hole course handicap is 12, so a nine plays off 6.
+    expect(computeCourseHandicap(10, 'White', snapshot, 'front_9')).toBe(6)
+    expect(computeCourseHandicap(10, 'White', snapshot, 'back_9')).toBe(6)
+    expect(computeCourseHandicap(10, 'White', snapshot, 'full_18')).toBe(12)
+  })
+
+  it('freezes a plus handicap as a negative course handicap', () => {
+    expect(computeCourseHandicap(-4, 'White', snapshot)).toBe(-5)
   })
 })
 
@@ -979,5 +1038,104 @@ describe('single settlement engine — direct (points) soundness', () => {
     assertDirectSettlementSound(out, trueNet)
     expect(out.find(s => s.fromId === 'p2')?.amountCents).toBe(75) // −3 pays 3× the −1
     expect(out.find(s => s.fromId === 'p3')?.amountCents).toBe(25)
+  })
+})
+
+// ─── §2.2 Rounding convention ───────────────────────────────────────────────
+
+describe('§2.2 rounding convention', () => {
+  /** A SkinsResult where `won` maps playerId → holes won, one skin per hole. */
+  const mkSkins = (won: Record<string, number>) => {
+    const holeResults: { holeNumber: number; winnerId: string | null; carry: number; skinsInPlay: number }[] = []
+    let h = 1
+    for (const [pid, n] of Object.entries(won)) {
+      for (let i = 0; i < n; i++) holeResults.push({ holeNumber: h++, winnerId: pid, carry: 0, skinsInPlay: 1 })
+    }
+    return {
+      skinsWon: won,
+      holeResults,
+      totalSkins: Object.values(won).reduce((a, b) => a + b, 0),
+      pendingCarry: 0,
+    }
+  }
+  const mkPlayers = (n: number): Player[] =>
+    Array.from({ length: n }, (_, i) => ({
+      id: `p${i + 1}`, name: `P${i + 1}`, handicapIndex: 0, tee: 'White', ghinNumber: '',
+    }))
+  const game = { id: 'g1', type: 'skins', buyInCents: 100, config: { mode: 'gross', carryovers: false } } as unknown as Game
+
+  // 4 + 3 = 7 skins never divides a 3/4/5-player pot evenly, so each case leaves a
+  // genuine remainder of exactly one unit.
+  for (const n of [3, 4, 5]) {
+    describe(`${n} players`, () => {
+      const roster = mkPlayers(n)
+      const result = mkSkins(Object.fromEntries(roster.map((p, i) => [p.id, i === 0 ? 4 : i === 1 ? 3 : 0])))
+      const payouts = calculateSkinsPayouts(result as any, game, n)
+      const net = netFromPayouts(payouts, roster, game.buyInCents)
+
+      it('allocates the remainder to the last-place player, undivided', () => {
+        // p1 and p2 won every skin, so last place is the lexicographically first
+        // player on zero — p3 in all three rosters.
+        const pot = 100 * n
+        const distributed = payouts.reduce((a, p) => a + p.amountCents, 0)
+        expect(distributed).toBe(pot)                                  // whole pot paid out
+        const p3 = payouts.find(p => p.playerId === 'p3')
+        expect(p3).toBeDefined()
+        expect(p3!.reason).toBe('Rounding remainder')
+        expect(p3!.amountCents).toBe(pot - Math.floor((pot * 4) / 7) - Math.floor((pot * 3) / 7))
+        expect(p3!.amountCents).toBeGreaterThan(0)
+      })
+
+      it('never hands the remainder to a leader', () => {
+        const leader = payouts.find(p => p.playerId === 'p1')!
+        expect(leader.amountCents).toBe(Math.floor((100 * n * 4) / 7))
+      })
+
+      it('produces whole units that sum to exactly zero', () => {
+        for (const v of Object.values(net)) expect(Number.isInteger(v)).toBe(true)
+        expect(Object.values(net).reduce((a, b) => a + b, 0)).toBe(0)
+      })
+    })
+  }
+
+  it('breaks standings ties on playerId, not roster order, so replays are stable', () => {
+    const ranking = { pz: 0, pa: 0, pm: 5 }
+    expect(lowestInStandings(ranking)).toBe('pa')
+    // Same ranking, keys inserted in a different order — same answer.
+    expect(lowestInStandings({ pm: 5, pz: 0, pa: 0 })).toBe('pa')
+  })
+
+  it('reads low-is-good rankings when told to (stroke play)', () => {
+    expect(lowestInStandings({ p1: 70, p2: 95 }, { higherIsWorse: true })).toBe('p2')
+    expect(lowestInStandings({ p1: 70, p2: 95 })).toBe('p1')
+  })
+
+  it('returns null for an empty ranking', () => {
+    expect(lowestInStandings({})).toBeNull()
+  })
+})
+
+describe('§2.2 zero-sum assertion', () => {
+  it('passes a balanced integer ledger', () => {
+    expect(() => assertZeroSum('skins', { p1: 200, p2: -100, p3: -100 })).not.toThrow()
+  })
+
+  it('fails loudly on a ledger that is not zero-sum', () => {
+    expect(() => assertZeroSum('skins', { p1: 200, p2: -100, p3: -99 })).toThrow(SettlementError)
+    expect(() => assertZeroSum('skins', { p1: 200, p2: -100, p3: -99 })).toThrow(/not zero-sum/)
+  })
+
+  it('fails loudly on a fractional amount', () => {
+    expect(() => assertZeroSum('wolf', { p1: 100.5, p2: -100.5 })).toThrow(/non-integer/)
+  })
+
+  it('names the offending game', () => {
+    try {
+      assertZeroSum('banker', { p1: 1, p2: 0 })
+      expect.unreachable()
+    } catch (e) {
+      expect((e as SettlementError).gameId).toBe('banker')
+      expect((e as Error).message).toContain('[banker]')
+    }
   })
 })
