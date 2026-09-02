@@ -3,7 +3,7 @@ import { Sentry } from '../../lib/sentry'
 import { v4 as uuidv4 } from 'uuid'
 import { supabase, rowToRound, rowToRoundPlayer, rowToHoleScore, rowToBuyIn, rowToBBBPoint, rowToJunkRecord, rowToSideBet, rowToPropBet, rowToPropWager, rowToSettlementRecord, settlementRecordToRow, rowToUserProfile, rowToEvent, rowToHoleDeclaration, notificationToRow } from '../../lib/supabase'
 import type { AppNotification } from '../../types'
-import { withDeclarations } from '../../lib/holeDeclarations'
+import { withDeclarations, withTeams } from '../../lib/holeDeclarations'
 import { PaymentButtons, getPreferredPayment } from '../PaymentButtons'
 import { Tooltip } from '../ui/Tooltip'
 import { safeWrite } from '../../lib/safeWrite'
@@ -310,8 +310,10 @@ export function SettleUp({ roundId, userId, eventId, onDone, onContinue }: Props
   // expects (§ config hoist). A round with no declarations passes through untouched,
   // so legacy rounds settle exactly as they did before.
   const game = useMemo(
-    () => (round?.game ? withDeclarations(round.game, declarations) : undefined),
-    [round?.game, declarations],
+    () => (round?.game
+      ? withTeams(withDeclarations(round.game, declarations), roundPlayers)
+      : undefined),
+    [round?.game, declarations, roundPlayers],
   )
   const treasurerId = round?.treasurerPlayerId
   const treasurer = players.find(p => p.id === treasurerId)

@@ -108,3 +108,22 @@ export function toTeams(
   for (const rp of assigned) out[rp.playerId] = rp.team!
   return out
 }
+
+/**
+ * Fold roster teams into a team game's config.
+ *
+ * Same projection trick as `withDeclarations`: Best Ball and Vegas read
+ * `config.teams`, and rather than resignature them and their ~14 call sites, the
+ * hoisted value is folded back into the shape they already read. Legacy rounds have
+ * no roster teams, so `toTeams` falls back to the config and they are untouched.
+ */
+export function withTeams<T extends Game>(
+  game: T,
+  roundPlayers: { playerId: string; team?: 'A' | 'B' }[],
+): T {
+  if (game.type !== 'best_ball' && game.type !== 'vegas') return game
+  const fallback = (game.config as { teams?: Record<string, 'A' | 'B'> }).teams ?? {}
+  const teams = toTeams(roundPlayers, fallback)
+  if (teams === fallback) return game
+  return { ...game, config: { ...game.config, teams } }
+}

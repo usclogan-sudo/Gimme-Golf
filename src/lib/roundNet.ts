@@ -28,7 +28,7 @@ import {
   calculateQuota, calculateQuotaPayouts,
   calculateVegas, calculateVegasPayouts,
 } from './gameLogic'
-import { withDeclarations } from './holeDeclarations'
+import { withDeclarations, withTeams } from './holeDeclarations'
 import type {
   Round, HoleScore, RoundPlayer, BBBPoint, JunkRecord, SideBet, HoleDeclaration,
   SkinsConfig, BestBallConfig, NassauConfig, WolfConfig, HammerConfig,
@@ -72,7 +72,9 @@ export function computeRoundPlayerNets(input: RoundNetInputs): RoundNetResult {
   // round's presses, Wolf picks and Hammer states would silently vanish from the
   // stats screens the moment they moved out of game.config — no error, just wrong
   // history.
-  const game = round.game ? withDeclarations(round.game, declarations) : undefined
+  const game = round.game
+    ? withTeams(withDeclarations(round.game, declarations), roundPlayers)
+    : undefined
   const hasGame = game != null
 
   const add = (m: Record<string, number>) => {

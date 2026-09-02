@@ -2025,12 +2025,18 @@ function TreasurerAndBuyIns({
       // §2.1 handicap freeze: snapshot each player's course handicap onto the round at
       // setup. Settlement reads this frozen value, so a GHIN sync or a profile edit after
       // the first tee shot cannot change what the round settles to.
+      //
+      // Teams are written here too (§4: fixed at setup). Best Ball and Vegas both read
+      // them, and under deferred selection neither game may be chosen until the round
+      // ends — so teams cannot live inside the game config that does not exist yet.
+      const teamOf = (game.config as { teams?: Record<string, 'A' | 'B'> }).teams ?? {}
       const roundPlayers = players.map(p => ({
         id: uuidv4(),
         roundId,
         playerId: p.id,
         teePlayed: p.tee,
         courseHandicap: computeCourseHandicap(p.handicapIndex, p.tee, round.courseSnapshot!, round.holesMode),
+        ...(teamOf[p.id] ? { team: teamOf[p.id] } : {}),
       }))
 
       // Insert the round first, then the child rows in parallel — round_players
@@ -2332,12 +2338,18 @@ export function NewRound({ userId, onStart, onCancel, onAddCourse, initialStakes
       // §2.1 handicap freeze: snapshot each player's course handicap onto the round at
       // setup. Settlement reads this frozen value, so a GHIN sync or a profile edit after
       // the first tee shot cannot change what the round settles to.
+      //
+      // Teams are written here too (§4: fixed at setup). Best Ball and Vegas both read
+      // them, and under deferred selection neither game may be chosen until the round
+      // ends — so teams cannot live inside the game config that does not exist yet.
+      const teamOf = (g.config as { teams?: Record<string, 'A' | 'B'> }).teams ?? {}
       const roundPlayers = players.map(p => ({
         id: uuidv4(),
         roundId,
         playerId: p.id,
         teePlayed: p.tee,
         courseHandicap: computeCourseHandicap(p.handicapIndex, p.tee, round.courseSnapshot!, round.holesMode),
+        ...(teamOf[p.id] ? { team: teamOf[p.id] } : {}),
       }))
       // Parent first, then child — round_players has an FK on rounds(id),
       // and Promise.all races caused fk_round_players_round violations.

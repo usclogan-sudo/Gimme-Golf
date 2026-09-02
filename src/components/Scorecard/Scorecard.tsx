@@ -46,7 +46,7 @@ import {
 } from '../../lib/gameLogic'
 import type { BestBallResult } from '../../lib/gameLogic'
 import { getWolfHoleState, canDeclareWolf, scoreWriteBlocked } from '../../lib/wolfOwnership'
-import { withDeclarations } from '../../lib/holeDeclarations'
+import { withDeclarations, withTeams } from '../../lib/holeDeclarations'
 import { makePlayableSnapshot, getPlayableHoleNumbers, roundToHolesConfig } from '../../lib/holeUtils'
 import type {
   Round,
@@ -523,8 +523,10 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
   // folded back into its config. Legacy rounds with no declarations pass through
   // untouched, so they read exactly as they did before the hoist.
   const game = useMemo(
-    () => (round?.game ? withDeclarations(round.game, declarations) : undefined),
-    [round?.game, declarations],
+    () => (round?.game
+      ? withTeams(withDeclarations(round.game, declarations), roundPlayers)
+      : undefined),
+    [round?.game, declarations, roundPlayers],
   )
   const isEventRound = !!round?.eventId
 

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { toPresses, toHoleDecisions, toHammerStates, withDeclarations, toTeams } from '../holeDeclarations'
+import { toPresses, toHoleDecisions, toHammerStates, withDeclarations, withTeams, toTeams } from '../holeDeclarations'
 import type { HoleDeclaration, Game, SkinsConfig, WolfConfig } from '../../types'
 
 const d = (over: Partial<HoleDeclaration>): HoleDeclaration => ({
@@ -128,5 +128,34 @@ describe('toTeams', () => {
 
   it('prefers roster teams once any are assigned', () => {
     expect(toTeams([{ playerId: 'p1', team: 'B' }], { p1: 'A' })).toEqual({ p1: 'B' })
+  })
+})
+
+describe('withTeams', () => {
+  const bestBall = { id: 'g', type: 'best_ball', buyInCents: 100,
+    config: { scoring: 'match', mode: 'net', teams: { p1: 'A', p2: 'B' } } } as unknown as Game
+
+  it('prefers roster teams over the config blob', () => {
+    const out = withTeams(bestBall, [{ playerId: 'p1', team: 'B' }, { playerId: 'p2', team: 'A' }])
+    expect((out.config as any).teams).toEqual({ p1: 'B', p2: 'A' })
+    expect((out.config as any).scoring).toBe('match')   // untouched
+  })
+
+  it('leaves a legacy round untouched when the roster carries no teams', () => {
+    const out = withTeams(bestBall, [{ playerId: 'p1' }, { playerId: 'p2' }])
+    expect(out).toBe(bestBall)   // same reference — no rewrite
+  })
+
+  it('does nothing for a game that has no teams', () => {
+    const skinsGame = { id: 'g', type: 'skins', buyInCents: 100,
+      config: { mode: 'gross', carryovers: true } } as unknown as Game
+    expect(withTeams(skinsGame, [{ playerId: 'p1', team: 'A' }])).toBe(skinsGame)
+  })
+
+  it('applies to vegas as well as best ball', () => {
+    const vegas = { id: 'g', type: 'vegas', buyInCents: 100,
+      config: { mode: 'net', teams: {} } } as unknown as Game
+    const out = withTeams(vegas, [{ playerId: 'p1', team: 'A' }])
+    expect((out.config as any).teams).toEqual({ p1: 'A' })
   })
 })
