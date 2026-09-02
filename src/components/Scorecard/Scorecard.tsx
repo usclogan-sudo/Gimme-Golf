@@ -968,18 +968,35 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
     holeNumber: number,
     playerId: string,
     payload: Record<string, unknown>,
-    conflict: string,
   ) => {
     const row: HoleDeclaration = { id: uuidv4(), roundId, holeNumber, kind, playerId, payload }
-    setDeclarations(prev => {
-      const others = prev.filter(d => !(d.kind === kind && d.holeNumber === holeNumber
-        && (kind === 'press' ? d.playerId === playerId : true)))
-      return [...others, row]
-    })
+    // A press is per player; a Wolf pick and a Hammer state are one per hole.
+    const sameSlot = (d: HoleDeclaration) =>
+      d.kind === kind && d.holeNumber === holeNumber &&
+      (kind === 'press' ? d.playerId === playerId : true)
+
+    setDeclarations(prev => [...prev.filter(d => !sameSlot(d)), row])
+
+    // Delete-then-insert rather than upsert. The uniqueness this replaces lives in
+    // PARTIAL indexes (`where kind in (...)`), and Postgres can only infer a partial
+    // index for ON CONFLICT when given its predicate — which PostgREST's on_conflict
+    // cannot express, since it takes column names only. An upsert here would fail
+    // outright with "no unique or exclusion constraint matching the ON CONFLICT
+    // specification". The indexes stay: they still enforce integrity against any
+    // writer, they just are not what the client aims at.
+    let del = supabase.from('hole_declarations').delete()
+      .eq('round_id', roundId).eq('hole_number', holeNumber).eq('kind', kind)
+    if (kind === 'press') del = del.eq('player_id', playerId)
+    const { error: delErr } = await del
+    if (delErr) {
+      reportSupabaseError(delErr, 'replace_hole_declaration.delete', { roundId, holeNumber, kind })
+      setSaveError('Could not save that — check your connection and try again.')
+      return
+    }
     const { error } = await supabase.from('hole_declarations')
-      .upsert(holeDeclarationToRow(row, userId), { onConflict: conflict })
+      .insert(holeDeclarationToRow(row, userId))
     if (error) {
-      reportSupabaseError(error, 'upsert_hole_declaration', { roundId, holeNumber, kind })
+      reportSupabaseError(error, 'insert_hole_declaration', { roundId, holeNumber, kind })
       setSaveError('Could not save that — check your connection and try again.')
     }
   }
@@ -1018,8 +1035,7 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
     if (isUnset) {
       await deleteDeclaration('wolf_partner', holeNumber)
     } else {
-      await upsertDeclaration('wolf_partner', holeNumber, wolfId, { partnerId },
-        'round_id,hole_number,kind')
+      await upsertDeclaration('wolf_partner', holeNumber, wolfId, { partnerId })
     }
   }
 
@@ -1029,8 +1045,7 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
     // forward, so declaring it after the outcome is known is a way to win money that
     // should not exist. The button is disabled too; this is the backstop.
     if (currentHoleHasScore) return
-    await upsertDeclaration('press', currentHole, userId, {},
-      'round_id,hole_number,kind,player_id')
+    await upsertDeclaration('press', currentHole, userId, {})
   }
 
   // Undo the current user's most recent press (removes the last press this
@@ -1549,8 +1564,7 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
   // Hammer interaction functions
   const updateHammerState = async (holeNum: number, state: HammerHoleState) => {
     const { hammerHolder, ...rest } = state
-    await upsertDeclaration('hammer', holeNum, hammerHolder, { ...rest },
-      'round_id,hole_number,kind')
+    await upsertDeclaration('hammer', holeNum, hammerHolder, { ...rest })
   }
 
   const throwHammer = () => {

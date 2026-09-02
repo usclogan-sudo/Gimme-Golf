@@ -1,8 +1,9 @@
 # Gimme · Two-Device Acceptance Test
 
-**Purpose:** verify the multi-device authority features that can't be tested on one phone. Most of these guard **money** (who can clear a debt, who can change a score), so this pass is the sign-off before the settlement two-step ships.
+**Purpose:** Test 0 is a solo smoke pass — it checks that mid-round wagers still save at all after the storage change, and it gates everything else. Tests 1–7 verify the multi-device authority features that can't be checked on one phone. Most of these guard **money** (who can clear a debt, who can change a score), so this pass is the sign-off before the settlement two-step ships.
 
-**Time:** ~30 minutes. **People:** 2 testers, 2 phones.
+**Time:** ~10 minutes for Test 0 alone, ~40 for the full pass.
+**People:** Test 0 needs **1 tester, 1 phone**. Tests 1–7 need **2 testers, 2 phones**.
 
 ---
 
@@ -18,6 +19,7 @@
   **`https://gimme-golf-git-settlement-two-step-usclogan-8685s-projects.vercel.app`**
   Both phones must open **that same URL**.
 - **Tests 3–6** are live on production: **`https://gimme.gg`**.
+- **Test 0** (solo smoke pass) runs on the same combined preview build as Test 7, and needs only **one** phone.
 - **Test 7** (Wolf ownership) is **not on production yet**. Run it on the **combined** preview build —
   it needs both the ownership fix and the storage change that lets a joined player's pick actually save:
   **`https://gimme-golf-git-config-hoist-usclogan-8685s-projects.vercel.app`**
@@ -36,6 +38,67 @@
 5. Choose a game and start the round.
 
 ✅ **Setup pass:** both phones show the same round, 2 players, both names visible.
+
+---
+
+## Test 0 — Solo smoke pass · **one phone, ~10 minutes** · preview build
+
+> **Run this first. If it fails, stop — nothing below is worth trying.**
+>
+> Presses, Wolf picks and Hammer states used to live inside the round's game record. They are now their own rows in a new `hole_declarations` table. That means the storage behind *every* mid-round wager changed, and none of it has been opened in the app by a human yet — only proved correct by automated tests, which cannot tell you whether a button still saves.
+>
+> This needs **no second person and no second phone**. Everything here is one device.
+
+**Build:** `https://gimme-golf-git-config-hoist-usclogan-8685s-projects.vercel.app`
+
+### It loads at all
+
+| # | Do | Expected | Pass? |
+|---|----|----------|-------|
+| 0a | Open the preview and start a **Skins** round with 2–3 roster players | Scorecard opens normally. **No** endless spinner, no error screen. | ☐ |
+
+> ⚠️ If 0a fails, the new table is missing from this build's database. Stop and report it — nothing else can pass.
+
+### Presses survive a reload
+
+| # | Do | Expected | Pass? |
+|---|----|----------|-------|
+| 0b | On a hole with no scores, tap **Press** | Counter shows **Press (1)**, pot value goes up. | ☐ |
+| 0c | **Reload the page**, return to the round | Press is **still there** — count and pot unchanged. | ☐ |
+| 0d | Tap the **↩ undo** next to Press | Press disappears; pot returns to its earlier value. | ☐ |
+
+> 0c is the one that matters. A press that shows locally and vanishes on reload means it never reached the server.
+
+### Wolf: declare, then score
+
+| # | Do | Expected | Pass? |
+|---|----|----------|-------|
+| 0e | Start a **Wolf** round (3 players, all from the roster) | Wolf panel names the Wolf for hole 1. | ☐ |
+| 0f | **Before** declaring, try to enter any score | Refused, with a message naming the Wolf. | ☐ |
+| 0g | Pick a partner, then enter scores | Scores save normally. | ☐ |
+| 0h | Reload, return to the hole | The pick is still shown. | ☐ |
+| 0i | Advance a hole and tap **Lone Wolf** | Accepted as a decision — scoring unblocks without a partner. | ☐ |
+
+### Hammer
+
+| # | Do | Expected | Pass? |
+|---|----|----------|-------|
+| 0j | Start a **Hammer** round (2 players), throw the hammer | Value doubles, panel shows the throw. | ☐ |
+| 0k | Reload | The thrown state persists. | ☐ |
+| 0l | **Decline** it | Round records the decline and the value settles. | ☐ |
+
+### Teams and settlement
+
+| # | Do | Expected | Pass? |
+|---|----|----------|-------|
+| 0m | Start a **Best Ball** round (4 players), assign teams, play 2–3 holes | Team scores read correctly on the leaderboard. | ☐ |
+| 0n | **End round** → **Settle Up** | Numbers appear. No blank screen, no `NaN`, no fractions of a point. | ☐ |
+| 0o | Add up the settle lines | Winners' gains equal losers' losses — the round nets to **zero**. | ☐ |
+| 0p | Open **My Stats** | Past rounds still show; nothing has become blank or zero. | ☐ |
+
+> 0o is the §2.2 change in the open: rounding remainders now go to the player **lowest** in the standings instead of the leader. Totals should still net to zero, and no value should ever show a decimal.
+>
+> 0p is the known trade: rounds played **before** this build have no stored declarations, so an old Wolf or pressed-Skins round may settle to a slightly different number than it did at the time. That is expected and was accepted for beta. A round going **blank or erroring** is not.
 
 ---
 
@@ -185,6 +248,8 @@ These are **not built yet** and are expected to show old behavior. Note them if 
 ---
 
 ## Reporting back
+
+**Test 0 comes first and is a gate:** if it fails, report it and stop — the two-device tests are meaningless on a build where mid-round wagers do not save.
 
 For each ❌, send: **test number**, **which device**, **what you saw**, and a **screenshot**. Anything in Test 1, Test 7, or the Discard check above is high-priority (it touches money / data loss).
 
