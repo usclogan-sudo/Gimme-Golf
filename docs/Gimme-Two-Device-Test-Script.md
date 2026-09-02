@@ -120,11 +120,58 @@ Now test that **third parties and the payer can't clear it** (use a fresh unpaid
 
 ---
 
+## Test 7 — Wolf ownership · preview build `wolf-ownership-fix`
+
+> Goal: the partner pick belongs to **the Wolf**, and a Wolf hole cannot be scored until they've made it. This replaces the old behaviour where every phone could make anyone's pick.
+>
+> **This is the test that matters most in this pass.** Everything here is about *which phone* can do what, so it cannot be checked on one device — and a wrong result looks identical to a right one from a single phone.
+
+**Setup:** start a **Wolf** round with **3 players** — A, B, and a third. B must have joined **via the share link** (per Setup above), not been added from the roster. The Wolf rotates by hole, and the panel always names the current Wolf.
+
+### The pick belongs to the Wolf
+
+| # | On | Do | Expected | Pass? |
+|---|----|----|----------|-------|
+| 7a | **Device A** | Go to a hole where the panel says **Wolf: {A's name}** | A sees the **partner buttons** and **Lone Wolf**. | ☐ |
+| 7b | **Device B** | Same hole, same moment | B sees **no buttons** — only *"Waiting on {A} to pick a partner or go Lone Wolf."* | ☐ |
+| 7c | **Device A** | Declare a partner | Both phones show the pick. B's phone updates to *"{A} has decided."* | ☐ |
+
+### Scoring is blocked until the Wolf declares
+
+| # | On | Do | Expected | Pass? |
+|---|----|----|----------|-------|
+| 7d | **Device A** | Move to the **next** hole (a different Wolf), then try to enter **any** player's score before that Wolf declares | Score does **not** save. A message names the Wolf being waited on. | ☐ |
+| 7e | **Device B** | Try the same thing from B's phone | Also refused, same message. | ☐ |
+| 7f | whoever is Wolf | Make the declaration | Scoring works immediately on **both** phones, no reload. | ☐ |
+| 7g | **Device A** | Open the **Grid** view and try to type a score into an undeclared Wolf hole | Also refused — the grid is not a way around it. | ☐ |
+
+### It flips with the rotation
+
+| # | On | Do | Expected | Pass? |
+|---|----|----|----------|-------|
+| 7h | both | Advance to a hole where the panel says **Wolf: {B's name}** | Now **B** has the buttons and **A** sees *"Waiting on {B}…"* — the exact reverse of 7a/7b. | ☐ |
+| 7i | **Device A** | Try to pick B's partner anyway | No buttons to tap. A cannot set it, even as organizer. | ☐ |
+
+### The roster guest still works
+
+> A player added from the roster (never invited to join) has no phone of their own, so the organizer picks for them — otherwise the round would jam.
+
+| # | On | Do | Expected | Pass? |
+|---|----|----|----------|-------|
+| 7j | **Device A** | Add a **guest** from the roster to a Wolf round, advance to a hole where the **guest** is Wolf | **A** sees the partner buttons and can declare on the guest's behalf. | ☐ |
+
+> ⚠️ **The failure to watch for.** If on 7b or 7h the *non-Wolf* phone shows tappable partner buttons, ownership isn't binding and the fix is not working — even though the app will look completely normal. That is a **fail**; flag it with a screenshot of **both** phones on the same hole.
+>
+> The likely cause is the joined player's participant record not being marked accepted, which makes the app treat them as a guest and hand the pick to the organizer. Note in your report whether B joined by **link** or was **added from the roster** — that distinction is what the test hinges on.
+
+---
+
 ## Known gaps — please **do not** file these as bugs
 
 These are **not built yet** and are expected to show old behavior. Note them if you like, but they're already on the roadmap:
 
-- **Wolf picker appears on every phone.** Today any device can make the Wolf's pick (until the first score locks it). The intended "only the Wolf's phone shows the picker; others see *'{Wolf} is picking'*" is a later item.
+> The **Wolf picker on every phone** used to be listed here. It is now fixed and has become **Test 7** — please run it rather than skipping it.
+
 - **No "your score was changed" notification.** Test 3 shows *who* entered a score, but there's no push/alert to the owner when someone edits it, and no per-round edit history yet.
 - **End round / Discard on a joined round.** Device B (a joined non-organizer) should not see or be able to End/Discard the shared round — worth a quick check (B opens the round list): confirm B has **no** Discard control on a round they only joined. If B **can** discard a round they didn't create, that **is** a bug — flag it urgently.
 
@@ -132,4 +179,6 @@ These are **not built yet** and are expected to show old behavior. Note them if 
 
 ## Reporting back
 
-For each ❌, send: **test number**, **which device**, **what you saw**, and a **screenshot**. Anything in Test 1 or the Discard check above is high-priority (it touches money / data loss).
+For each ❌, send: **test number**, **which device**, **what you saw**, and a **screenshot**. Anything in Test 1, Test 7, or the Discard check above is high-priority (it touches money / data loss).
+
+For Test 7, a screenshot of **both phones on the same hole** is worth more than either one alone — the whole point is what the two devices show at the same moment.
