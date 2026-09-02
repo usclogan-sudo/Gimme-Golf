@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js'
-import type { Course, Player, Round, RoundPlayer, HoleScore, BuyIn, BBBPoint, JunkRecord, JunkType, UserProfile, GamePreset, GameType, StakesMode, PinnedFriend, RoundParticipant, SettlementRecord, SettlementStatus, AppNotification, NotificationType, PushDeviceSubscription, PushPlatform, NotificationPreferences, SideBet, SideBetStatus, Tournament, TournamentFormat, TournamentStatus, TournamentRound, TournamentMatchup, MatchupStatus, GolfEvent, EventStatus, EventParticipant, EventRole, PropBet, PropCategory, PropWagerModel, PropStatus, PropResolveType, PropWager, HolesMode } from '../types'
+import type { Course, Player, Round, RoundPlayer, HoleScore, BuyIn, BBBPoint, JunkRecord, JunkType, UserProfile, GamePreset, GameType, StakesMode, PinnedFriend, RoundParticipant, SettlementRecord, SettlementStatus, AppNotification, NotificationType, PushDeviceSubscription, PushPlatform, NotificationPreferences, SideBet, SideBetStatus, Tournament, TournamentFormat, TournamentStatus, TournamentRound, TournamentMatchup, MatchupStatus, GolfEvent, EventStatus, EventParticipant, EventRole, PropBet, PropCategory, PropWagerModel, PropStatus, PropResolveType, PropWager, HolesMode, HoleDeclaration, DeclarationKind } from '../types'
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL?.trim()
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY?.trim()
@@ -73,6 +73,7 @@ export function rowToRoundPlayer(row: any): RoundPlayer {
     teePlayed: row.tee_played,
     courseHandicap: row.course_handicap ?? undefined,
     playingHandicap: row.playing_handicap ?? undefined,
+    team: row.team ?? undefined,
     startHole: row.start_hole ?? undefined,
   }
 }
@@ -176,6 +177,7 @@ export function roundPlayerToRow(rp: RoundPlayer, userId: string) {
     tee_played: rp.teePlayed,
     course_handicap: rp.courseHandicap ?? null,
     playing_handicap: rp.playingHandicap ?? null,
+    team: rp.team ?? null,
     start_hole: rp.startHole ?? null,
   }
 }
@@ -388,6 +390,27 @@ export function sharedCourseToRow(c: Course, userId: string) {
 
 // ─── Round Participant mappers ───────────────────────────────────────────────
 
+export function rowToHoleDeclaration(row: any): HoleDeclaration {
+  return {
+    id: row.id,
+    roundId: row.round_id,
+    holeNumber: row.hole_number,
+    kind: row.kind as DeclarationKind,
+    playerId: row.player_id ?? undefined,
+    payload: (row.payload ?? {}) as Record<string, unknown>,
+  }
+}
+export function holeDeclarationToRow(d: HoleDeclaration, userId: string) {
+  return {
+    id: d.id,
+    user_id: userId,
+    round_id: d.roundId,
+    hole_number: d.holeNumber,
+    kind: d.kind,
+    player_id: d.playerId ?? null,
+    payload: d.payload ?? {},
+  }
+}
 export function rowToRoundParticipant(row: any): RoundParticipant {
   return {
     id: row.id,

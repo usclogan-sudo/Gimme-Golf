@@ -184,6 +184,36 @@ export interface JunkRecord {
   junkType: JunkType
 }
 
+// ─── Hole declarations ───────────────────────────────────────────────────────
+
+/** Per-hole wagering facts that live OUTSIDE the chosen game, because deferred
+ *  selection means there may not be a chosen game yet when they are made. */
+export type DeclarationKind = 'wolf_partner' | 'press' | 'hammer'
+
+export interface HoleDeclaration {
+  id: string
+  roundId: string
+  holeNumber: number
+  kind: DeclarationKind
+  /** The declaration's SUBJECT — the Wolf, the presser, the hammer holder — not
+   *  whoever's device recorded it. */
+  playerId?: string
+  payload: Record<string, unknown>
+}
+
+/** A Lone Wolf pick is `{ partnerId: null }`: present, with a null partner. An
+ *  ABSENT declaration is what "undeclared" means. Never conflate the two. */
+export interface WolfPartnerPayload {
+  partnerId: string | null
+}
+
+export interface HammerPayload {
+  value: number
+  presses: number
+  declined: boolean
+  declinedBy?: string
+}
+
 export interface BBBPoint {
   id: string
   roundId: string
@@ -327,6 +357,8 @@ export interface RoundPlayer {
   teePlayed: string
   courseHandicap?: number
   playingHandicap?: number
+  /** Team side for team games (Best Ball, Vegas). Fixed at setup per §4. */
+  team?: 'A' | 'B'
   /** Hole this player joined at (mid-round add). Absent ⇒ joined at the round start. */
   startHole?: number
 }
