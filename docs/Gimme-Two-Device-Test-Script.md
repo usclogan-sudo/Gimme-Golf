@@ -18,8 +18,9 @@
   **`https://gimme-golf-git-settlement-two-step-usclogan-8685s-projects.vercel.app`**
   Both phones must open **that same URL**.
 - **Tests 3–6** are live on production: **`https://gimme.gg`**.
-- **Test 7** (Wolf ownership) is **not on production yet**. Run it on its own preview build:
-  **`https://gimme-golf-git-wolf-ownership-fix-usclogan-8685s-projects.vercel.app`**
+- **Test 7** (Wolf ownership) is **not on production yet**. Run it on the **combined** preview build —
+  it needs both the ownership fix and the storage change that lets a joined player's pick actually save:
+  **`https://gimme-golf-git-config-hoist-usclogan-8685s-projects.vercel.app`**
   Both phones must open **that same URL**.
 
 > Tip: take a screenshot whenever something doesn't match the **Expected** result, and note the test number.
@@ -130,7 +131,7 @@ Now test that **third parties and the payer can't clear it** (use a fresh unpaid
 > **This is the test that matters most in this pass.** Everything here is about *which phone* can do what, so it cannot be checked on one device — and a wrong result looks identical to a right one from a single phone.
 
 **Build:** both phones must open the **same** preview URL:
-**`https://gimme-golf-git-wolf-ownership-fix-usclogan-8685s-projects.vercel.app`**
+**`https://gimme-golf-git-config-hoist-usclogan-8685s-projects.vercel.app`**
 
 **Setup:** start a **Wolf** round with **3 players** — A, B, and a third. B must have joined **via the share link** (per Setup above), not been added from the roster. The Wolf rotates by hole, and the panel always names the current Wolf.
 
