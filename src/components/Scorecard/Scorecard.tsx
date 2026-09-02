@@ -45,6 +45,7 @@ import {
   fmtAmount,
 } from '../../lib/gameLogic'
 import type { BestBallResult } from '../../lib/gameLogic'
+import { getWolfHoleState, canDeclareWolf, scoreWriteBlocked } from '../../lib/wolfOwnership'
 import { makePlayableSnapshot, getPlayableHoleNumbers, roundToHolesConfig } from '../../lib/holeUtils'
 import type {
   Round,
@@ -643,6 +644,17 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
   // away from still land on the right hole.
   const persistScore = async (playerId: string, holeNumber: number, grossScore: number) => {
     setSaveError(null)
+    // §6 rule 3 — a Wolf hole cannot be scored until the Wolf has declared. Enforced
+    // HERE, in the write path, not in the UI: a second device, a queued offline write
+    // or a stale render must not be able to slip a score in ahead of the declaration,
+    // because once a score lands the pick freezes and the hole would resolve on a
+    // choice nobody made.
+    const wolfBlock = scoreWriteBlocked(roundRef.current?.game, holeNumber, id =>
+      (roundRef.current?.players ?? []).find(p => p.id === id)?.name ?? 'The Wolf')
+    if (wolfBlock.blocked) {
+      setSaveError(wolfBlock.reason!)
+      return
+    }
     const existing = holeScores.find(s => s.playerId === playerId && s.holeNumber === holeNumber)
 
     try {
@@ -783,6 +795,16 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
   const setScore = (playerId: string, grossScore: number) => {
     const holeNumber = currentHole
 
+    // §6 rule 3 — refuse before painting anything, so there is no optimistic cell to
+    // roll back. persistScore carries the same guard as the backstop for the
+    // flush-on-unmount and undo paths.
+    const wolfBlock = scoreWriteBlocked(game, holeNumber, id =>
+      players.find(p => p.id === id)?.name ?? 'The Wolf')
+    if (wolfBlock.blocked) {
+      setSaveError(wolfBlock.reason!)
+      return
+    }
+
     // Any score change cancels a pending auto-advance — editing means "I'm still here".
     if (holeAdvanceTimerRef.current) { clearTimeout(holeAdvanceTimerRef.current); holeAdvanceTimerRef.current = null }
 
@@ -850,6 +872,17 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
 
   const goToHole = async (holeNum: number) => {
     setSaveError(null)
+    // §6 rule 2 — a Wolf hole cannot be left with the declaration outstanding, or it
+    // resolves silently as though the Wolf never played. Only blocks LEAVING a hole
+    // that has been scored: an undeclared, unscored hole is one the group hasn't got
+    // to yet, and trapping them on it would make the card unnavigable.
+    const leaving = getWolfHoleState(roundRef.current?.game, currentHole)
+    if (holeNum !== currentHole && leaving.isWolfHole && !leaving.declared
+        && holeScores.some(sc => sc.holeNumber === currentHole)) {
+      const name = players.find(p => p.id === leaving.wolfId)?.name ?? 'The Wolf'
+      setSaveError(`Hole ${currentHole} needs ${name}'s call — partner or Lone Wolf — before you move on.`)
+      return
+    }
     // A manual hole change supersedes any pending auto-advance.
     if (holeAdvanceTimerRef.current) { clearTimeout(holeAdvanceTimerRef.current); holeAdvanceTimerRef.current = null }
     if (isEventRound) {
@@ -925,6 +958,14 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
     // picker is also hidden in the UI once locked; this is the backstop that also
     // covers a second device racing the lock.
     if (holeScores.some(s => s.holeNumber === holeNumber)) return
+    // §6 rule 1 — the pick belongs to the Wolf. The picker is read-only on every
+    // other device; this is the backstop that also covers a second device racing it.
+    if (!canDeclareWolf({
+      wolfId: wolfForHole((roundRef.current?.game?.config as WolfConfig)?.wolfOrder ?? [], holeNumber) || null,
+      myPlayerId,
+      claimedPlayerIds: claimedPlayerIds,
+      isScoremaster: isScoremasterRole,
+    })) return
     await updateGameState(game => {
       if (game.type !== 'wolf') return game
       const wolfConfig = game.config as WolfConfig
@@ -1043,6 +1084,13 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
 
   // Prop bet handlers
   const myPlayerId = roundParticipants.find(rp => rp.userId === userId)?.playerId
+  // §6 — roster players who have a device of their own in this round. A Wolf who is
+  // NOT in this set is being scored for by the organiser, so their pick falls to the
+  // scoremaster rather than deadlocking the hole (see canDeclareWolf).
+  const claimedPlayerIds = useMemo(
+    () => new Set(roundParticipants.filter(rp => rp.status === 'accepted').map(rp => rp.playerId)),
+    [roundParticipants],
+  )
 
   const createPropBet = async (title: string, stakeCents: number, targetPlayerId?: string) => {
     if (!myPlayerId || !title.trim() || stakeCents <= 0) return
@@ -2247,6 +2295,11 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
               const nonWolfs = players.filter(p => p.id !== wolfId)
               // Pick locks the moment the first score for this hole lands (§7).
               const holeLocked = holeScores.some(s => s.holeNumber === currentHole)
+              // §6 rule 1 — the picker is interactive only for whoever owns this
+              // hole's pick. Everyone else watches.
+              const mayDeclare = canDeclareWolf({
+                wolfId, myPlayerId, claimedPlayerIds, isScoremaster: isScoremasterRole,
+              })
               const decisionSummary = wolfDecision && (
                 wolfDecision.partnerId === null
                   ? `${wolfPlayer?.name} going LONE WOLF`
@@ -2261,6 +2314,17 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
                         {wolfDecision
                           ? 'Locked — scoring has started.'
                           : 'Locked — scoring started before a partner was picked.'}
+                      </p>
+                      {decisionSummary && (
+                        <p className="text-xs font-semibold text-gray-700 dark:text-gray-200">{decisionSummary}</p>
+                      )}
+                    </>
+                  ) : !mayDeclare ? (
+                    <>
+                      <p className="text-xs text-gray-500 dark:text-gray-400">
+                        {wolfDecision
+                          ? `${wolfPlayer?.name} has decided.`
+                          : `Waiting on ${wolfPlayer?.name} to pick a partner or go Lone Wolf.`}
                       </p>
                       {decisionSummary && (
                         <p className="text-xs font-semibold text-gray-700 dark:text-gray-200">{decisionSummary}</p>
@@ -2574,6 +2638,11 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
           const persistBatchCell = (playerId: string, holeNum: number, valStr: string) => {
             const val = parseInt(valStr)
             if (isNaN(val) || val < 1 || val > 15) return // leave invalid edits buffered
+            // §6 rule 3 — the grid writes straight to Supabase rather than through
+            // persistScore, so it carries the guard too. Without this the grid is a
+            // hole straight through the ordering the other paths enforce.
+            const wb = scoreWriteBlocked(game, holeNum, id => players.find(p => p.id === id)?.name ?? 'The Wolf')
+            if (wb.blocked) { setSaveError(wb.reason!); return }
             const existing = holeScores.find(s => s.playerId === playerId && s.holeNumber === holeNum)
             if (!(existing && existing.grossScore === val)) {
               if (existing) {
