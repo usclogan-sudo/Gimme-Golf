@@ -5,6 +5,7 @@ import { safeWrite } from '../../lib/safeWrite'
 import { reportSupabaseError } from '../../lib/sentry'
 import { SHOW_HOLE_BETS, SHOW_EXTRA_GAMES, SHOW_DOTS, SHOW_BEST_BALL_STROKE_PLAY } from '../../lib/featureFlags'
 import { fmtMoney, fmtAmount, fmtHandicap, computeCourseHandicap, JUNK_LABELS, DOT_LABELS } from '../../lib/gameLogic'
+import { supportsPlayerCount, playerCountRequirement } from '../../lib/gameRegistry'
 import { parseDollarsToCents, parsePointsValue } from '../../lib/money'
 import { venturaCourses } from '../../data/venturaCourses'
 import { NearMeCourses } from '../NearMeCourses/NearMeCourses'
@@ -1125,11 +1126,14 @@ function GameSetup({
     ? parsePointsValue(buyInDollars)
     : parseDollarsToCents(buyInDollars)
 
-  const bestBallAllowed = players.length >= 2 && players.length % 2 === 0
-  const wolfAllowed = players.length >= 3
-  const hammerAllowed = players.length === 2
-  const vegasAllowed = players.length >= 2 && players.length % 2 === 0
-  const bankerAllowed = players.length >= 3
+  // Roster constraints come from the registry (§1) rather than being restated here,
+  // so setup, the arm gate and the rack cannot disagree about what is playable.
+  const allows = (id: GameType) => supportsPlayerCount(id, players.length)
+  const bestBallAllowed = allows('best_ball')
+  const wolfAllowed = allows('wolf')
+  const hammerAllowed = allows('hammer')
+  const vegasAllowed = allows('vegas')
+  const bankerAllowed = allows('banker')
 
   const teamCounts = useMemo(() => {
     let a = 0, b = 0
@@ -1377,18 +1381,18 @@ function GameSetup({
           {/* The five headline games are always visible; the rest live behind More Games. */}
           <div className="grid grid-cols-2 gap-2">
             <GameButton gameType="skins" label="⛳ Skins" />
-            <GameButton gameType="best_ball" label="🤝 Best Ball" disabled={!bestBallAllowed} disabledReason="Needs even teams" />
+            <GameButton gameType="best_ball" label="🤝 Best Ball" disabled={!bestBallAllowed} disabledReason={playerCountRequirement('best_ball')} />
             <GameButton gameType="nassau" label="🏳️ Nassau" />
-            <GameButton gameType="wolf" label="🐺 Wolf" disabled={!wolfAllowed} disabledReason="Needs 3+ players" />
+            <GameButton gameType="wolf" label="🐺 Wolf" disabled={!wolfAllowed} disabledReason={playerCountRequirement('wolf')} />
             <GameButton gameType="bingo_bango_bongo" label="⭐ BBB" fullWidth />
           </div>
           {/* Extra games hidden at launch pending the settlement rework — see featureFlags. */}
           {SHOW_EXTRA_GAMES && showAllGames && (
             <div className="grid grid-cols-2 gap-2 mt-2">
-              <GameButton gameType="hammer" label="🔨 Hammer" disabled={!hammerAllowed} disabledReason="2 players only" />
+              <GameButton gameType="hammer" label="🔨 Hammer" disabled={!hammerAllowed} disabledReason={playerCountRequirement('hammer')} />
               <GameButton gameType="stableford" label="📊 Stableford" />
               {SHOW_DOTS && <GameButton gameType="dots" label="🔴 Dots" />}
-              <GameButton gameType="banker" label="🏦 Banker" disabled={!bankerAllowed} disabledReason="Needs 3+ players" />
+              <GameButton gameType="banker" label="🏦 Banker" disabled={!bankerAllowed} disabledReason={playerCountRequirement('banker')} />
               <GameButton gameType="quota" label="📋 Quota" />
             </div>
           )}
