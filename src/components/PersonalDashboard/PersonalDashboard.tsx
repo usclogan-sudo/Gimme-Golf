@@ -1,11 +1,11 @@
 import { useEffect, useState } from 'react'
 import { ScoringDistribution } from '../ScoringDistribution'
-import { supabase, rowToRound, rowToHoleScore, rowToRoundPlayer, rowToJunkRecord, rowToBBBPoint, rowToSideBet } from '../../lib/supabase'
+import { supabase, rowToRound, rowToHoleScore, rowToRoundPlayer, rowToJunkRecord, rowToBBBPoint, rowToSideBet, rowToHoleDeclaration } from '../../lib/supabase'
 import { computeRoundPlayerNets } from '../../lib/roundNet'
 import { makePlayableSnapshot, roundToHolesConfig } from '../../lib/holeUtils'
 import type {
   Round, HoleScore, RoundPlayer, Player,
-  BBBPoint, JunkRecord, SideBet, GameType,
+  BBBPoint, JunkRecord, SideBet, GameType, HoleDeclaration,
 } from '../../types'
 
 const GAME_LABELS: Record<GameType, string> = {
@@ -123,13 +123,14 @@ export function PersonalDashboard({ userId, onBack }: { userId: string; onBack: 
     const rounds: Round[] = roundRows.map(rowToRound)
     const roundIds = rounds.map(r => r.id)
 
-    const [scoresRes, rpRes, bbbRes, junkRes, sbRes, partRes] = await Promise.all([
+    const [scoresRes, rpRes, bbbRes, junkRes, sbRes, partRes, declRes] = await Promise.all([
       supabase.from('hole_scores').select('*').in('round_id', roundIds),
       supabase.from('round_players').select('*').in('round_id', roundIds),
       supabase.from('bbb_points').select('*').in('round_id', roundIds),
       supabase.from('junk_records').select('*').in('round_id', roundIds),
       supabase.from('side_bets').select('*').in('round_id', roundIds),
       supabase.from('round_participants').select('*').eq('user_id', userId).eq('status', 'accepted'),
+      supabase.from('hole_declarations').select('*').in('round_id', roundIds),
     ])
 
     const allScores: HoleScore[] = (scoresRes.data ?? []).map(rowToHoleScore)
@@ -137,6 +138,7 @@ export function PersonalDashboard({ userId, onBack }: { userId: string; onBack: 
     const allBbb: BBBPoint[] = (bbbRes.data ?? []).map(rowToBBBPoint)
     const allJunks: JunkRecord[] = (junkRes.data ?? []).map(rowToJunkRecord)
     const allSB: SideBet[] = (sbRes.data ?? []).map(rowToSideBet)
+    const allDecl: HoleDeclaration[] = (declRes.data ?? []).map(rowToHoleDeclaration)
     const partMap = new Map<string, string>()
     for (const p of (partRes.data ?? [])) partMap.set(p.round_id, p.player_id)
 
@@ -201,6 +203,7 @@ export function PersonalDashboard({ userId, onBack }: { userId: string; onBack: 
         bbbPoints: allBbb.filter(b => b.roundId === round.id),
         junkRecords: allJunks.filter(jr => jr.roundId === round.id),
         sideBets: allSB.filter(sb => sb.roundId === round.id),
+        declarations: allDecl.filter(d => d.roundId === round.id),
       })
       const myNet = netByPlayer[myId!] ?? 0
       netWinnings += myNet

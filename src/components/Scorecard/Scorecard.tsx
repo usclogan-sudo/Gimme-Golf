@@ -3,11 +3,11 @@ import { v4 as uuidv4 } from 'uuid'
 import { useOnlineStatus } from '../../hooks/useOnlineStatus'
 import { useUnsavedChangesPrompt } from '../../hooks/useUnsavedChangesPrompt'
 import { enqueue, flush, getPending } from '../../lib/offlineQueue'
-import { supabase, rowToRound, rowToRoundPlayer, rowToHoleScore, rowToBuyIn, rowToBBBPoint, rowToJunkRecord, rowToSideBet, rowToRoundParticipant, rowToEvent, rowToEventParticipant, rowToUserProfile, holeScoreToRow, bbbPointToRow, junkRecordToRow, sideBetToRow, rowToPropBet, propBetToRow, rowToPropWager, propWagerToRow, generateInviteCode } from '../../lib/supabase'
+import { supabase, rowToRound, rowToRoundPlayer, rowToHoleScore, rowToBuyIn, rowToBBBPoint, rowToJunkRecord, rowToSideBet, rowToRoundParticipant, rowToEvent, rowToEventParticipant, rowToUserProfile, holeScoreToRow, bbbPointToRow, junkRecordToRow, sideBetToRow, rowToPropBet, propBetToRow, rowToPropWager, propWagerToRow, rowToHoleDeclaration, holeDeclarationToRow, generateInviteCode } from '../../lib/supabase'
 import { safeWrite } from '../../lib/safeWrite'
 import { computeScorecardPermissions } from '../../lib/permissions'
 import { parseDollarsToCents } from '../../lib/money'
-import { applyHoleScorePayload, applyBBBPointPayload, applyJunkRecordPayload, applySideBetPayload, applyRoundParticipantPayload, applyBuyInPayload, applyPropBetPayload, applyPropWagerPayload } from '../../lib/realtimeReducers'
+import { applyHoleScorePayload, applyBBBPointPayload, applyJunkRecordPayload, applySideBetPayload, applyRoundParticipantPayload, applyBuyInPayload, applyPropBetPayload, applyPropWagerPayload, applyHoleDeclarationPayload } from '../../lib/realtimeReducers'
 import { getCelebration, CelebrationToast, CelebrationFullscreen } from '../Celebrations'
 import { Tooltip } from '../ui/Tooltip'
 import { ConfirmModal } from '../ConfirmModal'
@@ -46,6 +46,7 @@ import {
 } from '../../lib/gameLogic'
 import type { BestBallResult } from '../../lib/gameLogic'
 import { getWolfHoleState, canDeclareWolf, scoreWriteBlocked } from '../../lib/wolfOwnership'
+import { withDeclarations } from '../../lib/holeDeclarations'
 import { makePlayableSnapshot, getPlayableHoleNumbers, roundToHolesConfig } from '../../lib/holeUtils'
 import type {
   Round,
@@ -75,7 +76,8 @@ import type {
   Player,
   PropBet,
   PropWager,
-  Game,
+  HoleDeclaration,
+  DeclarationKind,
 } from '../../types'
 import { reportSupabaseError } from '../../lib/sentry'
 import { SHOW_HOLE_BETS, SHOW_PROP_BETS, SHOW_PRESSES } from '../../lib/featureFlags'
@@ -316,7 +318,8 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
       supabase.from('prop_bets').select('*').eq('round_id', roundId),
       supabase.from('prop_wagers').select('*').eq('round_id', roundId),
       supabase.from('round_participants').select('player_id').eq('round_id', roundId).eq('status', 'pending'),
-    ]).then(([roundRes, rpRes, hsRes, bbbRes, junkRes, sbRes, partRes, biRes, pbRes, pwRes, pendingRes]) => {
+      supabase.from('hole_declarations').select('*').eq('round_id', roundId),
+    ]).then(([roundRes, rpRes, hsRes, bbbRes, junkRes, sbRes, partRes, biRes, pbRes, pwRes, pendingRes, declRes]) => {
       if (cancelled()) return
       if (roundRes.error || !roundRes.data) {
         setLoadError(true)
@@ -324,6 +327,7 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
         return
       }
       setRound(rowToRound(roundRes.data))
+      if (declRes.data) setDeclarations(declRes.data.map(rowToHoleDeclaration))
       if (rpRes.data) setRoundPlayers(rpRes.data.map(rowToRoundPlayer))
       if (hsRes.data) setHoleScores(hsRes.data.map(rowToHoleScore))
       if (bbbRes.data) setBbbPoints(bbbRes.data.map(rowToBBBPoint))
@@ -429,6 +433,9 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
       .on('postgres_changes', { event: '*', schema: 'public', table: 'side_bets', filter: `round_id=eq.${roundId}` }, (payload) => {
         setSideBets(prev => applySideBetPayload(prev, payload as any))
       })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'hole_declarations', filter: `round_id=eq.${roundId}` }, (payload) => {
+        setDeclarations(prev => applyHoleDeclarationPayload(prev, payload as any))
+      })
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'rounds', filter: `id=eq.${roundId}` }, (payload) => {
         const row = payload.new as any
         setRound(rowToRound(row))
@@ -508,7 +515,17 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
 
   const players = round?.players ?? []
   const snapshot = round?.courseSnapshot
-  const game = round?.game
+  // Per-hole declarations (presses, Wolf picks, Hammer). Stored as their own rows
+  // rather than inside game.config — see lib/holeDeclarations.ts.
+  const [declarations, setDeclarations] = useState<HoleDeclaration[]>([])
+
+  // The game the settlement/status code sees: the stored game with declarations
+  // folded back into its config. Legacy rounds with no declarations pass through
+  // untouched, so they read exactly as they did before the hoist.
+  const game = useMemo(
+    () => (round?.game ? withDeclarations(round.game, declarations) : undefined),
+    [round?.game, declarations],
+  )
   const isEventRound = !!round?.eventId
 
   // Photo-import flow — hook is mounted always; the confirm grid renders
@@ -930,24 +947,49 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
     })
   }
 
-  // Atomic game state update: reads latest from ref, applies mutation, persists.
-  // On conflict (stale local state), refetches from DB and retries once.
-  const updateGameState = async (mutate: (game: Game) => Game) => {
-    const latest = roundRef.current
-    if (!latest?.game) return
-    const updatedGame = mutate(latest.game)
-    setRound(prev => prev ? { ...prev, game: updatedGame } : prev)
-    const { error } = await supabase.from('rounds')
-      .update({ game: updatedGame }).eq('id', roundId).select('game').single()
+  // ─── Declaration writes (§ config hoist) ───────────────────────────────────
+  //
+  // These replace updateGameState for per-hole facts. Two things fall out of moving
+  // from one shared JSON blob to a row per declaration:
+  //
+  //   * The refetch-and-retry dance in updateGameState existed because two devices
+  //     pressing at once would clobber each other's copy of `rounds.game`. Distinct
+  //     rows cannot collide, so the retry is gone with the race it guarded.
+  //   * `rounds` is owner-only for UPDATE, so a joined player could never persist a
+  //     Wolf pick. hole_declarations is participant-writable, so they now can — which
+  //     is what makes the §6 ownership binding actually enforceable.
+  //
+  // Upserts target the partial unique indexes, so a re-declaration on the same hole
+  // replaces rather than duplicates.
+  const upsertDeclaration = async (
+    kind: DeclarationKind,
+    holeNumber: number,
+    playerId: string,
+    payload: Record<string, unknown>,
+    conflict: string,
+  ) => {
+    const row: HoleDeclaration = { id: uuidv4(), roundId, holeNumber, kind, playerId, payload }
+    setDeclarations(prev => {
+      const others = prev.filter(d => !(d.kind === kind && d.holeNumber === holeNumber
+        && (kind === 'press' ? d.playerId === playerId : true)))
+      return [...others, row]
+    })
+    const { error } = await supabase.from('hole_declarations')
+      .upsert(holeDeclarationToRow(row, userId), { onConflict: conflict })
     if (error) {
-      // Conflict or network error — refetch and retry once
-      const { data: fresh } = await supabase.from('rounds').select('game').eq('id', roundId).single()
-      if (fresh?.game) {
-        const retryGame = mutate(fresh.game)
-        setRound(prev => prev ? { ...prev, game: retryGame } : prev)
-        safeWrite(supabase.from('rounds').update({ game: retryGame }).eq('id', roundId), 'retry game update')
-      }
+      reportSupabaseError(error, 'upsert_hole_declaration', { roundId, holeNumber, kind })
+      setSaveError('Could not save that — check your connection and try again.')
     }
+  }
+
+  const deleteDeclaration = async (kind: DeclarationKind, holeNumber: number, playerId?: string) => {
+    setDeclarations(prev => prev.filter(d => !(d.kind === kind && d.holeNumber === holeNumber
+      && (playerId ? d.playerId === playerId : true))))
+    let q = supabase.from('hole_declarations').delete()
+      .eq('round_id', roundId).eq('hole_number', holeNumber).eq('kind', kind)
+    if (playerId) q = q.eq('player_id', playerId)
+    const { error } = await q
+    if (error) reportSupabaseError(error, 'delete_hole_declaration', { roundId, holeNumber, kind })
   }
 
   // Wolf decision handler
@@ -966,22 +1008,17 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
       claimedPlayerIds: claimedPlayerIds,
       isScoremaster: isScoremasterRole,
     })) return
-    await updateGameState(game => {
-      if (game.type !== 'wolf') return game
-      const wolfConfig = game.config as WolfConfig
-      const current = wolfConfig.holeDecisions?.[holeNumber]
-      const newPartnerId = current?.partnerId === partnerId ? undefined : partnerId
-      const updatedConfig: WolfConfig = {
-        ...wolfConfig,
-        holeDecisions: {
-          ...(wolfConfig.holeDecisions ?? {}),
-          ...(newPartnerId === undefined
-            ? (() => { const d = { ...(wolfConfig.holeDecisions ?? {}) }; delete d[holeNumber]; return d })()
-            : { [holeNumber]: { partnerId: newPartnerId } }),
-        },
-      }
-      return { ...game, config: updatedConfig }
-    })
+    const wolfId = wolfForHole((game?.config as WolfConfig)?.wolfOrder ?? [], holeNumber)
+    const current = (game?.config as WolfConfig)?.holeDecisions?.[holeNumber]
+    // Tapping the active choice again clears it — the declaration row is removed, so
+    // the hole reads as undeclared again (and §6 re-blocks scoring on it).
+    const isUnset = current !== undefined && current.partnerId === partnerId
+    if (isUnset) {
+      await deleteDeclaration('wolf_partner', holeNumber)
+    } else {
+      await upsertDeclaration('wolf_partner', holeNumber, wolfId, { partnerId },
+        'round_id,hole_number,kind')
+    }
   }
 
   // Press handler (Skins & Nassau)
@@ -990,24 +1027,19 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
     // forward, so declaring it after the outcome is known is a way to win money that
     // should not exist. The button is disabled too; this is the backstop.
     if (currentHoleHasScore) return
-    await updateGameState(game => {
-      const config = game.config as any
-      const presses = [...(config.presses ?? []), { holeNumber: currentHole, playerId: userId }]
-      return { ...game, config: { ...config, presses } }
-    })
+    await upsertDeclaration('press', currentHole, userId, {},
+      'round_id,hole_number,kind,player_id')
   }
 
   // Undo the current user's most recent press (removes the last press this
   // device added — presses are attributed to userId when created above).
   const handleUndoPress = async () => {
-    await updateGameState(game => {
-      const config = game.config as any
-      const presses = [...(config.presses ?? [])]
-      for (let i = presses.length - 1; i >= 0; i--) {
-        if (presses[i].playerId === userId) { presses.splice(i, 1); break }
-      }
-      return { ...game, config: { ...config, presses } }
-    })
+    // One press per player per hole now, so "my most recent" is simply my press on
+    // the latest hole I pressed.
+    const mine = declarations.filter(d => d.kind === 'press' && d.playerId === userId)
+    if (mine.length === 0) return
+    const latest = mine.reduce((a, b) => (b.holeNumber > a.holeNumber ? b : a))
+    await deleteDeclaration('press', latest.holeNumber, userId)
   }
 
   // How many presses the current user can undo.
@@ -1514,11 +1546,9 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
 
   // Hammer interaction functions
   const updateHammerState = async (holeNum: number, state: HammerHoleState) => {
-    await updateGameState(game => {
-      if (game.type !== 'hammer') return game
-      const updatedStates = { ...(game.config as HammerConfig).hammerStates, [holeNum]: state }
-      return { ...game, config: { ...game.config, hammerStates: updatedStates } }
-    })
+    const { hammerHolder, ...rest } = state
+    await upsertDeclaration('hammer', holeNum, hammerHolder, { ...rest },
+      'round_id,hole_number,kind')
   }
 
   const throwHammer = () => {

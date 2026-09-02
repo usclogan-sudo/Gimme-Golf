@@ -12,7 +12,7 @@
 // at the point of use. The engine stays untouched, and storage is free to change
 // again later.
 import type {
-  HoleDeclaration, Press, WolfConfig, HammerHoleState, HammerPayload, WolfPartnerPayload,
+  Game, HoleDeclaration, Press, WolfConfig, HammerHoleState, HammerPayload, WolfPartnerPayload,
 } from '../types'
 
 /** Presses, in hole order, as the settlement engine expects them. */
@@ -67,7 +67,7 @@ export function toHammerStates(declarations: HoleDeclaration[]): Record<number, 
  * all keeps its config untouched, which is what makes legacy rounds settle exactly
  * as they did before.
  */
-export function withDeclarations<T extends { type: string; config: any }>(
+export function withDeclarations<T extends Game>(
   game: T,
   declarations: HoleDeclaration[],
 ): T {

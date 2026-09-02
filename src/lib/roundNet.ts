@@ -28,8 +28,9 @@ import {
   calculateQuota, calculateQuotaPayouts,
   calculateVegas, calculateVegasPayouts,
 } from './gameLogic'
+import { withDeclarations } from './holeDeclarations'
 import type {
-  Round, HoleScore, RoundPlayer, BBBPoint, JunkRecord, SideBet,
+  Round, HoleScore, RoundPlayer, BBBPoint, JunkRecord, SideBet, HoleDeclaration,
   SkinsConfig, BestBallConfig, NassauConfig, WolfConfig, HammerConfig,
   DotsConfig, BankerConfig, StablefordConfig, QuotaConfig, VegasConfig,
 } from '../types'
@@ -41,6 +42,9 @@ export interface RoundNetInputs {
   bbbPoints?: BBBPoint[]
   junkRecords?: JunkRecord[]
   sideBets?: SideBet[]
+  /** Per-hole declarations for the round (§ config hoist). Omitted for a legacy
+   *  round, whose facts still live in game.config and are read from there. */
+  declarations?: HoleDeclaration[]
 }
 
 export interface RoundNetResult {
@@ -51,7 +55,7 @@ export interface RoundNetResult {
 }
 
 export function computeRoundPlayerNets(input: RoundNetInputs): RoundNetResult {
-  const { round, roundScores, roundPlayers, bbbPoints = [], junkRecords = [], sideBets = [] } = input
+  const { round, roundScores, roundPlayers, bbbPoints = [], junkRecords = [], sideBets = [], declarations = [] } = input
   const players = round.players ?? []
   const snapshot = round.courseSnapshot
 
@@ -64,7 +68,11 @@ export function computeRoundPlayerNets(input: RoundNetInputs): RoundNetResult {
   const startHoles: Record<string, number> = {}
   roundPlayers.forEach(rp => { startHoles[rp.playerId] = rp.startHole ?? 1 })
 
-  const game = round.game
+  // Fold declarations back into the config the calculators expect. Without this a
+  // round's presses, Wolf picks and Hammer states would silently vanish from the
+  // stats screens the moment they moved out of game.config — no error, just wrong
+  // history.
+  const game = round.game ? withDeclarations(round.game, declarations) : undefined
   const hasGame = game != null
 
   const add = (m: Record<string, number>) => {

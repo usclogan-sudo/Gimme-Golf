@@ -1,5 +1,5 @@
-import type { HoleScore, BBBPoint, JunkRecord, SideBet, RoundParticipant, BuyIn, PropBet, PropWager } from '../types'
-import { rowToHoleScore, rowToBBBPoint, rowToJunkRecord, rowToSideBet, rowToRoundParticipant, rowToBuyIn, rowToPropBet, rowToPropWager } from './supabase'
+import type { HoleScore, BBBPoint, JunkRecord, SideBet, RoundParticipant, BuyIn, PropBet, PropWager, HoleDeclaration } from '../types'
+import { rowToHoleScore, rowToBBBPoint, rowToJunkRecord, rowToSideBet, rowToRoundParticipant, rowToBuyIn, rowToPropBet, rowToPropWager, rowToHoleDeclaration } from './supabase'
 
 type RealtimePayload = {
   eventType: 'INSERT' | 'UPDATE' | 'DELETE'
@@ -31,6 +31,28 @@ export function applyHoleScorePayload(
 /**
  * Apply a realtime payload to the bbb_points state.
  */
+/** Per-hole declarations (presses, Wolf picks, Hammer). These used to ride along
+ *  inside the `rounds` UPDATE payload as part of game.config; now they are their own
+ *  rows and need their own reducer, or a second device never sees the Wolf declare. */
+export function applyHoleDeclarationPayload(
+  prev: HoleDeclaration[],
+  payload: { eventType: 'INSERT' | 'UPDATE' | 'DELETE'; new?: any; old?: any },
+): HoleDeclaration[] {
+  if (payload.eventType === 'DELETE') {
+    const id = payload.old?.id
+    return id ? prev.filter(d => d.id !== id) : prev
+  }
+  if (!payload.new) return prev
+  const row = rowToHoleDeclaration(payload.new)
+  // Upserts replace by (round, hole, kind[, player]) rather than by id, so match on
+  // the natural key too — otherwise a replaced declaration would appear twice.
+  const withoutStale = prev.filter(d =>
+    d.id !== row.id &&
+    !(d.kind === row.kind && d.holeNumber === row.holeNumber &&
+      (row.kind === 'press' ? d.playerId === row.playerId : true)))
+  return [...withoutStale, row]
+}
+
 export function applyBBBPointPayload(
   prev: BBBPoint[],
   payload: RealtimePayload,

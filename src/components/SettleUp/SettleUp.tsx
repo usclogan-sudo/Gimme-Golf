@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState, useCallback } from 'react'
 import { Sentry } from '../../lib/sentry'
 import { v4 as uuidv4 } from 'uuid'
-import { supabase, rowToRound, rowToRoundPlayer, rowToHoleScore, rowToBuyIn, rowToBBBPoint, rowToJunkRecord, rowToSideBet, rowToPropBet, rowToPropWager, rowToSettlementRecord, settlementRecordToRow, rowToUserProfile, rowToEvent, notificationToRow } from '../../lib/supabase'
+import { supabase, rowToRound, rowToRoundPlayer, rowToHoleScore, rowToBuyIn, rowToBBBPoint, rowToJunkRecord, rowToSideBet, rowToPropBet, rowToPropWager, rowToSettlementRecord, settlementRecordToRow, rowToUserProfile, rowToEvent, rowToHoleDeclaration, notificationToRow } from '../../lib/supabase'
 import type { AppNotification } from '../../types'
+import { withDeclarations } from '../../lib/holeDeclarations'
 import { PaymentButtons, getPreferredPayment } from '../PaymentButtons'
 import { Tooltip } from '../ui/Tooltip'
 import { safeWrite } from '../../lib/safeWrite'
@@ -72,6 +73,7 @@ import type {
   SettlementRecord,
   UserProfile,
   GolfEvent,
+  HoleDeclaration,
 } from '../../types'
 import { ResultCard, renderResultCardToBlob, buildResultCardProps } from '../ResultCard'
 import { shareCard } from '../../lib/share'
@@ -175,6 +177,7 @@ function NudgeButton({ playerName, amountCents, toPlayer, fromPlayerId, roundId,
 export function SettleUp({ roundId, userId, eventId, onDone, onContinue }: Props) {
   const [round, setRound] = useState<Round | null>(null)
   const [roundPlayers, setRoundPlayers] = useState<RoundPlayer[]>([])
+  const [declarations, setDeclarations] = useState<HoleDeclaration[]>([])
   const [holeScores, setHoleScores] = useState<HoleScore[]>([])
   const [buyIns, setBuyIns] = useState<BuyIn[]>([])
   const [bbbPoints, setBbbPoints] = useState<BBBPoint[]>([])
@@ -213,6 +216,7 @@ export function SettleUp({ roundId, userId, eventId, onDone, onContinue }: Props
     Promise.all([
       supabase.from('rounds').select('*').eq('id', roundId).single(),
       supabase.from('round_players').select('*').eq('round_id', roundId),
+      supabase.from('hole_declarations').select('*').eq('round_id', roundId),
       supabase.from('hole_scores').select('*').eq('round_id', roundId),
       supabase.from('buy_ins').select('*').eq('round_id', roundId),
       supabase.from('bbb_points').select('*').eq('round_id', roundId),
@@ -222,13 +226,14 @@ export function SettleUp({ roundId, userId, eventId, onDone, onContinue }: Props
       supabase.from('round_participants').select('*').eq('round_id', roundId).eq('status', 'accepted'),
       supabase.from('prop_bets').select('*').eq('round_id', roundId),
       supabase.from('prop_wagers').select('*').eq('round_id', roundId),
-    ]).then(([roundRes, rpRes, hsRes, biRes, bbbRes, junkRes, sbRes, settlRes, partRes, pbRes, pwRes]) => {
+    ]).then(([roundRes, rpRes, declRes, hsRes, biRes, bbbRes, junkRes, sbRes, settlRes, partRes, pbRes, pwRes]) => {
       if (roundRes.error || !roundRes.data) {
         setLoadError(true)
         setLoading(false)
         return
       }
       setRound(rowToRound(roundRes.data))
+      if (declRes.data) setDeclarations(declRes.data.map(rowToHoleDeclaration))
       if (rpRes.data) setRoundPlayers(rpRes.data.map(rowToRoundPlayer))
       if (hsRes.data) setHoleScores(hsRes.data.map(rowToHoleScore))
       if (biRes.data) setBuyIns(biRes.data.map(rowToBuyIn))
@@ -301,7 +306,13 @@ export function SettleUp({ roundId, userId, eventId, onDone, onContinue }: Props
 
   const players = round?.players ?? []
   const snapshot = round?.courseSnapshot
-  const game = round?.game
+  // Fold per-hole declarations back into the game config the settlement engine
+  // expects (§ config hoist). A round with no declarations passes through untouched,
+  // so legacy rounds settle exactly as they did before.
+  const game = useMemo(
+    () => (round?.game ? withDeclarations(round.game, declarations) : undefined),
+    [round?.game, declarations],
+  )
   const treasurerId = round?.treasurerPlayerId
   const treasurer = players.find(p => p.id === treasurerId)
 

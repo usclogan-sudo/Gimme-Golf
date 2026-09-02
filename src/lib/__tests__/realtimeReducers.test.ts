@@ -6,6 +6,7 @@ import {
   applyBBBPointPayload,
   applyRoundParticipantPayload,
   applyBuyInPayload,
+  applyHoleDeclarationPayload,
 } from '../realtimeReducers'
 import type { HoleScore, BBBPoint, RoundParticipant, BuyIn } from '../../types'
 
@@ -279,5 +280,48 @@ describe('offline→online race condition scenario', () => {
     participants = applyRoundParticipantPayload(participants, joinPayload)
     expect(participants).toHaveLength(2)
     expect(participants[1].userId).toBe('u-2')
+  })
+})
+
+describe('applyHoleDeclarationPayload', () => {
+  const row = (over: Record<string, any> = {}) => ({
+    id: 'd1', round_id: 'r1', hole_number: 1, kind: 'wolf_partner',
+    player_id: 'p1', payload: { partnerId: 'p2' }, ...over,
+  })
+
+  it('adds an incoming declaration', () => {
+    const out = applyHoleDeclarationPayload([], { eventType: 'INSERT', new: row() })
+    expect(out).toHaveLength(1)
+    expect(out[0]).toMatchObject({ id: 'd1', kind: 'wolf_partner', holeNumber: 1 })
+  })
+
+  it('replaces a declaration on the same hole rather than duplicating it', () => {
+    // An upsert from another device arrives with a NEW id but the same natural key.
+    const prev = applyHoleDeclarationPayload([], { eventType: 'INSERT', new: row() })
+    const out = applyHoleDeclarationPayload(prev, {
+      eventType: 'UPDATE', new: row({ id: 'd2', payload: { partnerId: null } }),
+    })
+    expect(out).toHaveLength(1)
+    expect(out[0].payload).toEqual({ partnerId: null })
+  })
+
+  it('keeps presses from different players on the same hole', () => {
+    const a = applyHoleDeclarationPayload([], {
+      eventType: 'INSERT', new: row({ id: 'a', kind: 'press', player_id: 'p1', payload: {} }),
+    })
+    const out = applyHoleDeclarationPayload(a, {
+      eventType: 'INSERT', new: row({ id: 'b', kind: 'press', player_id: 'p2', payload: {} }),
+    })
+    expect(out).toHaveLength(2)
+  })
+
+  it('removes a deleted declaration', () => {
+    const prev = applyHoleDeclarationPayload([], { eventType: 'INSERT', new: row() })
+    expect(applyHoleDeclarationPayload(prev, { eventType: 'DELETE', old: { id: 'd1' } })).toEqual([])
+  })
+
+  it('ignores a delete for something it does not hold', () => {
+    const prev = applyHoleDeclarationPayload([], { eventType: 'INSERT', new: row() })
+    expect(applyHoleDeclarationPayload(prev, { eventType: 'DELETE', old: { id: 'zzz' } })).toHaveLength(1)
   })
 })

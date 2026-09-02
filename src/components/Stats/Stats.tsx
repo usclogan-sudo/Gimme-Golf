@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react'
 import { ScoringDistribution } from '../ScoringDistribution'
-import { supabase, rowToRound, rowToHoleScore, rowToRoundPlayer, rowToJunkRecord, rowToSideBet } from '../../lib/supabase'
+import { supabase, rowToRound, rowToHoleScore, rowToRoundPlayer, rowToJunkRecord, rowToSideBet, rowToHoleDeclaration } from '../../lib/supabase'
 import { computeRoundPlayerNets } from '../../lib/roundNet'
 import { makePlayableSnapshot, roundToHolesConfig } from '../../lib/holeUtils'
-import type { Round, HoleScore, RoundPlayer, Player, CourseSnapshot, BBBPoint, JunkRecord, SideBet } from '../../types'
+import type { Round, HoleScore, RoundPlayer, Player, CourseSnapshot, BBBPoint, JunkRecord, SideBet, HoleDeclaration } from '../../types'
 
 interface Props {
   userId: string
@@ -68,13 +68,14 @@ export function Stats({ userId, onBack, embedded }: Props) {
 
     const roundIds = rounds.map(r => r.id)
 
-    const [scoresRes, rpRes, bbbRes, junkRes, sbRes, partRes] = await Promise.all([
+    const [scoresRes, rpRes, bbbRes, junkRes, sbRes, partRes, declRes] = await Promise.all([
       supabase.from('hole_scores').select('*').in('round_id', roundIds),
       supabase.from('round_players').select('*').in('round_id', roundIds),
       supabase.from('bbb_points').select('*').in('round_id', roundIds),
       supabase.from('junk_records').select('*').in('round_id', roundIds),
       supabase.from('side_bets').select('*').in('round_id', roundIds),
       supabase.from('round_participants').select('round_id, player_id, user_id').eq('user_id', userId).eq('status', 'accepted'),
+      supabase.from('hole_declarations').select('*').in('round_id', roundIds),
     ])
 
     const allScores: HoleScore[] = (scoresRes.data ?? []).map(rowToHoleScore)
@@ -85,6 +86,7 @@ export function Stats({ userId, onBack, embedded }: Props) {
     }))
     const allJunkRecords: JunkRecord[] = (junkRes.data ?? []).map(rowToJunkRecord)
     const allSideBets: SideBet[] = (sbRes.data ?? []).map(rowToSideBet)
+    const allDeclarations: HoleDeclaration[] = (declRes.data ?? []).map(rowToHoleDeclaration)
     // round_id → the current user's player id in that round (for their distribution).
     const partMap = new Map<string, string>()
     for (const p of (partRes.data ?? [])) partMap.set(p.round_id, p.player_id)
@@ -115,6 +117,7 @@ export function Stats({ userId, onBack, embedded }: Props) {
         bbbPoints: allBbbPoints.filter(b => b.roundId === round.id),
         junkRecords: allJunkRecords.filter(jr => jr.roundId === round.id),
         sideBets: allSideBets.filter(sb => sb.roundId === round.id),
+        declarations: allDeclarations.filter(d => d.roundId === round.id),
       })
 
       for (const player of players) {
