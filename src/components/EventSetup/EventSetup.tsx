@@ -287,14 +287,30 @@ export function EventSetup({ userId, onStart, onCancel, onAddCourse }: Props) {
         throw biResult.error
       }
 
-      // Insert the event manager participant (the creator)
+      // Insert the event manager participant (the creator).
+      //
+      // Bind this to the CREATOR's own player id, never to selectedPlayers[0].
+      // `selectedPlayers` is built in tap order, so [0] is simply whoever the
+      // organiser happened to tap first — usually not themselves. Squatting that
+      // player's slot has two consequences, and the second one is severe:
+      //
+      //   * the manager's group_number is that other player's group, so their group
+      //     filters and scorekeeper view point at the wrong foursome;
+      //   * when the real owner of that slot joins by link, join_event finds a row
+      //     for their player_id under a different user_id and raises "Player already
+      //     claimed by another user" — so one player simply cannot get in, with an
+      //     error that tells them nothing useful.
+      //
+      // A registered user's player id IS their auth uuid (see the self-player
+      // synthesis in NewRound and the profilePlayers mapping above), so `userId` is
+      // both correct when they are playing and safely uncollidable when they are not.
       await safeWrite(supabase.from('event_participants').insert({
         id: uuidv4(),
         event_id: eventId,
         user_id: userId,
-        player_id: selectedPlayers[0]?.id ?? userId,
+        player_id: userId,
         role: 'manager',
-        group_number: groups[selectedPlayers[0]?.id] ?? 1,
+        group_number: groups[userId] ?? 1,
       }), 'insert event manager participant')
 
       setCreatedRoundId(roundId)
