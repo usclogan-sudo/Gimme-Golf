@@ -6,7 +6,8 @@ import { reportSupabaseError } from '../../lib/sentry'
 // Events store buy-in in cents (money mode); fmtAmount with no stakesMode
 // converts cents -> points for display (1 pt = $1), so no $ surfaces.
 import { fmtAmount, fmtHandicap } from '../../lib/gameLogic'
-import { autoAssignGroups, autoAssignShotgunStarts, MAX_PER_GROUP } from '../../lib/eventUtils'
+import { autoAssignGroups, randomAssignGroups, fillMissingGroups, autoAssignShotgunStarts, MAX_PER_GROUP } from '../../lib/eventUtils'
+import type { GroupMode } from '../../lib/eventUtils'
 import { parseDollarsToCents } from '../../lib/money'
 import { venturaCourses } from '../../data/venturaCourses'
 import { NearMeCourses } from '../NearMeCourses/NearMeCourses'
@@ -141,12 +142,27 @@ export function EventSetup({ userId, onStart, onCancel, onAddCourse }: Props) {
     })
   }, [userId])
 
-  // Auto-assign groups when players change (keyed on player IDs, not just count)
+  // Foursomes are about who you walk the course with — an event scores every player
+  // individually either way — so the organiser picks how they are decided.
+  const [groupMode, setGroupMode] = useState<GroupMode>('manual')
+
   const playerIdKey = useMemo(() => selectedPlayers.map(p => p.id).join(','), [selectedPlayers])
   useEffect(() => {
-    setGroups(autoAssignGroups(selectedPlayers.map(p => p.id)))
+    const ids = selectedPlayers.map(p => p.id)
+    setGroups(prev => groupMode === 'random'
+      // Random redraws whenever the roster changes — a draw that kept half its old
+      // answer would not be a draw.
+      ? randomAssignGroups(ids)
+      // Manual tops up instead of reassigning. Placing sixteen people by hand and
+      // then adding a seventeenth must not discard the previous sixteen decisions.
+      : fillMissingGroups(prev, ids))
     setGroupError(null)
-  }, [playerIdKey])
+  }, [playerIdKey, groupMode])
+
+  const shuffleGroups = () => {
+    setGroups(randomAssignGroups(selectedPlayers.map(p => p.id)))
+    setGroupError(null)
+  }
 
   // Default the treasurer to the round creator once they appear in the selected list.
   // Only sets when treasurerId is still null so a manual pick is never overwritten.
@@ -537,17 +553,52 @@ export function EventSetup({ userId, onStart, onCancel, onAddCourse }: Props) {
           </div>
         </header>
         <div className="px-4 py-4 max-w-2xl mx-auto space-y-4">
+          {/* How foursomes get decided. Everyone still scores individually — this is
+              about who you walk the course with. */}
+          <section className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 p-4 space-y-3">
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Foursomes</p>
+            <div className="flex rounded-xl overflow-hidden border border-gray-200 dark:border-gray-600">
+              {([
+                { mode: 'manual' as GroupMode, label: 'I\u2019ll pick', hint: 'Set who plays with whom' },
+                { mode: 'random' as GroupMode, label: 'Random draw', hint: 'Shuffle into even foursomes' },
+              ]).map(opt => (
+                <button
+                  key={opt.mode}
+                  onClick={() => { setGroupMode(opt.mode); if (opt.mode === 'random') shuffleGroups() }}
+                  className={`flex-1 py-2.5 text-sm font-semibold transition-colors ${
+                    groupMode === opt.mode
+                      ? 'bg-amber-500 text-white'
+                      : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300'
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+            <p className="text-xs text-gray-500 dark:text-gray-400">
+              {groupMode === 'manual'
+                ? 'Tap the numbers beside a name to move them. Adding players later won\u2019t undo your picks.'
+                : 'Shuffle for a fresh draw. Switch to \u201cI\u2019ll pick\u201d to adjust by hand.'}
+            </p>
+            {groupMode === 'random' && (
+              <button
+                onClick={shuffleGroups}
+                className="w-full h-10 bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/30 text-amber-600 dark:text-amber-400 text-sm font-semibold rounded-xl active:bg-amber-100"
+              >
+                🎲 Shuffle again
+              </button>
+            )}
+          </section>
+
           <div className="flex gap-2">
+            {/* Even out, not a redraw: deterministic round-robin over the current
+                selection order, for when hand-editing has left lopsided foursomes.
+                The random draw is its own action above. */}
             <button
-              onClick={() => {
-                const ng = Math.ceil(selectedPlayers.length / MAX_PER_GROUP)
-                const g: Record<string, number> = {}
-                selectedPlayers.forEach((p, i) => { g[p.id] = (i % ng) + 1 })
-                setGroups(g)
-              }}
-              className="flex-1 h-10 bg-amber-50 border border-amber-200 text-amber-600 text-sm font-semibold rounded-xl active:bg-amber-100"
+              onClick={() => { setGroups(autoAssignGroups(selectedPlayers.map(p => p.id))); setGroupError(null) }}
+              className="flex-1 h-10 bg-gray-100 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 text-gray-700 dark:text-gray-200 text-sm font-semibold rounded-xl active:bg-gray-200"
             >
-              Auto-assign
+              Even out
             </button>
             {numGroups < 8 && (
               <button
