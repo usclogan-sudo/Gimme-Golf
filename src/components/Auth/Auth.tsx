@@ -306,8 +306,31 @@ export function Auth({ inviteCode, sessionExpired }: AuthProps = {}) {
                   onChange={e => setPassword(e.target.value)}
                   onKeyDown={e => e.key === 'Enter' && handleSubmit()}
                   autoComplete={mode === 'sign-up' ? 'new-password' : 'current-password'}
+                  aria-describedby={mode === 'sign-up' ? 'password-req' : undefined}
                   className="w-full h-12 px-4 rounded-xl border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 text-base focus:outline-none focus:ring-2 focus:ring-amber-500"
                 />
+                {/* The requirement lived only in the placeholder, so it vanished on
+                    the first keystroke — you learned about the minimum by being
+                    rejected for missing it. This stays put and counts down, so the
+                    rule is visible at the moment it is being broken. */}
+                {mode === 'sign-up' && (
+                  <p
+                    id="password-req"
+                    className={`text-xs mt-1.5 ${
+                      password.length === 0
+                        ? 'text-gray-500 dark:text-gray-400'
+                        : password.length < 8
+                          ? 'text-amber-600'
+                          : 'text-green-600'
+                    }`}
+                  >
+                    {password.length === 0
+                      ? 'At least 8 characters'
+                      : password.length < 8
+                        ? `${8 - password.length} more character${8 - password.length === 1 ? '' : 's'}`
+                        : 'Long enough \u2713'}
+                  </p>
+                )}
               </div>
             )}
 
