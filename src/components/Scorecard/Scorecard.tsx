@@ -1241,10 +1241,25 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
   }, [holeScores, isEventRound])
 
   // Pending scores for approval panel
+  // Scoped the same way EventLeaderboard scopes it: a group scorekeeper approves
+  // their OWN foursome, not the whole field. Unscoped this is invisible in a
+  // single-group event and wrong the moment there are several — a group-1
+  // scorekeeper would be shown, and could approve or reject, scores for twelve
+  // players in foursomes they never walked with. Managers and the round creator keep
+  // the field-wide view, since fixing anyone's card is their job.
   const pendingScores = useMemo(() => {
     if (!isEventRound) return []
-    return holeScores.filter(s => s.scoreStatus === 'pending')
-  }, [holeScores, isEventRound])
+    const pending = holeScores.filter(s => s.scoreStatus === 'pending')
+    if (isEventManager || isScoremasterRole) return pending
+    if (isGroupScorekeeper && myEventGroupNumber != null) {
+      const groupPlayerIds = new Set(
+        players.filter((p: any) => round?.groups?.[p.id] === myEventGroupNumber).map((p: any) => p.id),
+      )
+      return pending.filter(s => groupPlayerIds.has(s.playerId))
+    }
+    return []
+  }, [holeScores, isEventRound, isEventManager, isScoremasterRole, isGroupScorekeeper,
+      myEventGroupNumber, players, round?.groups])
 
   // Player-id → the hole they joined mid-round (Option A). Absent ⇒ round start, so
   // a pre-join hole isn't treated as "incomplete" just because they've no score yet.

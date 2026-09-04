@@ -541,6 +541,26 @@ export function SettleUp({ roundId, userId, eventId, onDone, onContinue }: Props
       status: 'owed' as const,
     }))
 
+    // Re-check the server immediately before writing. `settlementsInitialized` is
+    // per-device, and the earlier `settlementRecords.length` test reflects whatever
+    // was loaded at mount — so when a field of sixteen all open Settle Up within a
+    // few seconds of the last putt, every device that loaded before the first write
+    // landed believes it is the one to settle.
+    //
+    // The settlements themselves survive that: the upsert dedupes on
+    // (round_id, from, to, source). The notifications do NOT — they are plain inserts
+    // with fresh ids, so each racing device sends its own full set and every player
+    // gets one "You owe …" per device that raced. Checking here collapses the window
+    // to the width of a single request.
+    const { data: alreadySettled } = await supabase
+      .from('settlements').select('*').eq('round_id', roundId).limit(200)
+    if (alreadySettled && alreadySettled.length > 0) {
+      // Someone else got there first — adopt their rows and send nothing.
+      setSettlementRecords(alreadySettled.map(rowToSettlementRecord))
+      setCalculatingSettlements(false)
+      return
+    }
+
     setSettlementRecords(records)
     const { error } = await supabase.from('settlements').upsert(
       records.map(r => settlementRecordToRow(r, userId)),

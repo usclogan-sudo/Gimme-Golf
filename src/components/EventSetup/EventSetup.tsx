@@ -215,7 +215,18 @@ export function EventSetup({ userId, onStart, onCancel, onAddCourse }: Props) {
   }
 
   const createEvent = async () => {
-    if (!selectedCourse || !treasurerId) return
+    // Say why nothing happened. The button is only disabled while saving, so bailing
+    // out silently here reads as a dead button — and the treasurer is only auto-set
+    // when the organiser is one of the players, so an organiser running the event for
+    // everyone else hits this with no idea what is wrong.
+    if (!selectedCourse) {
+      setCreateError('Pick a course before starting.')
+      return
+    }
+    if (!treasurerId) {
+      setCreateError('Choose a treasurer before starting — they collect the entries and pay out.')
+      return
+    }
     if (savingRef.current) return
     savingRef.current = true
     setSaving(true)
