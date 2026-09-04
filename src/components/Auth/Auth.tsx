@@ -123,7 +123,17 @@ export function Auth({ inviteCode, sessionExpired }: AuthProps = {}) {
     if (err) {
       setError(friendlyError(err.message))
     } else {
-      setMessage('Check your email for a password reset link.')
+      // Supabase answers this the same way whether or not the address has an
+      // account — on purpose, so the form cannot be used to discover who is
+      // registered. "Check your email" therefore promises something that may never
+      // arrive: a typo'd address, or someone who believes they signed up but did
+      // not, waits indefinitely for a mail that was never sent. Say what is actually
+      // true, and name the two things worth checking before they keep waiting.
+      setMessage(
+        `If an account exists for ${email.trim()}, a reset link is on its way. ` +
+        'It can take a minute — check spam too. No email means there may be no ' +
+        'account for that address, so try creating one.',
+      )
     }
     setLoading(false)
   }
