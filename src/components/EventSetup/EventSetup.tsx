@@ -164,14 +164,9 @@ export function EventSetup({ userId, onStart, onCancel, onAddCourse }: Props) {
     setGroupError(null)
   }
 
-  // Default the treasurer to the round creator once they appear in the selected list.
-  // Only sets when treasurerId is still null so a manual pick is never overwritten.
-  useEffect(() => {
-    if (treasurerId) return
-    if (selectedPlayers.some(p => p.id === userId)) {
-      setTreasurerId(userId)
-    }
-  }, [playerIdKey, treasurerId, userId])
+  // No treasurer by default. Naming one is a deliberate choice for groups where a
+  // single person really does collect and pay out; most groups just settle between
+  // themselves, which is what a normal round already does.
 
   const togglePlayer = (player: Player) => {
     setSelectedPlayers(prev =>
@@ -223,10 +218,6 @@ export function EventSetup({ userId, onStart, onCancel, onAddCourse }: Props) {
       setCreateError('Pick a course before starting.')
       return
     }
-    if (!treasurerId) {
-      setCreateError('Choose a treasurer before starting — they collect the entries and pay out.')
-      return
-    }
     if (savingRef.current) return
     savingRef.current = true
     setSaving(true)
@@ -253,7 +244,7 @@ export function EventSetup({ userId, onStart, onCancel, onAddCourse }: Props) {
         },
         players: selectedPlayers,
         game,
-        treasurerPlayerId: treasurerId,
+        treasurerPlayerId: treasurerId ?? undefined,
         groups,
         eventId,
         inviteCode,
@@ -273,14 +264,20 @@ export function EventSetup({ userId, onStart, onCancel, onAddCourse }: Props) {
         createdAt: new Date(),
       }
 
-      // Create buy-ins
-      const buyIns: BuyIn[] = selectedPlayers.map(p => ({
-        id: uuidv4(),
-        roundId,
-        playerId: p.id,
-        amountCents: game.buyInCents,
-        status: 'unpaid' as const,
-      }))
+      // Entry rows only exist so a treasurer has something to collect. With no
+      // treasurer there is nothing to collect and nobody to collect it — creating
+      // them anyway puts a list of unpaid entries in front of every player on the
+      // settle screen, which is busywork at four and noise at sixteen. This mirrors
+      // NewRound, which skips the whole treasurer step for a points round.
+      const buyIns: BuyIn[] = treasurerId
+        ? selectedPlayers.map(p => ({
+            id: uuidv4(),
+            roundId,
+            playerId: p.id,
+            amountCents: game.buyInCents,
+            status: 'unpaid' as const,
+          }))
+        : []
 
       // Create round players
       const roundPlayers = selectedPlayers.map(p => ({
@@ -303,7 +300,9 @@ export function EventSetup({ userId, onStart, onCancel, onAddCourse }: Props) {
       }
       const [rpResult, biResult] = await Promise.all([
         supabase.from('round_players').insert(roundPlayers.map(rp => roundPlayerToRow(rp, userId))),
-        supabase.from('buy_ins').insert(buyIns.map(b => buyInToRow(b, userId))),
+        buyIns.length > 0
+          ? supabase.from('buy_ins').insert(buyIns.map(b => buyInToRow(b, userId)))
+          : Promise.resolve({ error: null } as any),
       ])
       if (rpResult.error) {
         reportSupabaseError(rpResult.error, 'create_event.round_players', { eventId, roundId })
@@ -878,14 +877,34 @@ export function EventSetup({ userId, onStart, onCancel, onAddCourse }: Props) {
               </div>
             </div>
             <p className="text-sm text-gray-500 text-center">
-              Pot: {fmtAmount(buyInCents * selectedPlayers.length)}
+              Total in play: {fmtAmount(buyInCents * selectedPlayers.length)}
             </p>
           </section>
 
-          {/* Treasurer (before game-specific config so it's easy to find) */}
+          {/* Treasurer — optional. Default is nobody: players just settle between
+              themselves, which is how a normal round already works when there is no
+              treasurer. Naming one is for groups where a single person actually
+              collects and pays out. */}
           <section className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 p-4 space-y-3">
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Treasurer</p>
+            <div>
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Treasurer <span className="font-normal normal-case">(optional)</span></p>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                {treasurerId
+                  ? 'Everyone settles through this player at the end.'
+                  : 'Players settle up between themselves at the end.'}
+              </p>
+            </div>
             <div className="space-y-2">
+              <button
+                onClick={() => setTreasurerId(null)}
+                className={`w-full p-3 rounded-xl border-2 text-left font-semibold text-sm transition-colors ${
+                  treasurerId === null
+                    ? 'border-amber-500 bg-amber-50 text-gray-900 dark:text-gray-100'
+                    : 'border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300'
+                }`}
+              >
+                Nobody — settle between players{treasurerId === null ? ' ✓' : ''}
+              </button>
               {selectedPlayers.map(p => (
                 <button
                   key={p.id}
@@ -1069,7 +1088,9 @@ export function EventSetup({ userId, onStart, onCancel, onAddCourse }: Props) {
 
           <div className="space-y-2">
             <p className="text-xs font-semibold text-gray-500 uppercase">Game: {GAME_LABELS[gameType]} · {fmtAmount(buyInCents)}/player</p>
-            <p className="text-xs text-gray-500">Treasurer: {selectedPlayers.find(p => p.id === treasurerId)?.name ?? '—'}</p>
+            <p className="text-xs text-gray-500">{treasurerId
+              ? `Treasurer: ${selectedPlayers.find(p => p.id === treasurerId)?.name ?? '—'}`
+              : 'Settling between players'}</p>
           </div>
 
           {/* Groups summary */}
