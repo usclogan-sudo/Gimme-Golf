@@ -57,15 +57,31 @@ export function Auth({ inviteCode, sessionExpired }: AuthProps = {}) {
     if (password.length < 8) { setError('Password must be at least 8 characters'); return }
     setLoading(true)
     setError(null)
-    const { error: err } = await supabase.auth.signUp({
+    const { data, error: err } = await supabase.auth.signUp({
       email: email.trim(),
       password,
       options: { emailRedirectTo: window.location.origin + '/' },
     })
     if (err) {
       setError(friendlyError(err.message))
+      setLoading(false)
+      return
     }
-    // With autoconfirm enabled, signUp auto-signs in — no message needed
+    // Supabase does not error when an email is already registered — it returns a
+    // user with an empty identities array, so that sign-up cannot be used to probe
+    // who has an account. Without this, a returning tester taps Create Account, sees
+    // nothing happen, and has no idea they should be signing in instead.
+    if (data.user && (data.user.identities?.length ?? 0) === 0) {
+      setError('That email already has an account. Sign in instead — use "Forgot password?" if you need to.')
+      setLoading(false)
+      return
+    }
+    // With autoconfirm on, sign-up returns a session and onAuthStateChange takes it
+    // from here. With autoconfirm OFF there is no session and no error, so the screen
+    // would sit there looking broken — say what is actually required instead.
+    if (!data.session) {
+      setMessage('Account created. Check your email to confirm it, then come back and sign in.')
+    }
     setLoading(false)
   }
 
@@ -139,19 +155,19 @@ export function Auth({ inviteCode, sessionExpired }: AuthProps = {}) {
             <>
               <div className="bg-blue-50 border border-blue-200 rounded-2xl px-4 py-3 text-center">
                 <p className="text-blue-800 font-semibold text-sm">You've been invited to a round!</p>
-                <p className="text-blue-600 text-xs mt-0.5">No account needed — you can join straight away.</p>
+                <p className="text-blue-600 text-xs mt-0.5">Create an account to join and keep your scores.</p>
               </div>
-              {/* An invited player's shortest path in is the guest one: no email, no
-                  password, no confirmation step. Leaving it as a grey link under two
-                  larger buttons pointed a whole group at the slowest option, at the
-                  exact moment they are standing on a tee waiting to start. Signing in
-                  stays right below for anyone who already has an account. */}
+              {/* Invited players are steered to a real account, not the guest path:
+                  an account carries their handicap, history and ledger between
+                  rounds and devices, where a guest session dies with the browser.
+                  The guest link stays available further down as a fallback if
+                  sign-up fails on the day. */}
               <button
-                onClick={handleGuestLogin}
+                onClick={() => resetState('sign-up')}
                 disabled={loading}
                 className="w-full h-14 bg-gray-800 text-white dark:bg-brass dark:text-navy text-lg font-bold rounded-2xl shadow-lg disabled:opacity-60 active:bg-gray-900 transition-colors"
               >
-                {loading ? 'Loading\u2026' : 'Join now'}
+                Create your account
               </button>
               <p className="text-center text-xs text-gray-500 dark:text-gray-400 -mt-2">
                 Already have an account? Sign in below.
@@ -212,7 +228,7 @@ export function Auth({ inviteCode, sessionExpired }: AuthProps = {}) {
           {/* Hide the guest path for a returning user whose session expired \u2014 going
               anonymous here would strand them in a guest account ("You / HCP 0") and
               hide their real rounds/ledger. They should sign back in. */}
-          {!sessionExpired && !inviteCode && (
+          {!sessionExpired && (
             <div className="text-center">
               <button
                 onClick={handleGuestLogin}
