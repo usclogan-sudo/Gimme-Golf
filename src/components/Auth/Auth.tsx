@@ -16,22 +16,32 @@ export function Auth({ inviteCode, sessionExpired }: AuthProps = {}) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [message, setMessage] = useState<string | null>(null)
+  // Only complain about the address once they have moved on from the field —
+  // flagging "invalid" while someone is halfway through typing it is just noise.
+  const [emailTouched, setEmailTouched] = useState(false)
 
   const resetState = (nextMode: AuthMode) => {
     setError(null)
     setMessage(null)
     setPassword('')
+    setEmailTouched(false)
     setMode(nextMode)
   }
 
   const isValidEmail = (e: string) => /^\S+@\S+\.\S+$/.test(e)
+  const emailLooksWrong = emailTouched && email.trim().length > 0 && !isValidEmail(email.trim())
 
   const friendlyError = (msg: string): string => {
     const lower = msg.toLowerCase()
     if (lower.includes('sending confirmation') || lower.includes('sending email') || lower.includes('rate limit') || lower.includes('email rate'))
-      return 'Email service is temporarily rate-limited. Try again in a few minutes, or use "Try it first" to continue as a guest.'
+      return 'Too many sign-up emails at once — wait a minute and try again. If you are with a group, stagger it rather than everyone tapping at the same moment.'
+    // Supabase returns one message for both a wrong password and an email with no
+    // account — on purpose, so sign-in cannot be used to discover who has one. That
+    // is worth keeping, so rather than trying to tell the two apart, name both so
+    // whichever it is has an obvious next step. Someone who fumbled sign-up a minute
+    // ago is otherwise stuck retyping a password that was never registered.
     if (lower.includes('invalid login'))
-      return 'Incorrect email or password'
+      return 'Incorrect email or password. If you haven\u2019t created an account yet, tap Create Account.'
     if (lower.includes('already registered') || lower.includes('already been registered'))
       return 'An account with this email already exists. Try signing in instead.'
     return msg
@@ -287,11 +297,26 @@ export function Auth({ inviteCode, sessionExpired }: AuthProps = {}) {
                 placeholder="you@example.com"
                 value={email}
                 onChange={e => setEmail(e.target.value)}
+                onBlur={() => setEmailTouched(true)}
                 onKeyDown={e => e.key === 'Enter' && handleSubmit()}
                 autoComplete="email"
-                className="w-full h-12 px-4 rounded-xl border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 text-base focus:outline-none focus:ring-2 focus:ring-amber-500"
+                aria-describedby={emailLooksWrong ? 'email-hint' : undefined}
+                className={`w-full h-12 px-4 rounded-xl border dark:bg-gray-700 dark:text-gray-100 text-base focus:outline-none focus:ring-2 ${
+                  emailLooksWrong
+                    ? 'border-amber-400 focus:ring-amber-500'
+                    : 'border-gray-300 dark:border-gray-600 focus:ring-amber-500'
+                }`}
                 autoFocus
               />
+              {/* Caught at blur rather than at submit. A mistyped address is the one
+                  unrecoverable mistake here — the password reset goes to whatever
+                  they typed — so it is worth flagging before they commit to it.
+                  This only catches structural nonsense; gmial.com still gets through. */}
+              {emailLooksWrong && (
+                <p id="email-hint" className="text-xs mt-1.5 text-amber-600">
+                  That doesn't look like an email address — check it before continuing.
+                </p>
+              )}
             </div>
 
             {showPassword && (
