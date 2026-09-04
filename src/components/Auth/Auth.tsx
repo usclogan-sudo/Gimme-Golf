@@ -136,10 +136,27 @@ export function Auth({ inviteCode, sessionExpired }: AuthProps = {}) {
           </div>
 
           {inviteCode && (
-            <div className="bg-blue-50 border border-blue-200 rounded-2xl px-4 py-3 text-center">
-              <p className="text-blue-800 font-semibold text-sm">You've been invited to a round!</p>
-              <p className="text-blue-600 text-xs mt-0.5">Sign in or create an account to join.</p>
-            </div>
+            <>
+              <div className="bg-blue-50 border border-blue-200 rounded-2xl px-4 py-3 text-center">
+                <p className="text-blue-800 font-semibold text-sm">You've been invited to a round!</p>
+                <p className="text-blue-600 text-xs mt-0.5">No account needed — you can join straight away.</p>
+              </div>
+              {/* An invited player's shortest path in is the guest one: no email, no
+                  password, no confirmation step. Leaving it as a grey link under two
+                  larger buttons pointed a whole group at the slowest option, at the
+                  exact moment they are standing on a tee waiting to start. Signing in
+                  stays right below for anyone who already has an account. */}
+              <button
+                onClick={handleGuestLogin}
+                disabled={loading}
+                className="w-full h-14 bg-gray-800 text-white dark:bg-brass dark:text-navy text-lg font-bold rounded-2xl shadow-lg disabled:opacity-60 active:bg-gray-900 transition-colors"
+              >
+                {loading ? 'Loading\u2026' : 'Join now'}
+              </button>
+              <p className="text-center text-xs text-gray-500 dark:text-gray-400 -mt-2">
+                Already have an account? Sign in below.
+              </p>
+            </>
           )}
 
           {!inviteCode && sessionExpired && (
@@ -159,7 +176,7 @@ export function Auth({ inviteCode, sessionExpired }: AuthProps = {}) {
               onKeyDown={e => e.key === 'Enter' && (password ? handleSignIn() : undefined)}
               autoComplete="email"
               className="w-full h-12 px-4 rounded-xl border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 text-base focus:outline-none focus:ring-2 focus:ring-amber-500"
-              autoFocus
+              autoFocus={!inviteCode}
             />
             <input
               type="password"
@@ -195,7 +212,7 @@ export function Auth({ inviteCode, sessionExpired }: AuthProps = {}) {
           {/* Hide the guest path for a returning user whose session expired \u2014 going
               anonymous here would strand them in a guest account ("You / HCP 0") and
               hide their real rounds/ledger. They should sign back in. */}
-          {!sessionExpired && (
+          {!sessionExpired && !inviteCode && (
             <div className="text-center">
               <button
                 onClick={handleGuestLogin}
