@@ -6,7 +6,7 @@ End-to-end QA pass on the post-round result card (`src/components/ShareCard/Shar
 
 ```
 npm run dev
-# open http://localhost:5173/golf-tracker/?preview=share-card
+# open http://localhost:5173/?preview=share-card
 ```
 
 Or, after the next deploy, the live URL:
@@ -95,7 +95,7 @@ Both columns share a flexbox row with `justify-content: space-between`. There's 
 
 **Status:** This is the documented placeholder per `docs/ICON-ASSETS-V1.md` until the real seal SVG ships. Visually credible at story-image scale but obviously not the final mark.
 
-**Recommendation:** Track for replacement. When `public/seal.svg` arrives, swap the styled G for `<img src="/golf-tracker/seal.svg" />`.
+**Recommendation:** Track for replacement. When `public/seal.svg` arrives, swap the styled G for `<img src="/seal.svg" />`.
 
 **Severity:** Known and tracked.
 

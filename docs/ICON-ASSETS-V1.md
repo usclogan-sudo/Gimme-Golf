@@ -57,7 +57,7 @@ If you (or whoever produces the assets) needs to confirm the paths are wired cor
 
 | Reference | File | Line context |
 |---|---|---|
-| `apple-touch-icon` | `index.html` | `<link rel="apple-touch-icon" href="/golf-tracker/icon-192.png" />` (note: currently points at the 192 — should be a dedicated 180px file once produced) |
+| `apple-touch-icon` | `index.html` | `<link rel="apple-touch-icon" href="/icon-192.png" />` (note: currently points at the 192 — should be a dedicated 180px file once produced) |
 | Splash entries (3) | `index.html` | `<link rel="apple-touch-startup-image" ...>` blocks |
 | `icon-192.png` | `public/manifest.json` | inside `icons[]` array |
 | `icon-512.png` | `public/manifest.json` | inside `icons[]` array — two entries (one for `purpose: "any"`, one currently re-using `icon-512.png` for `purpose: "maskable"` — switch the maskable entry to `icon-512-maskable.png` once it exists) |
@@ -78,7 +78,7 @@ When the assets arrive, drop them into `public/` and update the references:
 - [ ] Smoke test: PWA install on iOS Safari → icon shows navy/seal, not the prior flag-emoji default
 - [ ] Smoke test: PWA install on Android Chrome → maskable icon renders correctly under both circle and squircle masks (use Chrome DevTools → Application → Manifest → Maskable preview)
 
-Once all checks pass, the ⛳ emoji can be retired from in-app empty states (`App.tsx`, `Auth.tsx`, `Onboarding.tsx`, `ResetPassword.tsx`, `Scorecard.tsx`, offline page) and replaced with `<img src="/golf-tracker/seal.svg">` or a `<Seal>` React component.
+Once all checks pass, the ⛳ emoji can be retired from in-app empty states (`App.tsx`, `Auth.tsx`, `Onboarding.tsx`, `ResetPassword.tsx`, `Scorecard.tsx`, offline page) and replaced with `<img src="/seal.svg">` or a `<Seal>` React component.
 
 ---
 
