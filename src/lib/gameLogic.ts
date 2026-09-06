@@ -313,6 +313,54 @@ export function calculateSkinsNet(
   return divideZeroSum(netS, divisor)
 }
 
+/**
+ * Signed net cents per player for PER-SKIN skins — "we're playing $20 a skin".
+ *
+ * Every player still in the hole pays the winner the skin's value, so one skin is
+ * worth `value × (players − 1)` to the winner and costs each of the others `value`.
+ * Nothing is collected up front and there is no ceiling: ten skins moves five times
+ * the money two skins does. That is the whole difference from the pot model, where
+ * the entry is the most anyone can lose no matter how the round goes.
+ *
+ * A carried skin is worth its full multiple — `skinsInPlay` already counts the
+ * carry, so a hole carrying two skins costs each loser twice the value.
+ *
+ * Mid-round joiners only pay for holes from their `startHole` onward, matching
+ * calculateSkinsNet. Zero-sum by construction: the winner gains exactly what the
+ * others lose.
+ */
+export function calculateSkinsPerSkinNet(
+  result: SkinsResult,
+  players: Player[],
+  valueCents: number,
+  startHoles: Record<string, number> = {},
+  presses: Press[] = [],
+): Record<string, number> {
+  const net: Record<string, number> = {}
+  players.forEach(p => (net[p.id] = 0))
+
+  const startOf = (id: string) => startHoles[id] ?? 1
+  const pressMult = (h: number) => Math.pow(2, presses.filter(p => p.holeNumber <= h).length)
+
+  for (const hr of result.holeResults) {
+    if (!hr.winnerId) continue
+    const active = players.filter(p => startOf(p.id) <= hr.holeNumber)
+    const losers = active.filter(p => p.id !== hr.winnerId)
+    if (losers.length === 0) continue
+
+    const perLoser = hr.skinsInPlay * valueCents * pressMult(hr.holeNumber)
+    for (const l of losers) net[l.id] -= perLoser
+    net[hr.winnerId] += perLoser * losers.length
+  }
+
+  return net
+}
+
+/** True when this Skins round is paid per skin rather than out of a pot. */
+export function isPerSkin(config: SkinsConfig): boolean {
+  return config.payModel === 'per_skin'
+}
+
 // ─── Best Ball ────────────────────────────────────────────────────────────────
 
 export interface HoleBestBallResult {

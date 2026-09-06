@@ -17,6 +17,7 @@ import type {
   Game,
   GamePreset,
   SkinsConfig,
+  SkinsPayModel,
   BestBallConfig,
   NassauConfig,
   WolfConfig,
@@ -1005,6 +1006,9 @@ function GameSetup({
   const [carryovers, setCarryovers] = useState(
     initialGame?.type === 'skins' ? (initialGame.config as any).carryovers : true
   )
+  const [skinsPayModel, setSkinsPayModel] = useState<SkinsPayModel>(
+    initialGame?.type === 'skins' ? ((initialGame.config as any).payModel ?? 'pot') : 'pot'
+  )
 
   // Best Ball
   const [bbScoring, setBbScoring] = useState<'match' | 'total'>(
@@ -1110,6 +1114,7 @@ function GameSetup({
     const cfg = preset.config as any
     if (preset.gameType === 'skins') {
       setCarryovers(cfg.carryovers ?? true)
+      setSkinsPayModel(cfg.payModel ?? 'pot')
     } else if (preset.gameType === 'best_ball') {
       setBbScoring(cfg.scoring ?? 'match')
     }
@@ -1184,7 +1189,7 @@ function GameSetup({
   const makeGame = (): Game => {
     const id = uuidv4()
     if (type === 'skins') {
-      const config: SkinsConfig = { mode: 'net', carryovers }
+      const config: SkinsConfig = { mode: 'net', carryovers, payModel: skinsPayModel }
       return { id, type: 'skins', buyInCents, stakesMode, config }
     }
     if (type === 'best_ball') {
@@ -1522,12 +1527,29 @@ function GameSetup({
             />
           </div>
 
-          <div className="bg-amber-50 rounded-xl px-4 py-3 flex items-center justify-between">
-            <span className="text-sm text-gray-600">{stakesMode === 'points' ? 'Total points' : 'Total pot'}</span>
-            <span className="font-bold text-gray-800 dark:text-gray-100 text-lg">
-              {stakesMode === 'points' ? fmtAmount(buyInCents * players.length, 'points') : fmtMoney(buyInCents * players.length)}
-            </span>
-          </div>
+          {/* A per-skin round collects nothing up front, so a "total" here would be
+              a number that never exists. Show what a single skin is worth instead —
+              that is the figure players actually care about. */}
+          {type === 'skins' && skinsPayModel === 'per_skin' ? (
+            <div className="bg-amber-50 dark:bg-amber-500/10 rounded-xl px-4 py-3 space-y-1">
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-gray-600 dark:text-gray-300">Each skin is worth</span>
+                <span className="font-bold text-gray-800 dark:text-gray-100 text-lg">
+                  {fmtAmount(buyInCents * Math.max(players.length - 1, 1), stakesMode)}
+                </span>
+              </div>
+              <p className="text-xs text-gray-500 dark:text-gray-400">
+                {fmtAmount(buyInCents, stakesMode)} from each of the other {Math.max(players.length - 1, 1)} player{players.length - 1 === 1 ? '' : 's'}. No total up front — it depends how many skins fall.
+              </p>
+            </div>
+          ) : (
+            <div className="bg-amber-50 rounded-xl px-4 py-3 flex items-center justify-between">
+              <span className="text-sm text-gray-600">{stakesMode === 'points' ? 'Total points' : 'Total pot'}</span>
+              <span className="font-bold text-gray-800 dark:text-gray-100 text-lg">
+                {stakesMode === 'points' ? fmtAmount(buyInCents * players.length, 'points') : fmtMoney(buyInCents * players.length)}
+              </span>
+            </div>
+          )}
 
           {type === 'nassau' && stakesMode !== 'points' && (
             <p className="text-xs text-gray-500">
@@ -1548,9 +1570,37 @@ function GameSetup({
             >
               Carryovers: {carryovers ? 'ON ✓ (recommended)' : 'OFF'}
             </button>
-            <p className="text-sm text-gray-500 bg-gray-50 rounded-xl p-3">
+            {/* How a skin gets paid for. The pot model caps everyone's exposure at
+                the entry; per-skin has no ceiling, which is how most groups actually
+                play "20 a skin". */}
+            <div>
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Paying for skins</p>
+              <div className="flex rounded-xl overflow-hidden border-2 border-gray-200 dark:border-gray-600">
+                {([
+                  { v: 'pot' as SkinsPayModel, label: 'Shared pot' },
+                  { v: 'per_skin' as SkinsPayModel, label: 'Per skin' },
+                ]).map(opt => (
+                  <button
+                    key={opt.v}
+                    onClick={() => setSkinsPayModel(opt.v)}
+                    className={`flex-1 py-2.5 text-sm font-semibold transition-colors ${
+                      skinsPayModel === opt.v
+                        ? 'bg-amber-500 text-white'
+                        : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300'
+                    }`}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <p className="text-sm text-gray-500 bg-gray-50 dark:bg-gray-700 rounded-xl p-3">
               Lowest score wins the hole.{' '}
               {carryovers ? 'Ties carry forward until someone wins the hole clean.' : 'Ties push — no carry.'}
+              {skinsPayModel === 'per_skin'
+                ? ` Every other player pays the winner ${fmtAmount(buyInCents, stakesMode)} for each skin — a carried skin costs that much again. Nothing is collected up front and there's no ceiling.`
+                : ` Everyone puts in ${fmtAmount(buyInCents, stakesMode)} up front and the winners split it in proportion to skins won. That entry is the most anyone can lose.`}
             </p>
           </section>
         )}

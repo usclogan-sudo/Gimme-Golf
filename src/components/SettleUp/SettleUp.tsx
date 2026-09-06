@@ -22,6 +22,7 @@ import {
   calculateQuota,
   calculateSkinsPayouts,
   calculateSkinsNet,
+  calculateSkinsPerSkinNet,
   calculateBestBallPayouts,
   calculateNassauPayouts,
   calculateWolfPayouts,
@@ -445,6 +446,14 @@ export function SettleUp({ roundId, userId, eventId, onDone, onContinue }: Props
   // games — calculateSkinsNet. No joiner ⇒ null, and the pot path is used untouched.
   const skinsNet = useMemo((): Record<string, number> | null => {
     if (!game || game.type !== 'skins' || !skinsResult) return null
+    const cfg = game.config as SkinsConfig
+    // Per-skin rounds never had a pot to split — each skin is paid for by the other
+    // players in the hole — so they settle head-to-head from a signed net, like the
+    // unit games do.
+    if (cfg.payModel === 'per_skin') {
+      return calculateSkinsPerSkinNet(
+        skinsResult, players, game.buyInCents, startHoles, cfg.presses ?? [])
+    }
     if (!Object.values(startHoles).some(h => h > 1)) return null
     return calculateSkinsNet(skinsResult, game, players, startHoles)
   }, [game, skinsResult, players, startHoles])
