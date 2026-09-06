@@ -1623,7 +1623,21 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
                     Rules
                   </button>
                 )}
-                {!readOnly && (isEventRound ? isScoreMaster : !selfEntryOnly) && (
+                {/* An already-finished round needs a way back to its results. The
+                    only routes to Settle Up were "End Round" and the last-hole
+                    button, both of which ask to end a round that has already ended —
+                    so anyone who came back to look at the card was stuck. Open to
+                    everyone, including read-only viewers: looking at results is not
+                    a privileged action. */}
+                {round.status === 'complete' && (
+                  <button
+                    onClick={() => { setShowHeaderMenu(false); onEndRound() }}
+                    className="w-full px-4 py-3 text-left text-sm font-medium text-yellow-300 hover:bg-gray-700 active:bg-gray-700"
+                  >
+                    Settle Up
+                  </button>
+                )}
+                {round.status !== 'complete' && !readOnly && (isEventRound ? isScoreMaster : !selfEntryOnly) && (
                   <button
                     onClick={() => { setShowHeaderMenu(false); confirmEndRound() }}
                     className="w-full px-4 py-3 text-left text-sm font-medium text-yellow-300 hover:bg-gray-700 active:bg-gray-700"
@@ -2953,6 +2967,9 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
         ) : readOnly ? (
           <button onClick={onHome}
             className="w-full h-14 bg-gray-600 text-white text-lg font-bold rounded-2xl active:bg-gray-700 transition-colors shadow-lg">Back to Home</button>
+        ) : round.status === 'complete' ? (
+          <button onClick={onEndRound}
+            className="w-full h-14 bg-yellow-500 text-white text-lg font-bold rounded-2xl active:bg-yellow-600 transition-colors shadow-lg">Settle Up →</button>
         ) : (
           <button onClick={confirmEndRound}
             className="w-full h-14 bg-yellow-500 text-white text-lg font-bold rounded-2xl active:bg-yellow-600 transition-colors shadow-lg">🏁 End Round & Settle Up</button>
