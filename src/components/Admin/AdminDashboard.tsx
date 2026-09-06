@@ -7,6 +7,7 @@ import { venturaCourses } from '../../data/venturaCourses'
 import { ConfirmModal } from '../ConfirmModal'
 import { logAdminAction } from '../../lib/adminAudit'
 import { UserDetailsModal } from './UserDetailsModal'
+import { RoundManagePanel } from './RoundManagePanel'
 import type { Course, Tee, Hole, GamePreset, GameType, StakesMode } from '../../types'
 
 interface Props {
@@ -734,7 +735,7 @@ function PlayersTab() {
   if (players.length === 0) {
     return (
       <div className="text-center py-8">
-        <p className="text-gray-500 text-sm">No players found. Make sure the <code className="bg-gray-100 px-1 rounded">admin_get_all_players</code> RPC is deployed.</p>
+        <p className="text-gray-500 text-sm">No guest players yet. Registered users appear under the Users tab.</p>
         <p className="text-gray-400 text-xs mt-2">See <code>supabase-schema-admin.sql</code></p>
       </div>
     )
@@ -1207,6 +1208,7 @@ function UsersTab({ currentUserId }: { currentUserId: string }) {
 
 function RoundsTab() {
   const [rounds, setRounds] = useState<any[]>([])
+  const [managingRoundId, setManagingRoundId] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null)
   const [deleting, setDeleting] = useState(false)
@@ -1247,10 +1249,14 @@ function RoundsTab() {
     return <div className="flex justify-center py-8"><div className="w-8 h-8 border-2 border-amber-500 border-t-transparent rounded-full animate-spin" /></div>
   }
 
+  if (managingRoundId) {
+    return <RoundManagePanel roundId={managingRoundId} onBack={() => setManagingRoundId(null)} />
+  }
+
   if (rounds.length === 0) {
     return (
       <div className="text-center py-8">
-        <p className="text-gray-500 text-sm">No rounds found. Make sure the <code className="bg-gray-100 px-1 rounded">admin_get_all_rounds</code> RPC is deployed.</p>
+        <p className="text-gray-500 text-sm">No rounds yet.</p>
         <p className="text-gray-400 text-xs mt-2">See <code>supabase-schema-admin.sql</code></p>
       </div>
     )
@@ -1282,6 +1288,12 @@ function RoundsTab() {
                 }`}>
                   {r.status}
                 </span>
+                <button
+                  onClick={() => setManagingRoundId(r.id)}
+                  className="text-xs font-semibold px-2.5 py-1.5 rounded-lg text-gray-700 border border-gray-300 active:bg-gray-50"
+                >
+                  Manage
+                </button>
                 <button
                   onClick={() => setDeleteTarget({ id: r.id, name: `${courseName} (${date})` })}
                   className="text-xs font-semibold px-2.5 py-1.5 rounded-lg text-red-600 border border-red-200 active:bg-red-50"
