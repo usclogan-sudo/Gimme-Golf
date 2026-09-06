@@ -1288,6 +1288,19 @@ function RoundsTab() {
                 }`}>
                   {r.status}
                 </span>
+                {/* Watching and repairing are different jobs. Monitor was only
+                    reachable from the Home card of a round you are IN, which is
+                    exactly backwards for an organiser overseeing an event they are
+                    not playing in. Spectate mode works from the round's invite code,
+                    so it needs no membership. */}
+                {r.status === 'active' && r.invite_code && (
+                  <button
+                    onClick={() => window.open(`${window.location.origin}/?spectate=${r.invite_code}`, '_blank')}
+                    className="text-xs font-semibold px-2.5 py-1.5 rounded-lg text-gray-700 border border-gray-300 active:bg-gray-50"
+                  >
+                    Monitor
+                  </button>
+                )}
                 <button
                   onClick={() => setManagingRoundId(r.id)}
                   className="text-xs font-semibold px-2.5 py-1.5 rounded-lg text-gray-700 border border-gray-300 active:bg-gray-50"
