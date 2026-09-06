@@ -858,7 +858,7 @@ export function SettleUp({ roundId, userId, eventId, onDone, onContinue }: Props
   const isHighRoller = game.stakesMode === 'high_roller'
   const isPoints = game.stakesMode === 'points'
   const fmt = (cents: number) => fmtAmount(cents, game.stakesMode)
-  // Points are whole-dollar synonyms for money (1 pt = $1). In-app we show "pts",
+  // Tokens are whole-dollar synonyms for money (1 token = $1). In-app we show
   // but payment apps (Venmo/Zelle/etc.) only speak dollars, so amounts handed to a
   // payment rail must be converted from raw points to real cents.
   const toPayCents = (amt: number) => (isPoints ? amt * 100 : amt)
@@ -1147,7 +1147,7 @@ export function SettleUp({ roundId, userId, eventId, onDone, onContinue }: Props
             </div>
             <div className={`rounded-xl p-3 ${isHighRoller ? 'bg-amber-900/40' : 'bg-green-50'}`}>
               {/* Unit games have no pot — show total points that actually changed hands. */}
-              <p className={`text-xs ${isHighRoller ? 'text-amber-400' : 'text-gray-500'}`}>{unitNet ? 'Total won' : 'Total points'}</p>
+              <p className={`text-xs ${isHighRoller ? 'text-amber-400' : 'text-gray-500'}`}>{unitNet ? 'Total won' : 'Total tokens'}</p>
               <p className={`text-xl font-bold ${isHighRoller ? 'text-amber-400' : 'text-green-800'}`}>{fmt(unitTotalWon ?? potCents)}</p>
             </div>
           </div>

@@ -1473,7 +1473,7 @@ function GameSetup({
               <div>
                 <p className="text-sm text-gray-600 mb-2">Value per junk</p>
                 <div className="flex items-center gap-2">
-                  <span className="text-xl font-bold text-gray-500">{stakesMode === 'points' ? 'pts' : '$'}</span>
+                  <span className="text-xl font-bold text-gray-500">{stakesMode === 'points' ? 'tokens' : '$'}</span>
                   <input
                     type="number"
                     inputMode="decimal"
@@ -1510,7 +1510,7 @@ function GameSetup({
           </p>
 
           <div className="flex items-center gap-2">
-            <span className="text-xl font-bold text-gray-500">{stakesMode === 'points' ? 'pts' : '$'}</span>
+            <span className="text-xl font-bold text-gray-500">{stakesMode === 'points' ? 'tokens' : '$'}</span>
             <input
               type="number"
               inputMode="decimal"
@@ -1525,7 +1525,7 @@ function GameSetup({
           <div className="bg-amber-50 rounded-xl px-4 py-3 flex items-center justify-between">
             <span className="text-sm text-gray-600">{stakesMode === 'points' ? 'Total points' : 'Total pot'}</span>
             <span className="font-bold text-gray-800 dark:text-gray-100 text-lg">
-              {stakesMode === 'points' ? `${buyInCents * players.length} pts` : fmtMoney(buyInCents * players.length)}
+              {stakesMode === 'points' ? fmtAmount(buyInCents * players.length, 'points') : fmtMoney(buyInCents * players.length)}
             </span>
           </div>
 
@@ -1687,7 +1687,7 @@ function GameSetup({
             <div>
               <p className="text-sm text-gray-600 mb-2">Base Value Per Hole</p>
               <div className="flex items-center gap-2">
-                <span className="text-xl font-bold text-gray-500">{stakesMode === 'points' ? 'pts' : '$'}</span>
+                <span className="text-xl font-bold text-gray-500">{stakesMode === 'points' ? 'tokens' : '$'}</span>
                 <input
                   type="number"
                   inputMode="decimal"
@@ -1789,7 +1789,7 @@ function GameSetup({
             <div>
               <p className="text-sm text-gray-600 mb-2">Value Per Dot</p>
               <div className="flex items-center gap-2">
-                <span className="text-xl font-bold text-gray-500">{stakesMode === 'points' ? 'pts' : '$'}</span>
+                <span className="text-xl font-bold text-gray-500">{stakesMode === 'points' ? 'tokens' : '$'}</span>
                 <input
                   type="number"
                   inputMode="decimal"

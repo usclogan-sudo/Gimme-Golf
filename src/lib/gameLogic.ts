@@ -2183,6 +2183,6 @@ export function fmtMoney(cents: number): string {
  * BuyInBanner `toPayCents`), so this is display-only.
  */
 export function fmtAmount(value: number, stakesMode?: string): string {
-  const points = stakesMode === 'points' ? value : Math.round(value / 100)
-  return `${points} pts`
+  const n = stakesMode === 'points' ? value : Math.round(value / 100)
+  return `${n} ${Math.abs(n) === 1 ? 'token' : 'tokens'}`
 }

@@ -242,7 +242,7 @@ export function TournamentSetup({ userId, onCreated, onCancel }: Props) {
             <div>
               <label className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Entry (optional)</label>
               <div className="flex items-center gap-2 mt-1">
-                <span className="text-gray-500 dark:text-gray-400">pts</span>
+                <span className="text-gray-500 dark:text-gray-400">tokens</span>
                 <input
                   type="number"
                   value={buyInAmount}

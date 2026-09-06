@@ -758,25 +758,27 @@ describe('payment link generators', () => {
   })
 })
 
-describe('fmtAmount (token/points mode)', () => {
-  it('renders points mode as "pts" (raw value, no cents conversion)', () => {
-    expect(fmtAmount(25, 'points')).toBe('25 pts')
-    expect(fmtAmount(0, 'points')).toBe('0 pts')
-    expect(fmtAmount(150, 'points')).toBe('150 pts')
+describe('fmtAmount (token currency)', () => {
+  it('renders the raw value in points mode, no cents conversion', () => {
+    expect(fmtAmount(25, 'points')).toBe('25 tokens')
+    expect(fmtAmount(0, 'points')).toBe('0 tokens')
+    expect(fmtAmount(150, 'points')).toBe('150 tokens')
   })
 
-  // Gimme surfaces points only (1 pt = $1); legacy money-mode values are stored
-  // in cents, so fmtAmount converts them to points (never renders $).
-  it('converts legacy money-mode cents to points (standard / high_roller / undefined)', () => {
-    expect(fmtAmount(2500, 'standard')).toBe('25 pts')
-    expect(fmtAmount(2500, 'high_roller')).toBe('25 pts')
-    expect(fmtAmount(2500)).toBe('25 pts')
+  it('says "token" for exactly one, either side of zero', () => {
+    expect(fmtAmount(1, 'points')).toBe('1 token')
+    expect(fmtAmount(-1, 'points')).toBe('-1 token')
+    expect(fmtAmount(2, 'points')).toBe('2 tokens')
   })
 
-  it('never renders a currency symbol', () => {
-    expect(fmtAmount(1234, 'standard')).not.toContain('$')
-    expect(fmtAmount(1234, 'standard')).toBe('12 pts') // 1234 cents -> 12 pts (rounded)
-    expect(fmtAmount(25, 'points')).not.toContain('$')
+  // Gimme surfaces tokens only (1 token = $1 by convention, settled off the app);
+  // legacy money-mode values are stored in cents, so fmtAmount converts them and
+  // never renders a currency symbol.
+  it('converts legacy money-mode cents to tokens (standard / high_roller / undefined)', () => {
+    expect(fmtAmount(2500, 'standard')).toBe('25 tokens')
+    expect(fmtAmount(2500, 'high_roller')).toBe('25 tokens')
+    expect(fmtAmount(2500)).toBe('25 tokens')
+    expect(fmtAmount(100)).toBe('1 token')
   })
 })
 
