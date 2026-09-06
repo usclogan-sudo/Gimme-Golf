@@ -1,7 +1,7 @@
 # Gimme Golf Tracker — Scope Document
 
-**Last Updated:** March 22, 2026
-**Repo:** https://github.com/usclogan-sudo/golf-tracker
+**Last Updated:** September 6, 2026
+**Repo:** https://github.com/usclogan-sudo/Gimme-Golf
 **Live Site:** https://gimme.gg/
 
 ---
@@ -21,8 +21,8 @@ Gimme is a mobile-first web app for tracking golf side games, scores, handicaps,
 | Database    | Supabase (PostgreSQL)             |
 | Auth        | Supabase email/password + anonymous guest |
 | Realtime    | Supabase Realtime (postgres_changes + presence) |
-| Hosting     | GitHub Pages                      |
-| CI/CD       | GitHub Actions (auto-deploy on push to main) |
+| Hosting     | Vercel (root path)                |
+| CI/CD       | Vercel (auto-deploy on push to main) · Supabase GitHub integration applies migrations |
 
 ---
 
@@ -256,10 +256,12 @@ All tables have `user_id` with row-level security (`auth.uid() = user_id`).
 ## 7. File Structure
 
 ```
-golf-tracker/
-├── .github/workflows/deploy.yml       # GitHub Actions CI/CD
+Gimme-Golf/
+├── .github/workflows/deploy.yml       # GitHub Pages deploy — DISABLED, kept for rollback
+├── vercel.json                        # Rewrites, cache headers, SPA fallback
+├── supabase/migrations/               # Schema history — the source of truth
 ├── public/
-│   └── 404.html                       # SPA redirect for GitHub Pages
+│   └── 404.html                       # Legacy SPA redirect from the Pages era
 ├── src/
 │   ├── App.tsx                        # Main app: 27 screens, routing, Home dashboard
 │   ├── main.tsx                       # React entry point
@@ -339,7 +341,7 @@ golf-tracker/
 ├── REQUIREMENTS.md                        # Functional requirements (v2.0)
 ├── SCOPE.md                               # This file
 ├── .env.local                             # Local Supabase credentials
-├── vite.config.ts                         # Vite config (base: /golf-tracker/)
+├── vite.config.ts                         # Vite config (base: /)
 ├── tailwind.config.js                     # Tailwind theme
 └── package.json
 ```
@@ -350,8 +352,8 @@ golf-tracker/
 
 ```bash
 # Clone and install
-git clone https://github.com/usclogan-sudo/golf-tracker.git
-cd golf-tracker
+git clone https://github.com/usclogan-sudo/Gimme-Golf.git
+cd Gimme-Golf
 npm install
 
 # Set up environment
@@ -360,7 +362,7 @@ cp .env.local.example .env.local
 
 # Run locally
 npm run dev
-# Opens at http://localhost:5173/golf-tracker/
+# Opens at http://localhost:5173/
 
 # Build for production
 npm run build

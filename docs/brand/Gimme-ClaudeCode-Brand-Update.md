@@ -1,6 +1,6 @@
 # Gimme — Brand Update Handoff for Claude Code
 
-**Apply the new Gimme identity to the live PWA (`usclogan-sudo.github.io/golf-tracker`)**
+**Apply the new Gimme identity to the live PWA (`gimme.gg`)**
 
 Prepared by: Head of Brand · Date: May 31, 2026 · v1.0
 

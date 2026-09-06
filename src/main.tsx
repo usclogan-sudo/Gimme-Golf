@@ -18,7 +18,7 @@ window.addEventListener('unhandledrejection', (event) => {
 })
 
 // Brand QA preview — bypasses auth and renders the result-card scenarios.
-// Reachable at /golf-tracker/?preview=result-card. Removing the query param returns to the app.
+// Reachable at /?preview=result-card. Removing the query param returns to the app.
 const previewParam = new URLSearchParams(window.location.search).get('preview')
 const PreviewComponent =
   previewParam === 'result-card'
