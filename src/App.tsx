@@ -1,6 +1,6 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react'
 import type { Session } from '@supabase/supabase-js'
-import { supabase, rowToCourse, rowToRound, rowToHoleScore, fetchOrCreateProfile, arrivedViaPasswordRecovery } from './lib/supabase'
+import { supabase, rowToCourse, rowToRound, rowToHoleScore, fetchOrCreateProfile, arrivedViaPasswordRecovery, clearPasswordRecovery } from './lib/supabase'
 import { useNotifications } from './hooks/useNotifications'
 import { flush as flushOfflineQueue, getPending as getOfflinePending } from './lib/offlineQueue'
 import { safeWrite } from './lib/safeWrite'
@@ -1042,7 +1042,7 @@ export default function App() {
 
   // Password reset flow (from email link)
   if (showResetPassword) {
-    return <ResetPassword onDone={() => setShowResetPassword(false)} />
+    return <ResetPassword onDone={() => { clearPasswordRecovery(); setShowResetPassword(false) }} />
   }
 
   // Not signed in
