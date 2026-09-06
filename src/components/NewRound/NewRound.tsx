@@ -1506,6 +1506,57 @@ function GameSetup({
         </section>
         )}
 
+        {/* Skins Options */}
+        {type === 'skins' && (
+          <section className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm p-4 space-y-3">
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Skins Options</p>
+            <button
+              onClick={() => setCarryovers((v: boolean) => !v)}
+              className={`w-full h-12 rounded-xl font-semibold border-2 ${
+                carryovers ? 'bg-amber-50 border-amber-300 text-gray-800 dark:text-gray-100' : 'bg-gray-50 border-gray-200 text-gray-600'
+              }`}
+            >
+              Carryovers: {carryovers ? 'ON ✓ (recommended)' : 'OFF'}
+            </button>
+            {/* How a skin gets paid for. The pot model caps everyone's exposure at
+                the entry; per-skin has no ceiling, which is how most groups actually
+                play "20 a skin". */}
+            <div>
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Paying for skins</p>
+              <div className="flex rounded-xl overflow-hidden border-2 border-gray-200 dark:border-gray-600">
+                {([
+                  { v: 'pot' as SkinsPayModel, label: 'Shared pot' },
+                  { v: 'per_skin' as SkinsPayModel, label: 'Per skin' },
+                ]).map(opt => (
+                  <button
+                    key={opt.v}
+                    onClick={() => setSkinsPayModel(opt.v)}
+                    className={`flex-1 py-2.5 text-sm font-semibold transition-colors ${
+                      skinsPayModel === opt.v
+                        ? 'bg-amber-500 text-white'
+                        : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300'
+                    }`}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <p className="text-sm text-gray-500 bg-gray-50 dark:bg-gray-700 rounded-xl p-3">
+              Lowest score wins the hole.{' '}
+              {carryovers ? 'Ties carry forward until someone wins the hole clean.' : 'Ties push — no carry.'}
+              {skinsPayModel === 'per_skin'
+                ? ` Every other player pays the winner ${fmtAmount(buyInCents, stakesMode)} per skin.${
+                    carryovers
+                      ? ` A hole carrying three skins costs each of them ${fmtAmount(buyInCents * 3, stakesMode)} — carries multiply real money here, they don't reshuffle a fixed pot.`
+                      : ''
+                  } Nothing is collected up front and there's no ceiling.`
+                : ` Everyone puts in ${fmtAmount(buyInCents, stakesMode)} up front and the winners split it in proportion to skins won. That entry is the most anyone can lose${carryovers ? ', carries or not' : ''}.`}
+            </p>
+          </section>
+        )}
+
         {/* Buy-in */}
         <section className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm p-4 space-y-3">
           <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
@@ -1557,53 +1608,6 @@ function GameSetup({
             </p>
           )}
         </section>
-
-        {/* Skins Options */}
-        {type === 'skins' && (
-          <section className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm p-4 space-y-3">
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Skins Options</p>
-            <button
-              onClick={() => setCarryovers((v: boolean) => !v)}
-              className={`w-full h-12 rounded-xl font-semibold border-2 ${
-                carryovers ? 'bg-amber-50 border-amber-300 text-gray-800 dark:text-gray-100' : 'bg-gray-50 border-gray-200 text-gray-600'
-              }`}
-            >
-              Carryovers: {carryovers ? 'ON ✓ (recommended)' : 'OFF'}
-            </button>
-            {/* How a skin gets paid for. The pot model caps everyone's exposure at
-                the entry; per-skin has no ceiling, which is how most groups actually
-                play "20 a skin". */}
-            <div>
-              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Paying for skins</p>
-              <div className="flex rounded-xl overflow-hidden border-2 border-gray-200 dark:border-gray-600">
-                {([
-                  { v: 'pot' as SkinsPayModel, label: 'Shared pot' },
-                  { v: 'per_skin' as SkinsPayModel, label: 'Per skin' },
-                ]).map(opt => (
-                  <button
-                    key={opt.v}
-                    onClick={() => setSkinsPayModel(opt.v)}
-                    className={`flex-1 py-2.5 text-sm font-semibold transition-colors ${
-                      skinsPayModel === opt.v
-                        ? 'bg-amber-500 text-white'
-                        : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300'
-                    }`}
-                  >
-                    {opt.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <p className="text-sm text-gray-500 bg-gray-50 dark:bg-gray-700 rounded-xl p-3">
-              Lowest score wins the hole.{' '}
-              {carryovers ? 'Ties carry forward until someone wins the hole clean.' : 'Ties push — no carry.'}
-              {skinsPayModel === 'per_skin'
-                ? ` Every other player pays the winner ${fmtAmount(buyInCents, stakesMode)} for each skin — a carried skin costs that much again. Nothing is collected up front and there's no ceiling.`
-                : ` Everyone puts in ${fmtAmount(buyInCents, stakesMode)} up front and the winners split it in proportion to skins won. That entry is the most anyone can lose.`}
-            </p>
-          </section>
-        )}
 
         {/* Best Ball Options */}
         {type === 'best_ball' && (
