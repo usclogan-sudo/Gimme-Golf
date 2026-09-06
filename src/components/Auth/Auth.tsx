@@ -231,9 +231,15 @@ export function Auth({ inviteCode, sessionExpired }: AuthProps = {}) {
             >
               {loading ? 'Loading...' : 'Sign In'}
             </button>
-            <p className="text-xs text-gray-400 text-center">
-              <button onClick={() => resetState('forgot-password')} className="text-amber-600 underline">Forgot password?</button>
-            </p>
+            {/* Was text-xs grey and easy to miss entirely — someone who cannot sign
+                in is exactly the person who needs to find this, and they were
+                reporting there was no way to reset at all. */}
+            <button
+              onClick={() => resetState('forgot-password')}
+              className="w-full text-center text-sm font-semibold text-amber-600 underline py-1"
+            >
+              Forgot your password?
+            </button>
           </div>
 
           <div className="space-y-3">
@@ -370,6 +376,15 @@ export function Auth({ inviteCode, sessionExpired }: AuthProps = {}) {
             )}
 
             {error && <p className="text-red-500 text-sm">{error}</p>}
+
+            {mode === 'sign-up' && (
+              <button
+                onClick={() => resetState('forgot-password')}
+                className="w-full text-center text-sm font-semibold text-amber-600 underline py-1"
+              >
+                Already have an account? Reset your password
+              </button>
+            )}
 
             <button
               onClick={handleSubmit}
