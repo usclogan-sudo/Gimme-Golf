@@ -13,6 +13,11 @@ interface RosterEntry {
   email: string | null
 }
 
+const GAME_TYPES = [
+  'skins', 'best_ball', 'nassau', 'wolf', 'bingo_bango_bongo',
+  'hammer', 'vegas', 'stableford', 'dots', 'banker', 'quota',
+] as const
+
 interface Overview {
   round_id: string
   status: string
@@ -23,6 +28,8 @@ interface Overview {
   event_id: string | null
   event_missing: boolean
   event_name: string | null
+  game_type: string | null
+  buy_in_tokens: number | null
   players: RosterEntry[]
 }
 
@@ -44,6 +51,11 @@ export function RoundManagePanel({ roundId, onBack }: { roundId: string; onBack:
   const [users, setUsers] = useState<{ user_id: string; display_name: string | null }[]>([])
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
+  const [addUserId, setAddUserId] = useState('')
+  const [addName, setAddName] = useState('')
+  const [addGroup, setAddGroup] = useState('')
+  // Dropping deletes scores, so it confirms inline rather than firing on one tap.
+  const [confirmDrop, setConfirmDrop] = useState<string | null>(null)
 
   const load = useCallback(async () => {
     const [{ data: ov, error: ovErr }, { data: us }] = await Promise.all([
@@ -91,6 +103,61 @@ export function RoundManagePanel({ roundId, onBack }: { roundId: string; onBack:
         <p className="text-xs text-gray-500">
           {data.players.length} players
           {data.event_id ? ` · event: ${data.event_name ?? 'unnamed'}` : ' · no event'}
+        </p>
+      </div>
+
+      {/* Game and stake. Changing the type rebuilds a valid config for the new game
+          from the roster — Wolf needs an order, Best Ball needs sides — and leaves
+          the scores alone, so the holes already played re-settle under the new game
+          rather than being lost. */}
+      <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl p-3 space-y-2">
+        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Game</p>
+        <div className="flex flex-wrap items-center gap-2">
+          <select
+            value={data.game_type ?? ''}
+            onChange={e => run('gametype', () =>
+              supabase.rpc('admin_round_set_game_type', { p_round_id: roundId, p_game_type: e.target.value }))}
+            className="text-xs border border-gray-200 dark:border-gray-600 dark:bg-gray-700 rounded-lg px-2 py-1"
+          >
+            {GAME_TYPES.map(g => (
+              <option key={g} value={g}>{g.replace(/_/g, ' ')}</option>
+            ))}
+          </select>
+          <label className="text-xs text-gray-500 flex items-center gap-1">
+            Tokens
+            <input
+              type="number"
+              min={0}
+              defaultValue={data.buy_in_tokens ?? 0}
+              onBlur={e => {
+                const v = Number(e.target.value)
+                if (Number.isNaN(v) || v === data.buy_in_tokens) return
+                void run('stake', () =>
+                  supabase.rpc('admin_round_set_stake', { p_round_id: roundId, p_tokens: v }))
+              }}
+              className="w-20 text-xs border border-gray-200 dark:border-gray-600 dark:bg-gray-700 rounded-lg px-2 py-1"
+            />
+          </label>
+          {data.status !== 'complete' ? (
+            <button
+              onClick={() => run('end', () =>
+                supabase.rpc('admin_round_set_status', { p_round_id: roundId, p_status: 'complete' }))}
+              className="text-xs font-semibold px-2.5 py-1.5 rounded-lg text-gray-700 border border-gray-300 active:bg-gray-50"
+            >
+              End round
+            </button>
+          ) : (
+            <button
+              onClick={() => run('reopen', () =>
+                supabase.rpc('admin_round_set_status', { p_round_id: roundId, p_status: 'active' }))}
+              className="text-xs font-semibold px-2.5 py-1.5 rounded-lg text-gray-700 border border-gray-300 active:bg-gray-50"
+            >
+              Reopen round
+            </button>
+          )}
+        </div>
+        <p className="text-[11px] text-gray-400">
+          Changing the game keeps every score — the holes played re-settle under the new game.
         </p>
       </div>
 
@@ -207,10 +274,77 @@ export function RoundManagePanel({ roundId, onBack }: { roundId: string; onBack:
                   />
                   <span className="text-gray-400">{fmtHandicap(p.handicap)}</span>
                 </label>
+
+                {confirmDrop === p.player_id ? (
+                  <span className="flex items-center gap-1.5">
+                    <span className="text-[11px] text-red-700">Drop {p.name} and their scores?</span>
+                    <button
+                      onClick={() => { setConfirmDrop(null); void run(`drop-${p.player_id}`, () =>
+                        supabase.rpc('admin_round_remove_player', { p_round_id: roundId, p_player_id: p.player_id })) }}
+                      className="text-[11px] font-bold px-2 py-1 rounded bg-red-600 text-white"
+                    >Drop</button>
+                    <button onClick={() => setConfirmDrop(null)} className="text-[11px] text-gray-500 px-1">Cancel</button>
+                  </span>
+                ) : (
+                  <button
+                    onClick={() => setConfirmDrop(p.player_id)}
+                    className="text-[11px] font-semibold text-red-600 px-1.5"
+                  >Drop</button>
+                )}
               </div>
             </div>
           )
         })}
+      </div>
+
+      {/* Adding someone mid-round stamps their start hole, so they only pay for
+          holes from here on. Dropping takes their scores with them — there is no
+          version that keeps them, since a score belongs to a name on the card. */}
+      <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl p-3 space-y-2">
+        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Add a player</p>
+        <div className="flex flex-wrap items-center gap-2">
+          <select
+            value={addUserId}
+            onChange={e => setAddUserId(e.target.value)}
+            className="text-xs border border-gray-200 dark:border-gray-600 dark:bg-gray-700 rounded-lg px-2 py-1"
+          >
+            <option value="">Existing account…</option>
+            {users.map(u => (
+              <option key={u.user_id} value={u.user_id}>{u.display_name ?? u.user_id.slice(0, 8)}</option>
+            ))}
+          </select>
+          <span className="text-xs text-gray-400">or</span>
+          <input
+            value={addName}
+            onChange={e => setAddName(e.target.value)}
+            placeholder="Guest name"
+            className="text-xs border border-gray-200 dark:border-gray-600 dark:bg-gray-700 rounded-lg px-2 py-1 w-32"
+          />
+          <label className="text-xs text-gray-500 flex items-center gap-1">
+            Group
+            <input
+              type="number" min={1} value={addGroup}
+              onChange={e => setAddGroup(e.target.value)}
+              className="w-14 text-xs border border-gray-200 dark:border-gray-600 dark:bg-gray-700 rounded-lg px-2 py-1"
+            />
+          </label>
+          <button
+            disabled={(!addUserId && !addName.trim()) || busy === 'add'}
+            onClick={() => run('add', () =>
+              supabase.rpc('admin_round_add_player', {
+                p_round_id: roundId,
+                p_user_id: addUserId || null,
+                p_name: addUserId ? null : addName.trim(),
+                p_group: addGroup ? Number(addGroup) : null,
+              })).then(() => { setAddUserId(''); setAddName('') })}
+            className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-gray-800 text-white disabled:opacity-40"
+          >
+            {busy === 'add' ? 'Adding…' : 'Add'}
+          </button>
+        </div>
+        <p className="text-[11px] text-gray-400">
+          An existing account can score for themselves straight away. A guest is scored for by someone else.
+        </p>
       </div>
 
       <p className="text-xs text-gray-400">

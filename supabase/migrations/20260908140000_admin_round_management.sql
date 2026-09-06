@@ -53,6 +53,9 @@ begin
     -- the state that made the app behave as an event round with no event.
     'event_missing', (v_round.event_id is not null and v_event.id is null),
     'event_name', v_event.name,
+    'game_type', v_round.game->>'type',
+    -- Surfaced in whole tokens; stored in cents (1 token = 100).
+    'buy_in_tokens', (coalesce((v_round.game->>'buyInCents')::int, 0) / 100),
     'players', (
       select coalesce(jsonb_agg(jsonb_build_object(
         'player_id',  p->>'id',
@@ -287,3 +290,276 @@ grant execute on function public.admin_round_set_role(text, text, text) to authe
 grant execute on function public.admin_round_set_group(text, text, integer) to authenticated;
 grant execute on function public.admin_round_set_handicap(text, text, numeric) to authenticated;
 grant execute on function public.admin_round_repair(text) to authenticated;
+
+-- ─── Stake ───────────────────────────────────────────────────────────────────
+--
+-- buyInCents is the entry under a pot game and the per-unit value under a unit game
+-- (wolf, banker, dots, hammer) or per-skin Skins. One field, meaning set by the game
+-- — so this changes what a token is worth without touching anything else.
+create or replace function public.admin_round_set_stake(
+  p_round_id text, p_tokens integer
+)
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  if not exists (
+    select 1 from public.user_profiles up
+    where up.user_id = auth.uid() and up.is_admin = true
+  ) then
+    raise exception 'Not authorized';
+  end if;
+  if p_tokens < 0 then
+    raise exception 'Stake cannot be negative';
+  end if;
+
+  -- Stored in cents; the UI works in whole tokens (1 token = 100).
+  update public.rounds
+  set game = jsonb_set(game, '{buyInCents}', to_jsonb(p_tokens * 100))
+  where id = p_round_id and game is not null;
+
+  update public.buy_ins
+  set amount_cents = p_tokens * 100
+  where round_id = p_round_id and status = 'unpaid';
+end;
+$$;
+
+-- ─── Game type ───────────────────────────────────────────────────────────────
+--
+-- Changing the type without changing the config would settle the round against a
+-- config for a different game — Wolf with no wolfOrder scores nobody, Best Ball with
+-- no teams has no sides. So this rebuilds a valid minimal config for the target game
+-- from the current roster, in the same shape NewRound would have produced.
+--
+-- Scores are untouched: every Class A game is a pure function of the card, so
+-- switching type re-settles the holes already played rather than discarding them.
+-- That is the point — it is how you correct a round set up as the wrong game.
+create or replace function public.admin_round_set_game_type(
+  p_round_id text, p_game_type text
+)
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_round record;
+  v_ids text[];
+  v_config jsonb;
+  v_teams jsonb := '{}'::jsonb;
+  v_quotas jsonb := '{}'::jsonb;
+  v_id text;
+  v_i int := 0;
+begin
+  if not exists (
+    select 1 from public.user_profiles up
+    where up.user_id = auth.uid() and up.is_admin = true
+  ) then
+    raise exception 'Not authorized';
+  end if;
+  if p_game_type not in ('skins','best_ball','nassau','wolf','bingo_bango_bongo',
+                         'hammer','vegas','stableford','dots','banker','quota') then
+    raise exception 'Unknown game type: %', p_game_type;
+  end if;
+
+  select * into v_round from public.rounds where id = p_round_id;
+  if not found then raise exception 'Round not found'; end if;
+
+  select array_agg(p->>'id' order by p->>'name')
+  into v_ids
+  from jsonb_array_elements(coalesce(v_round.players, '[]'::jsonb)) p;
+
+  -- Alternating sides for the team games, and a quota per player from their frozen
+  -- handicap — the same derivation setup uses.
+  foreach v_id in array coalesce(v_ids, array[]::text[]) loop
+    v_teams := v_teams || jsonb_build_object(v_id, case when v_i % 2 = 0 then 'A' else 'B' end);
+    v_quotas := v_quotas || jsonb_build_object(v_id, greatest(0, least(36, round(36 - coalesce((
+      select (p->>'handicapIndex')::numeric
+      from jsonb_array_elements(v_round.players) p where p->>'id' = v_id), 0)))));
+    v_i := v_i + 1;
+  end loop;
+
+  v_config := case p_game_type
+    when 'skins'      then jsonb_build_object('mode','net','carryovers',true,'payModel','pot')
+    when 'best_ball'  then jsonb_build_object('scoring','match','mode','net','teams',v_teams)
+    when 'nassau'     then jsonb_build_object('mode','net')
+    when 'wolf'       then jsonb_build_object('mode','net','wolfOrder',to_jsonb(v_ids))
+    when 'banker'     then jsonb_build_object('mode','net','bankerOrder',to_jsonb(v_ids))
+    when 'vegas'      then jsonb_build_object('mode','net','teams',v_teams)
+    when 'stableford' then jsonb_build_object('mode','net')
+    when 'quota'      then jsonb_build_object('mode','net','quotas',v_quotas)
+    when 'hammer'     then jsonb_build_object('baseValueCents',
+                            coalesce((v_round.game->>'buyInCents')::int, 100))
+    when 'dots'       then jsonb_build_object('activeDots',
+                            jsonb_build_array('sandy','greenie','birdie'),
+                            'valueCentsPerDot', coalesce((v_round.game->>'buyInCents')::int, 100))
+    else jsonb_build_object('mode','net')
+  end;
+
+  update public.rounds
+  set game = jsonb_build_object(
+        'id', coalesce(game->>'id', gen_random_uuid()::text),
+        'type', p_game_type,
+        'buyInCents', coalesce((game->>'buyInCents')::int, 0),
+        'stakesMode', game->>'stakesMode',
+        'config', v_config)
+  where id = p_round_id;
+end;
+$$;
+
+-- ─── Add and drop players ────────────────────────────────────────────────────
+--
+-- Add takes either an existing account or a name for a guest. A registered user's
+-- player id IS their auth uuid, which is what lets them claim the slot and score;
+-- a guest gets a generated id and is scored for by someone else.
+create or replace function public.admin_round_add_player(
+  p_round_id text,
+  p_user_id uuid default null,
+  p_name text default null,
+  p_group integer default null
+)
+returns text
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_round record;
+  v_player_id text;
+  v_name text;
+  v_hcp numeric := 0;
+  v_tee text := 'White';
+begin
+  if not exists (
+    select 1 from public.user_profiles up
+    where up.user_id = auth.uid() and up.is_admin = true
+  ) then
+    raise exception 'Not authorized';
+  end if;
+
+  select * into v_round from public.rounds where id = p_round_id;
+  if not found then raise exception 'Round not found'; end if;
+
+  if p_user_id is not null then
+    select p_user_id::text, coalesce(up.display_name, 'Player'),
+           coalesce(up.handicap_index, 0), coalesce(up.tee, 'White')
+    into v_player_id, v_name, v_hcp, v_tee
+    from public.user_profiles up where up.user_id = p_user_id;
+    if v_player_id is null then raise exception 'No profile for that user'; end if;
+    if exists (select 1 from jsonb_array_elements(v_round.players) p
+               where p->>'id' = v_player_id) then
+      raise exception 'That player is already on this round';
+    end if;
+  else
+    if coalesce(trim(p_name), '') = '' then
+      raise exception 'Give a name or pick an account';
+    end if;
+    v_player_id := gen_random_uuid()::text;
+    v_name := trim(p_name);
+  end if;
+
+  update public.rounds
+  set players = coalesce(players, '[]'::jsonb) || jsonb_build_object(
+        'id', v_player_id, 'name', v_name,
+        'handicapIndex', v_hcp, 'tee', v_tee, 'ghinNumber', ''),
+      groups = case when p_group is null then groups
+                    else coalesce(groups, '{}'::jsonb) || jsonb_build_object(v_player_id, p_group) end
+  where id = p_round_id;
+
+  insert into public.round_players (id, user_id, round_id, player_id, tee_played, start_hole)
+  values (gen_random_uuid()::text, v_round.user_id, p_round_id, v_player_id, v_tee,
+          -- Joining mid-round means only paying for holes from here on (Option A).
+          case when v_round.current_hole > 1 then v_round.current_hole else null end)
+  on conflict do nothing;
+
+  if p_user_id is not null then
+    perform public.admin_round_grant_access(p_round_id, v_player_id, p_user_id);
+  end if;
+
+  return v_player_id;
+end;
+$$;
+
+-- Drop takes the player's scores with them. There is no version of this that keeps
+-- them: a score belongs to a player on the card, and leaving orphans would put a
+-- name back on every leaderboard that reads from hole_scores.
+create or replace function public.admin_round_remove_player(
+  p_round_id text, p_player_id text
+)
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare v_event_id text;
+begin
+  if not exists (
+    select 1 from public.user_profiles up
+    where up.user_id = auth.uid() and up.is_admin = true
+  ) then
+    raise exception 'Not authorized';
+  end if;
+
+  select event_id into v_event_id from public.rounds where id = p_round_id;
+
+  delete from public.hole_scores        where round_id = p_round_id and player_id = p_player_id;
+  delete from public.buy_ins            where round_id = p_round_id and player_id = p_player_id;
+  delete from public.junk_records       where round_id = p_round_id and player_id = p_player_id;
+  delete from public.round_players      where round_id = p_round_id and player_id = p_player_id;
+  delete from public.round_participants where round_id = p_round_id and player_id = p_player_id;
+  delete from public.settlements
+    where round_id = p_round_id and (from_player_id = p_player_id or to_player_id = p_player_id);
+  if v_event_id is not null then
+    delete from public.event_participants
+    where event_id = v_event_id and player_id = p_player_id;
+  end if;
+
+  update public.rounds
+  set players = (select coalesce(jsonb_agg(p), '[]'::jsonb)
+                 from jsonb_array_elements(players) p where p->>'id' <> p_player_id),
+      groups = coalesce(groups, '{}'::jsonb) - p_player_id
+  where id = p_round_id;
+end;
+$$;
+
+-- ─── End (or reopen) a round ─────────────────────────────────────────────────
+--
+-- A round abandoned on the course stays 'active' forever, sitting on every player's
+-- home screen. Reopening is offered too: ending one by mistake previously had no
+-- undo, and settlement recomputes from the card either way.
+create or replace function public.admin_round_set_status(
+  p_round_id text, p_status text
+)
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  if not exists (
+    select 1 from public.user_profiles up
+    where up.user_id = auth.uid() and up.is_admin = true
+  ) then
+    raise exception 'Not authorized';
+  end if;
+  if p_status not in ('setup', 'active', 'complete') then
+    raise exception 'Status must be setup, active or complete';
+  end if;
+
+  update public.rounds set status = p_status where id = p_round_id;
+end;
+$$;
+
+revoke all on function public.admin_round_set_stake(text, integer) from public, anon;
+revoke all on function public.admin_round_set_game_type(text, text) from public, anon;
+revoke all on function public.admin_round_add_player(text, uuid, text, integer) from public, anon;
+revoke all on function public.admin_round_remove_player(text, text) from public, anon;
+revoke all on function public.admin_round_set_status(text, text) from public, anon;
+
+grant execute on function public.admin_round_set_stake(text, integer) to authenticated;
+grant execute on function public.admin_round_set_game_type(text, text) to authenticated;
+grant execute on function public.admin_round_add_player(text, uuid, text, integer) to authenticated;
+grant execute on function public.admin_round_remove_player(text, text) to authenticated;
+grant execute on function public.admin_round_set_status(text, text) to authenticated;
