@@ -16,7 +16,7 @@ import {
   netFromPayouts,
   calculateJunks,
   calculateSideBetSettlements,
-  calculateSkins, calculateSkinsPayouts, calculateSkinsNet,
+  calculateSkins, calculateSkinsPayouts, calculateSkinsNet, calculateSkinsPerSkinNet,
   calculateBestBall, calculateBestBallPayouts,
   calculateNassau, calculateNassauPayouts,
   calculateWolf,
@@ -81,10 +81,15 @@ export function computeRoundPlayerNets(input: RoundNetInputs): RoundNetResult {
           const result = calculateSkins(players, roundScores, pSnap, cfg as SkinsConfig, chm, startHoles)
           // A mid-round joiner breaks the uniform-ante pot model, so skins settles
           // from a prorated signed net in that case (matches SettleUp Option A).
+          const skinsCfg = cfg as SkinsConfig
           const hasJoiner = Object.values(startHoles).some(h => h > 1)
-          gameNet = hasJoiner
-            ? calculateSkinsNet(result, game, players, startHoles)
-            : netFromPayouts(calculateSkinsPayouts(result, game, players.length), players, buyIn)
+          gameNet = skinsCfg.payModel === 'per_skin'
+            // Paid per skin: no pot was ever collected, so the net is the sum of
+            // what each skin cost the other players in that hole.
+            ? calculateSkinsPerSkinNet(result, players, buyIn, startHoles, skinsCfg.presses ?? [])
+            : hasJoiner
+              ? calculateSkinsNet(result, game, players, startHoles)
+              : netFromPayouts(calculateSkinsPayouts(result, game, players.length), players, buyIn)
           break
         }
         case 'best_ball': {

@@ -95,10 +95,22 @@ export interface Press {
   playerId: string
 }
 
+/** How a won skin is paid for.
+ *  - `pot`      — everyone antes an entry up front and winners split the collected
+ *                 pot in proportion to skins won. Total exposure is fixed at the
+ *                 entry, however many skins fall.
+ *  - `per_skin` — each skin is paid for on the spot: every other player in the hole
+ *                 pays the winner the skin value. Nothing is collected up front and
+ *                 there is no ceiling — ten skins moves five times the money two
+ *                 does. This is how most groups actually play "$20 a skin". */
+export type SkinsPayModel = 'pot' | 'per_skin'
+
 export interface SkinsConfig {
   mode: SkinsMode
   carryovers: boolean
   presses?: Press[]
+  /** Absent ⇒ 'pot', so every existing round settles exactly as before. */
+  payModel?: SkinsPayModel
 }
 
 export type BestBallMode = 'gross' | 'net'

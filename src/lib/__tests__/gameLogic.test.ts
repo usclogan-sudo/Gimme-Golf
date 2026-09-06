@@ -23,6 +23,7 @@ import {
   calculateJunks,
   calculateSkinsPayouts,
   calculateSkinsNet,
+  calculateSkinsPerSkinNet,
   calculateBBBPayouts,
   calculateWolfPayouts,
   calculateNassau,
@@ -1013,6 +1014,91 @@ describe('netFromPayouts — nothing won, nothing owed', () => {
     expect(net.p1).toBe(4000)
     expect(net.p2).toBe(-2000)
     expect(net.p3).toBe(-2000)
+    expect(Object.values(net).reduce((a, b) => a + b, 0)).toBe(0)
+  })
+})
+
+// ─── Per-skin skins ─────────────────────────────────────────────────────────
+// "Four of us play $20 a skin": every other player pays the winner the skin value,
+// so a skin is worth value × (players − 1) to the winner. Unlike the pot model there
+// is no ceiling — the money moved scales with how many skins fall.
+
+describe('calculateSkinsPerSkinNet', () => {
+  const four: Player[] = ['p1', 'p2', 'p3', 'p4'].map(id => ({
+    id, name: id.toUpperCase(), handicapIndex: 0, tee: 'White', ghinNumber: '',
+  }))
+  const V = 2000 // 20 a skin
+
+  /** Build a SkinsResult from a list of [hole, winner|null, skinsInPlay]. */
+  const mk = (rows: [number, string | null, number][]) => ({
+    skinsWon: rows.reduce((acc, [, w, n]) => {
+      if (w) acc[w] = (acc[w] ?? 0) + n
+      return acc
+    }, {} as Record<string, number>),
+    holeResults: rows.map(([holeNumber, winnerId, skinsInPlay]) => ({
+      holeNumber, winnerId, carry: skinsInPlay - 1, skinsInPlay,
+    })),
+    totalSkins: rows.reduce((n, [, w, s]) => (w ? n + s : n), 0),
+    pendingCarry: 0,
+  })
+
+  it('pays the winner from every other player in the hole', () => {
+    const net = calculateSkinsPerSkinNet(mk([[1, 'p1', 1]]), four, V)
+    expect(net.p1).toBe(6000)   // 20 from each of three
+    expect(net.p2).toBe(-2000)
+    expect(net.p3).toBe(-2000)
+    expect(net.p4).toBe(-2000)
+  })
+
+  it('nets to zero', () => {
+    const net = calculateSkinsPerSkinNet(mk([[1, 'p1', 1], [2, 'p3', 1], [3, 'p1', 1]]), four, V)
+    expect(Object.values(net).reduce((a, b) => a + b, 0)).toBe(0)
+  })
+
+  it('charges a carried skin at its full multiple', () => {
+    // Holes 1 and 2 tie, hole 3 carries three skins: each loser pays 3 × 20.
+    const net = calculateSkinsPerSkinNet(mk([[1, null, 1], [2, null, 2], [3, 'p2', 3]]), four, V)
+    expect(net.p2).toBe(18000)  // 60 from each of three
+    expect(net.p1).toBe(-6000)
+  })
+
+  it('moves more money as more skins fall — the point of the model', () => {
+    // Same winner throughout, so nothing offsets and the totals compare directly.
+    // Under the pot model both rounds would move exactly the collected pot.
+    const won = (holes: number) => calculateSkinsPerSkinNet(
+      mk(Array.from({ length: holes }, (_, i) => [i + 1, 'p1', 1] as [number, string, number])),
+      four, V)
+    expect(won(2).p1).toBe(12000)
+    expect(won(10).p1).toBe(60000)
+    expect(won(10).p1).toBe(won(2).p1 * 5)
+  })
+
+  it('leaves everyone at zero when no skin is won', () => {
+    const net = calculateSkinsPerSkinNet(mk([[1, null, 1], [2, null, 2]]), four, V)
+    expect(net).toEqual({ p1: 0, p2: 0, p3: 0, p4: 0 })
+  })
+
+  it('only charges a mid-round joiner from the hole they joined', () => {
+    // p4 joins at hole 3, so they pay nothing for holes 1-2 and the winner of those
+    // collects from two opponents rather than three.
+    const net = calculateSkinsPerSkinNet(
+      mk([[1, 'p1', 1], [3, 'p1', 1]]), four, V, { p4: 3 })
+    expect(net.p4).toBe(-2000)        // hole 3 only
+    expect(net.p1).toBe(4000 + 6000)  // two opponents on h1, three on h3
+    expect(Object.values(net).reduce((a, b) => a + b, 0)).toBe(0)
+  })
+
+  it('scales with a press from the press hole onward', () => {
+    const net = calculateSkinsPerSkinNet(
+      mk([[1, 'p1', 1], [5, 'p1', 1]]), four, V, {}, [{ holeNumber: 4, playerId: 'p2' }])
+    expect(net.p1).toBe(6000 + 12000) // hole 5 doubled
+    expect(Object.values(net).reduce((a, b) => a + b, 0)).toBe(0)
+  })
+
+  it('holds at three players as well as four', () => {
+    const three = four.slice(0, 3)
+    const net = calculateSkinsPerSkinNet(mk([[1, 'p1', 1]]), three, V)
+    expect(net.p1).toBe(4000)
     expect(Object.values(net).reduce((a, b) => a + b, 0)).toBe(0)
   })
 })
