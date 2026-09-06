@@ -918,6 +918,58 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
     }
   }
 
+  // ─── Mid-round scorekeeper assignment ──────────────────────────────────────
+  //
+  // Scorekeepers could only be named in EventSetup, before anyone had joined and
+  // before the organiser knew who would end up in which cart. Worse, the role is
+  // baked onto event_participants at JOIN time, so editing the event's
+  // group_scorekeepers afterwards did nothing for anyone already in.
+  //
+  // This writes both: the participant row, which is what the permission check
+  // actually reads, and the event's map, so a later joiner in that group is still
+  // auto-promoted. RLS allows it because event_participants_owner is scoped to the
+  // event's creator — hence the isEventOwner gate on the UI, so a non-creator
+  // manager is never shown a control whose write would be silently refused.
+  const isEventOwner = isEventRound && !!round?.createdBy && round.createdBy === userId
+
+  const assignGroupScorekeeper = async (groupNumber: number, playerId: string | null) => {
+    if (!event) return
+    setSaveError(null)
+
+    const inGroup = eventParticipants.filter(ep => ep.groupNumber === groupNumber)
+    const demote = inGroup.filter(ep => ep.role === 'scorekeeper' && ep.playerId !== playerId)
+    const promote = playerId ? inGroup.find(ep => ep.playerId === playerId) : undefined
+
+    // Optimistic: the organiser is standing on a tee waiting for this to take.
+    setEventParticipants(prev => prev.map(ep => {
+      if (ep.groupNumber !== groupNumber) return ep
+      if (playerId && ep.playerId === playerId) return { ...ep, role: 'scorekeeper' as const }
+      if (ep.role === 'scorekeeper') return { ...ep, role: 'player' as const }
+      return ep
+    }))
+
+    const nextMap: Record<number, string> = { ...(event.groupScorekeepers ?? {}) }
+    if (playerId) nextMap[groupNumber] = playerId
+    else delete nextMap[groupNumber]
+    setEvent(prev => prev ? { ...prev, groupScorekeepers: nextMap } : prev)
+
+    const writes = [
+      ...demote.map(ep =>
+        supabase.from('event_participants').update({ role: 'player' }).eq('id', ep.id)),
+      ...(promote
+        ? [supabase.from('event_participants').update({ role: 'scorekeeper' }).eq('id', promote.id)]
+        : []),
+      supabase.from('events').update({ group_scorekeepers: nextMap }).eq('id', event.id),
+    ]
+    const results = await Promise.all(writes)
+    const failed = results.find(r => r.error)
+    if (failed?.error) {
+      reportSupabaseError(failed.error, 'assign_group_scorekeeper', { groupNumber, playerId })
+      setSaveError("Couldn't save the scorekeeper — check your connection and try again.")
+      loadScorecardData()
+    }
+  }
+
   // Wolf decision handler
   const updateWolfDecision = async (holeNumber: number, partnerId: string | null) => {
     // Integrity lock (Authority Model §7): once ANY score is entered for the hole,
@@ -2060,6 +2112,35 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
                 All
               </button>
             </div>
+
+            {/* Naming a scorekeeper was only possible in setup, before anyone had
+                joined and before the organiser knew who was in which cart. Only
+                players who have actually joined can be picked — a scorekeeper needs
+                a device, and someone being scored for by proxy has none. */}
+            {isEventOwner && activeGroupTab !== 'all' && (() => {
+              const groupNum = activeGroupTab as number
+              const joinedIds = new Set(eventParticipants.filter(ep => ep.groupNumber === groupNum).map(ep => ep.playerId))
+              const candidates = players.filter((p: any) => round.groups?.[p.id] === groupNum && joinedIds.has(p.id))
+              const currentSk = eventParticipants.find(ep => ep.groupNumber === groupNum && ep.role === 'scorekeeper')
+              return (
+                <div className="max-w-2xl mx-auto mt-2 flex items-center gap-2">
+                  <span className="text-xs text-gray-500 font-medium flex-shrink-0">Scorekeeper:</span>
+                  <select
+                    value={currentSk?.playerId ?? ''}
+                    onChange={e => assignGroupScorekeeper(groupNum, e.target.value || null)}
+                    className="text-xs border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-lg px-2 py-1 flex-1 min-w-0"
+                  >
+                    <option value="">None — anyone enters their own</option>
+                    {candidates.map((p: any) => (
+                      <option key={p.id} value={p.id}>{p.name}</option>
+                    ))}
+                  </select>
+                  {candidates.length === 0 && (
+                    <span className="text-xs text-amber-600 flex-shrink-0">Nobody has joined yet</span>
+                  )}
+                </div>
+              )
+            })()}
           </div>
         )
       })()}
