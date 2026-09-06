@@ -136,6 +136,7 @@ function Home({
   onLedger,
   onPlayAgain,
   onViewSettlements,
+  onMonitorEvent,
   homeTab,
   setHomeTab,
   roundsSeg,
@@ -160,6 +161,8 @@ function Home({
   onViewProps?: (roundId: string) => void
   onJoinRound: (code?: string) => void
   onViewSettlements: (roundId: string) => void
+  /** Open the live event monitor for an event round. */
+  onMonitorEvent?: (roundId: string) => void
   onPersonalDashboard: () => void
   onCreateEvent: () => void
   onLedger: () => void
@@ -578,6 +581,19 @@ function Home({
                       </button>
                     ) : <span />}
                     <div className="flex items-center gap-4">
+                      {/* EventLeaderboard was built and wired into the router, but
+                          nothing ever navigated to it — so the one screen that shows
+                          per-group progress, who is online and how far each foursome
+                          has got has never been reachable. For an organiser running
+                          four groups that is the view they actually want. */}
+                      {round.eventId && onMonitorEvent && (
+                        <button
+                          onClick={(e) => { e.stopPropagation(); onMonitorEvent(round.id) }}
+                          className="text-gray-600 dark:text-gray-300 text-sm font-semibold"
+                        >
+                          Monitor
+                        </button>
+                      )}
                       {SHOW_PROP_BETS && (
                         <button onClick={(e) => { e.stopPropagation(); onViewProps?.(round.id) }} className="text-gray-600 dark:text-gray-300 text-sm font-semibold">Props</button>
                       )}
@@ -1336,6 +1352,16 @@ export default function App() {
       onDeleteCourse={handleDeleteCourse}
       onResumeRound={roundId => { setScorecardReadOnly(false); setActiveRoundId(roundId); setScreen('scorecard') }}
       onViewSettlements={(id) => { setActiveRoundId(id); setScreen('settle-up') }}
+      onMonitorEvent={async (roundId) => {
+        // The card knows the round; the monitor is keyed on the event. Read the id
+        // back rather than threading it through the list, so a round whose event has
+        // since been deleted simply does nothing instead of opening an empty screen.
+        const { data } = await supabase.from('rounds').select('event_id').eq('id', roundId).single()
+        if (!data?.event_id) return
+        setActiveRoundId(roundId)
+        setActiveEventId(data.event_id)
+        setScreen('event-leaderboard')
+      }}
       onSettings={() => setScreen('settings')}
       onSignOut={() => supabase.auth.signOut()}
       isAdmin={userProfile?.isAdmin ?? false}

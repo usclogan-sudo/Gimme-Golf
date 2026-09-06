@@ -256,6 +256,11 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
   // Event-related state
   const [event, setEvent] = useState<GolfEvent | null>(null)
   const [eventParticipants, setEventParticipants] = useState<EventParticipant[]>([])
+  // Whether the event lookup has finished. Until it has, a round carrying an
+  // event_id is treated as an event round — otherwise there is a window on load
+  // where it reads as an ordinary round, and a score entered in that window would
+  // take the self-entry write path instead of the event one.
+  const [eventResolved, setEventResolved] = useState(false)
   const [localHole, setLocalHole] = useState<number | null>(null)
   const [showApprovalPanel, setShowApprovalPanel] = useState(false)
   const [showContextBanner, setShowContextBanner] = useState(() => {
@@ -359,6 +364,8 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
       if (cancelled) return
       if (eventRes.data) setEvent(rowToEvent(eventRes.data))
       if (epRes.data) setEventParticipants(epRes.data.map(rowToEventParticipant))
+      // Resolved either way — a missing event is an answer, not a pending state.
+      setEventResolved(true)
     })
     return () => { cancelled = true }
   }, [round?.eventId])
@@ -509,7 +516,15 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
   const players = round?.players ?? []
   const snapshot = round?.courseSnapshot
   const game = round?.game
-  const isEventRound = !!round?.eventId
+  // Derived from the event that actually LOADED, not from the column. A deleted
+  // event used to leave rounds.event_id dangling, and trusting the column put the
+  // round in event mode with no event: every permission check looked for
+  // event_participants rows that had cascaded away, and eleven of thirteen players
+  // went read-only mid-round. A round whose event is gone should behave as an
+  // ordinary round — which still scores and settles fine — rather than as a broken
+  // event. The FK added in 20260908120000 stops the dangling id arising; this stops
+  // it mattering for rounds that already have one.
+  const isEventRound = !!round?.eventId && (!eventResolved || !!event)
 
   // Photo-import flow — hook is mounted always; the confirm grid renders
   // only when an extraction result is in hand.
