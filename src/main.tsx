@@ -1,6 +1,7 @@
 import { StrictMode, lazy, Suspense } from 'react'
 import { createRoot } from 'react-dom/client'
 import { initSentry, Sentry } from './lib/sentry'
+import { passwordRecoveryInProgress } from './lib/supabase'
 import './index.css'
 import App from './App.tsx'
 import { RecoveryScreen } from './components/RecoveryScreen'
@@ -57,10 +58,15 @@ if ('serviceWorker' in navigator) {
       })
     }).catch(() => {})
 
-    // When the new SW takes control, reload to get fresh assets
+    // When the new SW takes control, reload to get fresh assets — except during a
+    // password reset. That flow depends on a URL hash that exists for exactly one
+    // page load, so reloading through it throws the user back to the home screen
+    // with no way to finish, and the emailed link is single-use. Deferred rather
+    // than skipped: the reload happens on their next navigation anyway.
     let refreshing = false
     navigator.serviceWorker.addEventListener('controllerchange', () => {
       if (refreshing) return
+      if (passwordRecoveryInProgress()) return
       refreshing = true
       window.location.reload()
     })

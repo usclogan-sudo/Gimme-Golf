@@ -25,8 +25,35 @@ if (!supabaseUrl || !supabaseAnonKey) {
  * way to set a password. Reading the hash before the client exists is the only point
  * at which it is reliably still there.
  */
+const RECOVERY_FLAG = 'gimme_password_recovery'
 const initialLocationHash = typeof window !== 'undefined' ? window.location.hash : ''
-export const arrivedViaPasswordRecovery = initialLocationHash.includes('type=recovery')
+
+// Persisted, because reading the hash once is not enough: the hash exists for exactly
+// one page load, and several things reload the page out from under a recovery. The
+// service worker is the reliable one — a new build activates, controllerchange fires,
+// the app reloads, and by then the hash is long gone, so the reset screen vanished
+// mid-flow and dropped the user on the home screen still signed in. A manual refresh
+// did the same. sessionStorage carries it across those reloads and dies with the tab.
+if (typeof window !== 'undefined' && initialLocationHash.includes('type=recovery')) {
+  try { sessionStorage.setItem(RECOVERY_FLAG, '1') } catch { /* private mode */ }
+}
+
+export const arrivedViaPasswordRecovery =
+  typeof window !== 'undefined' &&
+  (initialLocationHash.includes('type=recovery') ||
+   (() => { try { return sessionStorage.getItem(RECOVERY_FLAG) === '1' } catch { return false } })())
+
+/** Called once the new password is set, so a later reload in this tab does not put
+ *  the user back on the reset screen. */
+export function clearPasswordRecovery(): void {
+  try { sessionStorage.removeItem(RECOVERY_FLAG) } catch { /* private mode */ }
+}
+
+/** True while a password reset is in flight — used to hold off the service worker's
+ *  auto-reload, which would otherwise interrupt it. */
+export function passwordRecoveryInProgress(): boolean {
+  try { return sessionStorage.getItem(RECOVERY_FLAG) === '1' } catch { return false }
+}
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
