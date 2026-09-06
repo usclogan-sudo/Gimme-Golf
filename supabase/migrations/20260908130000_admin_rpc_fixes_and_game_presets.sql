@@ -144,3 +144,19 @@ alter table public.game_presets
 alter table public.game_presets
   add constraint game_presets_created_by_fkey
   foreign key (created_by) references auth.users(id) on delete set null;
+
+-- ─── 3. Retire the legacy admin_delete_user ──────────────────────────────────
+--
+-- The original admin_delete_user(target_user_id uuid) clears child rows by
+-- `round_id = any(round_ids)` — rows inside the user's OWN rounds — and never
+-- touches their rows in other people's rounds, nor their courses or players. Those
+-- reference auth.users directly with no ON DELETE clause, so the final delete fails
+-- for anyone who has ever played in a round they did not create. That is the exact
+-- chain that blocked a deletion during the field test, and the admin button has
+-- therefore never worked for a real user.
+--
+-- admin_delete_user(p_user_id uuid, p_keep_courses boolean) from 20260907120000
+-- walks the full FK graph and preserves courses. Dropping the old one matters
+-- because PostgREST resolves by named argument: a client sending target_user_id
+-- would keep reaching the broken version while the working one sat unused beside it.
+drop function if exists public.admin_delete_user(uuid);

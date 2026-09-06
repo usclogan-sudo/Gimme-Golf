@@ -864,10 +864,15 @@ function UsersTab({ currentUserId }: { currentUserId: string }) {
   const deleteUser = async (targetUserId: string) => {
     setDeleting(true)
     const target = users.find(u => u.user_id === targetUserId)
-    const { error } = await supabase.rpc('admin_delete_user', { target_user_id: targetUserId })
+    // p_keep_courses: a course is a real golf course, not personal data — it is
+    // copied into the shared catalogue rather than deleted with its author.
+    const { error } = await supabase.rpc('admin_delete_user', {
+      p_user_id: targetUserId,
+      p_keep_courses: true,
+    })
     if (error) {
       console.error('Delete user error:', error)
-      alert('Failed to delete user. Make sure the admin_delete_user RPC is deployed.')
+      alert(`Failed to delete user: ${error.message}`)
     } else {
       setUsers(prev => prev.filter(u => u.user_id !== targetUserId))
       logAdminAction({
