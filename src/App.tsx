@@ -177,6 +177,13 @@ function Home({
   const [participantRounds, setParticipantRounds] = useState<Round[]>([])
   const [roundCount, setRoundCount] = useState<number | null>(null)
   const [joinCode, setJoinCode] = useState('')
+  const [accountMenuOpen, setAccountMenuOpen] = useState(false)
+  useEffect(() => {
+    if (!accountMenuOpen) return
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setAccountMenuOpen(false) }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [accountMenuOpen])
   const [unsettledCount, setUnsettledCount] = useState(0)
   const [unsettledAmounts, setUnsettledAmounts] = useState<{ youOwe: number; owedToYou: number }>({ youOwe: 0, owedToYou: 0 })
   const [fetchError, setFetchError] = useState<string | null>(null)
@@ -334,9 +341,62 @@ function Home({
                 <span className="text-base">🛡️</span>
               </button>
             )}
-            <button onClick={onSettings} aria-label="Settings">
-              <UserAvatar url={userProfile?.avatarUrl} preset={userProfile?.avatarPreset} name={userProfile?.displayName} size="sm" />
-            </button>
+            {/* The avatar used to jump straight to Settings, which left signing out
+                three screens deep — down the You tab, past every saved course. Who
+                you are signed in as and how to stop being signed in as them belong
+                together, on the thing that shows who you are. */}
+            <div className="relative">
+              <button
+                onClick={() => setAccountMenuOpen(o => !o)}
+                aria-label="Account"
+                aria-haspopup="menu"
+                aria-expanded={accountMenuOpen}
+              >
+                <UserAvatar url={userProfile?.avatarUrl} preset={userProfile?.avatarPreset} name={userProfile?.displayName} size="sm" />
+              </button>
+              {accountMenuOpen && (
+                <>
+                  {/* Full-screen catcher so a tap anywhere dismisses the menu. */}
+                  <div className="fixed inset-0 z-40" onClick={() => setAccountMenuOpen(false)} aria-hidden="true" />
+                  <div
+                    role="menu"
+                    className="absolute right-0 top-full mt-2 z-50 w-60 bg-white dark:bg-gray-800 rounded-2xl shadow-xl border border-gray-200 dark:border-gray-700 overflow-hidden"
+                  >
+                    <div className="px-4 py-3 border-b border-gray-100 dark:border-gray-700">
+                      <p className="font-semibold text-gray-900 dark:text-gray-100 truncate">
+                        {userProfile?.displayName || 'You'}
+                      </p>
+                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                        {isAnonymous ? 'Guest — scores are only on this device' : 'Signed in'}
+                      </p>
+                    </div>
+                    {isAnonymous && onUpgrade && (
+                      <button
+                        role="menuitem"
+                        onClick={() => { setAccountMenuOpen(false); onUpgrade() }}
+                        className="w-full text-left px-4 py-3 text-sm font-semibold text-amber-600 active:bg-gray-50 dark:active:bg-gray-700"
+                      >
+                        Create an account
+                      </button>
+                    )}
+                    <button
+                      role="menuitem"
+                      onClick={() => { setAccountMenuOpen(false); onSettings() }}
+                      className="w-full text-left px-4 py-3 text-sm font-medium text-gray-700 dark:text-gray-200 active:bg-gray-50 dark:active:bg-gray-700"
+                    >
+                      Settings
+                    </button>
+                    <button
+                      role="menuitem"
+                      onClick={() => { setAccountMenuOpen(false); onSignOut() }}
+                      className="w-full text-left px-4 py-3 text-sm font-medium text-gray-700 dark:text-gray-200 border-t border-gray-100 dark:border-gray-700 active:bg-gray-50 dark:active:bg-gray-700"
+                    >
+                      Sign out
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
           </div>
         </div>
       </header>

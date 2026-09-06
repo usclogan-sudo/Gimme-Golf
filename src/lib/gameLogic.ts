@@ -1824,10 +1824,23 @@ export function unitGameNet(
 export function netFromPayouts(
   payouts: PlayerPayout[],
   players: Player[],
-  buyInCents: number,
+  _buyInCents?: number,
 ): Record<string, number> {
   const distributed = payouts.reduce((s, p) => s + p.amountCents, 0)
-  const anteTotal = distributed > 0 ? distributed : buyInCents * players.length
+
+  // Nothing won means nothing changes hands. You are only down if someone else is
+  // up: charging every player their entry with no winner to receive it invents a
+  // loss out of nothing and leaves the ledger short by the whole pot — a Skins round
+  // where every hole tied read as all four players down 20, owed to nobody.
+  // Every other game already refunds evenly in this case (see refundEvenly); Skins
+  // returns no payouts at all, so the zero has to be honoured here.
+  if (distributed === 0) {
+    const zero: Record<string, number> = {}
+    players.forEach(p => { zero[p.id] = 0 })
+    return zero
+  }
+
+  const anteTotal = distributed
   const perAnte = Math.floor(anteTotal / players.length)
   let remainder = anteTotal - perAnte * players.length
   const net: Record<string, number> = {}

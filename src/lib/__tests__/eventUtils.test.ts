@@ -1,4 +1,4 @@
-import { autoAssignGroups, validateGroups, MAX_PER_GROUP } from '../eventUtils'
+import { autoAssignGroups, randomAssignGroups, fillMissingGroups, validateGroups, MAX_PER_GROUP } from '../eventUtils'
 
 // ─── autoAssignGroups ───────────────────────────────────────────────────────
 
@@ -140,5 +140,108 @@ describe('validateGroups', () => {
       const result = validateGroups(groups)
       expect(result.valid).toBe(true)
     }
+  })
+})
+
+// ─── Foursome modes ─────────────────────────────────────────────────────────
+
+const ids16 = Array.from({ length: 16 }, (_, i) => `p${i + 1}`)
+const sizes = (g: Record<string, number>) => {
+  const m = new Map<number, number>()
+  for (const n of Object.values(g)) m.set(n, (m.get(n) ?? 0) + 1)
+  return [...m.entries()].sort((a, b) => a[0] - b[0]).map(([, c]) => c)
+}
+
+describe('randomAssignGroups', () => {
+  /** Reverses the list: deterministic, and not the identity, so a real shuffle shows. */
+  const reversingRng = () => 0
+
+  it('splits sixteen players into four even foursomes', () => {
+    expect(sizes(randomAssignGroups(ids16))).toEqual([4, 4, 4, 4])
+  })
+
+  it('places every player exactly once', () => {
+    const g = randomAssignGroups(ids16)
+    expect(Object.keys(g).sort()).toEqual([...ids16].sort())
+  })
+
+  it('respects the max group size', () => {
+    expect(validateGroups(randomAssignGroups(ids16)).valid).toBe(true)
+  })
+
+  it('actually shuffles rather than distributing in order', () => {
+    // With rng() = 0, Fisher-Yates rotates the list, so assignments must differ from
+    // the deterministic round-robin over the original order.
+    const drawn = randomAssignGroups(ids16, MAX_PER_GROUP, reversingRng)
+    const ordered = autoAssignGroups(ids16)
+    expect(drawn).not.toEqual(ordered)
+  })
+
+  it('gives different draws across calls', () => {
+    // Guards against the draw secretly being deterministic. 16 players over 4 groups
+    // makes a collision across ten draws vanishingly unlikely.
+    const draws = new Set(Array.from({ length: 10 }, () => JSON.stringify(randomAssignGroups(ids16))))
+    expect(draws.size).toBeGreaterThan(1)
+  })
+
+  it('handles a field that fits in one group', () => {
+    expect(randomAssignGroups(['a', 'b', 'c'])).toEqual({ a: 1, b: 1, c: 1 })
+  })
+
+  it('handles an empty field', () => {
+    expect(randomAssignGroups([])).toEqual({})
+  })
+})
+
+describe('fillMissingGroups', () => {
+  it('leaves every existing assignment alone', () => {
+    // The point of manual mode: adding a player must not undo prior decisions.
+    const manual = { p1: 3, p2: 3, p3: 1, p4: 1 }
+    const out = fillMissingGroups(manual, ['p1', 'p2', 'p3', 'p4', 'p5'])
+    expect(out.p1).toBe(3)
+    expect(out.p2).toBe(3)
+    expect(out.p3).toBe(1)
+    expect(out.p4).toBe(1)
+    expect(out.p5).toBeDefined()
+  })
+
+  it('puts a newcomer in the smallest foursome', () => {
+    const out = fillMissingGroups({ a: 1, b: 1, c: 1, d: 2 }, ['a', 'b', 'c', 'd', 'e'])
+    expect(out.e).toBe(2)
+  })
+
+  it('drops players who have left the roster', () => {
+    // A stale entry would otherwise keep a foursome looking full.
+    const out = fillMissingGroups({ a: 1, gone: 2 }, ['a'])
+    expect(out).toEqual({ a: 1 })
+  })
+
+  it('is a no-op when everyone already has a group', () => {
+    const g = { a: 1, b: 2 }
+    expect(fillMissingGroups(g, ['a', 'b'])).toEqual(g)
+  })
+
+  it('opens enough foursomes for a field that cannot fit in the existing ones', () => {
+    // One group of five exists; sixteen players need four.
+    const out = fillMissingGroups({ p1: 1 }, ids16)
+    expect(validateGroups(out).valid).toBe(true)
+    expect(new Set(Object.values(out)).size).toBeGreaterThanOrEqual(4)
+  })
+
+  it('never exceeds the max group size when topping up', () => {
+    const out = fillMissingGroups({}, ids16)
+    expect(validateGroups(out).valid).toBe(true)
+    expect(sizes(out)).toEqual([4, 4, 4, 4])
+  })
+
+  it('keeps the manual grouping stable across repeated roster edits', () => {
+    let g = fillMissingGroups({}, ['a', 'b'])
+    const first = { ...g }
+    g = fillMissingGroups(g, ['a', 'b', 'c'])
+    expect(g.a).toBe(first.a)
+    expect(g.b).toBe(first.b)
+    g = fillMissingGroups(g, ['a', 'b', 'c', 'd'])
+    expect(g.a).toBe(first.a)
+    expect(g.b).toBe(first.b)
   })
 })

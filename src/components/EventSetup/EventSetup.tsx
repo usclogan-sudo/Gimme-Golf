@@ -6,7 +6,8 @@ import { reportSupabaseError } from '../../lib/sentry'
 // Events store buy-in in cents (money mode); fmtAmount with no stakesMode
 // converts cents -> points for display (1 pt = $1), so no $ surfaces.
 import { fmtAmount, fmtHandicap } from '../../lib/gameLogic'
-import { autoAssignGroups, autoAssignShotgunStarts, MAX_PER_GROUP } from '../../lib/eventUtils'
+import { autoAssignGroups, randomAssignGroups, fillMissingGroups, autoAssignShotgunStarts, MAX_PER_GROUP } from '../../lib/eventUtils'
+import type { GroupMode } from '../../lib/eventUtils'
 import { parseDollarsToCents } from '../../lib/money'
 import { venturaCourses } from '../../data/venturaCourses'
 import { NearMeCourses } from '../NearMeCourses/NearMeCourses'
@@ -141,21 +142,31 @@ export function EventSetup({ userId, onStart, onCancel, onAddCourse }: Props) {
     })
   }, [userId])
 
-  // Auto-assign groups when players change (keyed on player IDs, not just count)
+  // Foursomes are about who you walk the course with — an event scores every player
+  // individually either way — so the organiser picks how they are decided.
+  const [groupMode, setGroupMode] = useState<GroupMode>('manual')
+
   const playerIdKey = useMemo(() => selectedPlayers.map(p => p.id).join(','), [selectedPlayers])
   useEffect(() => {
-    setGroups(autoAssignGroups(selectedPlayers.map(p => p.id)))
+    const ids = selectedPlayers.map(p => p.id)
+    setGroups(prev => groupMode === 'random'
+      // Random redraws whenever the roster changes — a draw that kept half its old
+      // answer would not be a draw.
+      ? randomAssignGroups(ids)
+      // Manual tops up instead of reassigning. Placing sixteen people by hand and
+      // then adding a seventeenth must not discard the previous sixteen decisions.
+      : fillMissingGroups(prev, ids))
     setGroupError(null)
-  }, [playerIdKey])
+  }, [playerIdKey, groupMode])
 
-  // Default the treasurer to the round creator once they appear in the selected list.
-  // Only sets when treasurerId is still null so a manual pick is never overwritten.
-  useEffect(() => {
-    if (treasurerId) return
-    if (selectedPlayers.some(p => p.id === userId)) {
-      setTreasurerId(userId)
-    }
-  }, [playerIdKey, treasurerId, userId])
+  const shuffleGroups = () => {
+    setGroups(randomAssignGroups(selectedPlayers.map(p => p.id)))
+    setGroupError(null)
+  }
+
+  // No treasurer by default. Naming one is a deliberate choice for groups where a
+  // single person really does collect and pay out; most groups just settle between
+  // themselves, which is what a normal round already does.
 
   const togglePlayer = (player: Player) => {
     setSelectedPlayers(prev =>
@@ -199,7 +210,14 @@ export function EventSetup({ userId, onStart, onCancel, onAddCourse }: Props) {
   }
 
   const createEvent = async () => {
-    if (!selectedCourse || !treasurerId) return
+    // Say why nothing happened. The button is only disabled while saving, so bailing
+    // out silently here reads as a dead button — and the treasurer is only auto-set
+    // when the organiser is one of the players, so an organiser running the event for
+    // everyone else hits this with no idea what is wrong.
+    if (!selectedCourse) {
+      setCreateError('Pick a course before starting.')
+      return
+    }
     if (savingRef.current) return
     savingRef.current = true
     setSaving(true)
@@ -226,7 +244,7 @@ export function EventSetup({ userId, onStart, onCancel, onAddCourse }: Props) {
         },
         players: selectedPlayers,
         game,
-        treasurerPlayerId: treasurerId,
+        treasurerPlayerId: treasurerId ?? undefined,
         groups,
         eventId,
         inviteCode,
@@ -246,14 +264,20 @@ export function EventSetup({ userId, onStart, onCancel, onAddCourse }: Props) {
         createdAt: new Date(),
       }
 
-      // Create buy-ins
-      const buyIns: BuyIn[] = selectedPlayers.map(p => ({
-        id: uuidv4(),
-        roundId,
-        playerId: p.id,
-        amountCents: game.buyInCents,
-        status: 'unpaid' as const,
-      }))
+      // Entry rows only exist so a treasurer has something to collect. With no
+      // treasurer there is nothing to collect and nobody to collect it — creating
+      // them anyway puts a list of unpaid entries in front of every player on the
+      // settle screen, which is busywork at four and noise at sixteen. This mirrors
+      // NewRound, which skips the whole treasurer step for a points round.
+      const buyIns: BuyIn[] = treasurerId
+        ? selectedPlayers.map(p => ({
+            id: uuidv4(),
+            roundId,
+            playerId: p.id,
+            amountCents: game.buyInCents,
+            status: 'unpaid' as const,
+          }))
+        : []
 
       // Create round players
       const roundPlayers = selectedPlayers.map(p => ({
@@ -276,7 +300,9 @@ export function EventSetup({ userId, onStart, onCancel, onAddCourse }: Props) {
       }
       const [rpResult, biResult] = await Promise.all([
         supabase.from('round_players').insert(roundPlayers.map(rp => roundPlayerToRow(rp, userId))),
-        supabase.from('buy_ins').insert(buyIns.map(b => buyInToRow(b, userId))),
+        buyIns.length > 0
+          ? supabase.from('buy_ins').insert(buyIns.map(b => buyInToRow(b, userId)))
+          : Promise.resolve({ error: null } as any),
       ])
       if (rpResult.error) {
         reportSupabaseError(rpResult.error, 'create_event.round_players', { eventId, roundId })
@@ -287,14 +313,30 @@ export function EventSetup({ userId, onStart, onCancel, onAddCourse }: Props) {
         throw biResult.error
       }
 
-      // Insert the event manager participant (the creator)
+      // Insert the event manager participant (the creator).
+      //
+      // Bind this to the CREATOR's own player id, never to selectedPlayers[0].
+      // `selectedPlayers` is built in tap order, so [0] is simply whoever the
+      // organiser happened to tap first — usually not themselves. Squatting that
+      // player's slot has two consequences, and the second one is severe:
+      //
+      //   * the manager's group_number is that other player's group, so their group
+      //     filters and scorekeeper view point at the wrong foursome;
+      //   * when the real owner of that slot joins by link, join_event finds a row
+      //     for their player_id under a different user_id and raises "Player already
+      //     claimed by another user" — so one player simply cannot get in, with an
+      //     error that tells them nothing useful.
+      //
+      // A registered user's player id IS their auth uuid (see the self-player
+      // synthesis in NewRound and the profilePlayers mapping above), so `userId` is
+      // both correct when they are playing and safely uncollidable when they are not.
       await safeWrite(supabase.from('event_participants').insert({
         id: uuidv4(),
         event_id: eventId,
         user_id: userId,
-        player_id: selectedPlayers[0]?.id ?? userId,
+        player_id: userId,
         role: 'manager',
-        group_number: groups[selectedPlayers[0]?.id] ?? 1,
+        group_number: groups[userId] ?? 1,
       }), 'insert event manager participant')
 
       setCreatedRoundId(roundId)
@@ -521,17 +563,52 @@ export function EventSetup({ userId, onStart, onCancel, onAddCourse }: Props) {
           </div>
         </header>
         <div className="px-4 py-4 max-w-2xl mx-auto space-y-4">
+          {/* How foursomes get decided. Everyone still scores individually — this is
+              about who you walk the course with. */}
+          <section className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 p-4 space-y-3">
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Foursomes</p>
+            <div className="flex rounded-xl overflow-hidden border border-gray-200 dark:border-gray-600">
+              {([
+                { mode: 'manual' as GroupMode, label: 'I\u2019ll pick', hint: 'Set who plays with whom' },
+                { mode: 'random' as GroupMode, label: 'Random draw', hint: 'Shuffle into even foursomes' },
+              ]).map(opt => (
+                <button
+                  key={opt.mode}
+                  onClick={() => { setGroupMode(opt.mode); if (opt.mode === 'random') shuffleGroups() }}
+                  className={`flex-1 py-2.5 text-sm font-semibold transition-colors ${
+                    groupMode === opt.mode
+                      ? 'bg-amber-500 text-white'
+                      : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300'
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+            <p className="text-xs text-gray-500 dark:text-gray-400">
+              {groupMode === 'manual'
+                ? 'Tap the numbers beside a name to move them. Adding players later won\u2019t undo your picks.'
+                : 'Shuffle for a fresh draw. Switch to \u201cI\u2019ll pick\u201d to adjust by hand.'}
+            </p>
+            {groupMode === 'random' && (
+              <button
+                onClick={shuffleGroups}
+                className="w-full h-10 bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/30 text-amber-600 dark:text-amber-400 text-sm font-semibold rounded-xl active:bg-amber-100"
+              >
+                🎲 Shuffle again
+              </button>
+            )}
+          </section>
+
           <div className="flex gap-2">
+            {/* Even out, not a redraw: deterministic round-robin over the current
+                selection order, for when hand-editing has left lopsided foursomes.
+                The random draw is its own action above. */}
             <button
-              onClick={() => {
-                const ng = Math.ceil(selectedPlayers.length / MAX_PER_GROUP)
-                const g: Record<string, number> = {}
-                selectedPlayers.forEach((p, i) => { g[p.id] = (i % ng) + 1 })
-                setGroups(g)
-              }}
-              className="flex-1 h-10 bg-amber-50 border border-amber-200 text-amber-600 text-sm font-semibold rounded-xl active:bg-amber-100"
+              onClick={() => { setGroups(autoAssignGroups(selectedPlayers.map(p => p.id))); setGroupError(null) }}
+              className="flex-1 h-10 bg-gray-100 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 text-gray-700 dark:text-gray-200 text-sm font-semibold rounded-xl active:bg-gray-200"
             >
-              Auto-assign
+              Even out
             </button>
             {numGroups < 8 && (
               <button
@@ -800,14 +877,34 @@ export function EventSetup({ userId, onStart, onCancel, onAddCourse }: Props) {
               </div>
             </div>
             <p className="text-sm text-gray-500 text-center">
-              Pot: {fmtAmount(buyInCents * selectedPlayers.length)}
+              Total in play: {fmtAmount(buyInCents * selectedPlayers.length)}
             </p>
           </section>
 
-          {/* Treasurer (before game-specific config so it's easy to find) */}
+          {/* Treasurer — optional. Default is nobody: players just settle between
+              themselves, which is how a normal round already works when there is no
+              treasurer. Naming one is for groups where a single person actually
+              collects and pays out. */}
           <section className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 p-4 space-y-3">
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Treasurer</p>
+            <div>
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Treasurer <span className="font-normal normal-case">(optional)</span></p>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                {treasurerId
+                  ? 'Everyone settles through this player at the end.'
+                  : 'Players settle up between themselves at the end.'}
+              </p>
+            </div>
             <div className="space-y-2">
+              <button
+                onClick={() => setTreasurerId(null)}
+                className={`w-full p-3 rounded-xl border-2 text-left font-semibold text-sm transition-colors ${
+                  treasurerId === null
+                    ? 'border-amber-500 bg-amber-50 text-gray-900 dark:text-gray-100'
+                    : 'border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300'
+                }`}
+              >
+                Nobody — settle between players{treasurerId === null ? ' ✓' : ''}
+              </button>
               {selectedPlayers.map(p => (
                 <button
                   key={p.id}
@@ -846,12 +943,10 @@ export function EventSetup({ userId, onStart, onCancel, onAddCourse }: Props) {
         </div>
         <div className="fixed bottom-0 inset-x-0 p-4 bg-white/95 dark:bg-gray-800/95 backdrop-blur-sm border-t border-gray-200 safe-bottom">
           <div className="max-w-2xl mx-auto">
-            {!treasurerId && (
-              <p className="text-amber-600 text-sm font-semibold text-center mb-2">Select a treasurer to continue</p>
-            )}
+            {/* No treasurer is a valid choice — players settle between themselves —
+                so this must not gate the step. */}
             <button
               onClick={() => setStep('review')}
-              disabled={!treasurerId}
               className="w-full h-14 bg-gray-800 text-white dark:bg-brass dark:text-navy text-lg font-bold rounded-2xl disabled:opacity-40 active:bg-gray-900"
             >
               Next: Review →
@@ -991,7 +1086,9 @@ export function EventSetup({ userId, onStart, onCancel, onAddCourse }: Props) {
 
           <div className="space-y-2">
             <p className="text-xs font-semibold text-gray-500 uppercase">Game: {GAME_LABELS[gameType]} · {fmtAmount(buyInCents)}/player</p>
-            <p className="text-xs text-gray-500">Treasurer: {selectedPlayers.find(p => p.id === treasurerId)?.name ?? '—'}</p>
+            <p className="text-xs text-gray-500">{treasurerId
+              ? `Treasurer: ${selectedPlayers.find(p => p.id === treasurerId)?.name ?? '—'}`
+              : 'Settling between players'}</p>
           </div>
 
           {/* Groups summary */}

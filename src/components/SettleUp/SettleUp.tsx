@@ -541,6 +541,26 @@ export function SettleUp({ roundId, userId, eventId, onDone, onContinue }: Props
       status: 'owed' as const,
     }))
 
+    // Re-check the server immediately before writing. `settlementsInitialized` is
+    // per-device, and the earlier `settlementRecords.length` test reflects whatever
+    // was loaded at mount — so when a field of sixteen all open Settle Up within a
+    // few seconds of the last putt, every device that loaded before the first write
+    // landed believes it is the one to settle.
+    //
+    // The settlements themselves survive that: the upsert dedupes on
+    // (round_id, from, to, source). The notifications do NOT — they are plain inserts
+    // with fresh ids, so each racing device sends its own full set and every player
+    // gets one "You owe …" per device that raced. Checking here collapses the window
+    // to the width of a single request.
+    const { data: alreadySettled } = await supabase
+      .from('settlements').select('*').eq('round_id', roundId).limit(200)
+    if (alreadySettled && alreadySettled.length > 0) {
+      // Someone else got there first — adopt their rows and send nothing.
+      setSettlementRecords(alreadySettled.map(rowToSettlementRecord))
+      setCalculatingSettlements(false)
+      return
+    }
+
     setSettlementRecords(records)
     const { error } = await supabase.from('settlements').upsert(
       records.map(r => settlementRecordToRow(r, userId)),
@@ -781,7 +801,7 @@ export function SettleUp({ roundId, userId, eventId, onDone, onContinue }: Props
       }
     }, 4000)
 
-    setPendingAction({ type: 'bulk_buyin', id: 'bulk', ids: unpaidIds, name: `${unpaidIds.length} buy-ins`, timer, prevBuyIns })
+    setPendingAction({ type: 'bulk_buyin', id: 'bulk', ids: unpaidIds, name: `${unpaidIds.length} entries`, timer, prevBuyIns })
   }
 
   const markAllSettlementsPaid = () => {
@@ -1051,7 +1071,7 @@ export function SettleUp({ roundId, userId, eventId, onDone, onContinue }: Props
                 )}
                 {showMarkAllPaidConfirm && (
                   <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 space-y-2">
-                    <p className="text-amber-800 text-sm font-semibold">Mark all {unpaidBuyIns.length} unpaid buy-ins as paid?</p>
+                    <p className="text-amber-800 text-sm font-semibold">Mark all {unpaidBuyIns.length} unpaid entries as collected?</p>
                     <div className="flex gap-2">
                       <button onClick={markAllBuyInsPaid} className="flex-1 h-10 bg-green-600 text-white text-sm font-semibold rounded-xl active:bg-green-700">Confirm</button>
                       <button onClick={() => setShowMarkAllPaidConfirm(false)} className="flex-1 h-10 bg-gray-200 text-gray-700 text-sm font-semibold rounded-xl active:bg-gray-300">Cancel</button>
@@ -1127,7 +1147,7 @@ export function SettleUp({ roundId, userId, eventId, onDone, onContinue }: Props
             </div>
             <div className={`rounded-xl p-3 ${isHighRoller ? 'bg-amber-900/40' : 'bg-green-50'}`}>
               {/* Unit games have no pot — show total points that actually changed hands. */}
-              <p className={`text-xs ${isHighRoller ? 'text-amber-400' : 'text-gray-500'}`}>{unitNet ? 'Total won' : isPoints ? 'Total points' : 'Total in play'}</p>
+              <p className={`text-xs ${isHighRoller ? 'text-amber-400' : 'text-gray-500'}`}>{unitNet ? 'Total won' : 'Total points'}</p>
               <p className={`text-xl font-bold ${isHighRoller ? 'text-amber-400' : 'text-green-800'}`}>{fmt(unitTotalWon ?? potCents)}</p>
             </div>
           </div>
@@ -1800,7 +1820,7 @@ export function SettleUp({ roundId, userId, eventId, onDone, onContinue }: Props
             <p className="text-gray-500 text-sm mt-1">
               {treasurerId
                 ? `No leg was completed — each player gets ${fmt(game.buyInCents)} back from the treasurer.`
-                : `No leg was completed — everyone keeps their ${isPoints ? 'entry' : 'buy-in'} (${fmt(game.buyInCents)}). No ${isPoints ? 'points' : 'money'} changes hands.`}
+                : `No leg was completed — everyone keeps their entry (${fmt(game.buyInCents)}). No points change hands.`}
             </p>
           </section>
         )}

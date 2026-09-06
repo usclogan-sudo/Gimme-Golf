@@ -1241,10 +1241,25 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
   }, [holeScores, isEventRound])
 
   // Pending scores for approval panel
+  // Scoped the same way EventLeaderboard scopes it: a group scorekeeper approves
+  // their OWN foursome, not the whole field. Unscoped this is invisible in a
+  // single-group event and wrong the moment there are several — a group-1
+  // scorekeeper would be shown, and could approve or reject, scores for twelve
+  // players in foursomes they never walked with. Managers and the round creator keep
+  // the field-wide view, since fixing anyone's card is their job.
   const pendingScores = useMemo(() => {
     if (!isEventRound) return []
-    return holeScores.filter(s => s.scoreStatus === 'pending')
-  }, [holeScores, isEventRound])
+    const pending = holeScores.filter(s => s.scoreStatus === 'pending')
+    if (isEventManager || isScoremasterRole) return pending
+    if (isGroupScorekeeper && myEventGroupNumber != null) {
+      const groupPlayerIds = new Set(
+        players.filter((p: any) => round?.groups?.[p.id] === myEventGroupNumber).map((p: any) => p.id),
+      )
+      return pending.filter(s => groupPlayerIds.has(s.playerId))
+    }
+    return []
+  }, [holeScores, isEventRound, isEventManager, isScoremasterRole, isGroupScorekeeper,
+      myEventGroupNumber, players, round?.groups])
 
   // Player-id → the hole they joined mid-round (Option A). Absent ⇒ round start, so
   // a pre-join hole isn't treated as "incomplete" just because they've no score yet.
@@ -1608,7 +1623,21 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
                     Rules
                   </button>
                 )}
-                {!readOnly && (isEventRound ? isScoreMaster : !selfEntryOnly) && (
+                {/* An already-finished round needs a way back to its results. The
+                    only routes to Settle Up were "End Round" and the last-hole
+                    button, both of which ask to end a round that has already ended —
+                    so anyone who came back to look at the card was stuck. Open to
+                    everyone, including read-only viewers: looking at results is not
+                    a privileged action. */}
+                {round.status === 'complete' && (
+                  <button
+                    onClick={() => { setShowHeaderMenu(false); onEndRound() }}
+                    className="w-full px-4 py-3 text-left text-sm font-medium text-yellow-300 hover:bg-gray-700 active:bg-gray-700"
+                  >
+                    Settle Up
+                  </button>
+                )}
+                {round.status !== 'complete' && !readOnly && (isEventRound ? isScoreMaster : !selfEntryOnly) && (
                   <button
                     onClick={() => { setShowHeaderMenu(false); confirmEndRound() }}
                     className="w-full px-4 py-3 text-left text-sm font-medium text-yellow-300 hover:bg-gray-700 active:bg-gray-700"
@@ -1679,7 +1708,11 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
           >
             Hole
           </button>
-          {!readOnly && isScoremasterRole && players.length > 1 && (
+          {/* Grid is the fast way to enter several players' scores, so it has to be
+              available to everyone who actually does that. Gating it on
+              isScoremasterRole (creator or game master) hid it from event group
+              scorekeepers — the very people entering a whole foursome's card. */}
+          {!readOnly && players.length > 1 && (isScoremasterRole || isGroupScorekeeper || isEventManager) && (
             <button
               onClick={() => { setScoreTab('scores'); setShowBatchEntry(true) }}
               className={`flex-1 py-2 rounded-lg text-sm font-semibold transition-colors ${
@@ -2934,6 +2967,9 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
         ) : readOnly ? (
           <button onClick={onHome}
             className="w-full h-14 bg-gray-600 text-white text-lg font-bold rounded-2xl active:bg-gray-700 transition-colors shadow-lg">Back to Home</button>
+        ) : round.status === 'complete' ? (
+          <button onClick={onEndRound}
+            className="w-full h-14 bg-yellow-500 text-white text-lg font-bold rounded-2xl active:bg-yellow-600 transition-colors shadow-lg">Settle Up →</button>
         ) : (
           <button onClick={confirmEndRound}
             className="w-full h-14 bg-yellow-500 text-white text-lg font-bold rounded-2xl active:bg-yellow-600 transition-colors shadow-lg">🏁 End Round & Settle Up</button>
