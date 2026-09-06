@@ -257,7 +257,7 @@ language plpgsql
 security definer
 set search_path = ''
 as $$
-declare v_cleared boolean := false;
+declare v_rows integer := 0;
 begin
   if not exists (
     select 1 from public.user_profiles up
@@ -272,8 +272,9 @@ begin
     and r.event_id is not null
     and not exists (select 1 from public.events e where e.id = r.event_id);
 
-  get diagnostics v_cleared = row_count;
-  return jsonb_build_object('event_link_cleared', v_cleared);
+  -- ROW_COUNT is an integer; the caller wants a boolean.
+  get diagnostics v_rows = row_count;
+  return jsonb_build_object('event_link_cleared', v_rows > 0);
 end;
 $$;
 
