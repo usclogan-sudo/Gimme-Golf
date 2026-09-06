@@ -311,7 +311,7 @@ export function Ledger({ userId, onBack }: Props) {
                       <div className="flex items-center gap-2">
                         <div className="text-right">
                           {isZero ? (
-                            <p className="text-lg font-bold text-gray-400">0 pts</p>
+                            <p className="text-lg font-bold text-gray-400">0 tokens</p>
                           ) : (
                             <>
                               <p className={`text-lg font-bold ${owedToYou ? 'text-amber-600 dark:text-brass' : 'text-gray-700 dark:text-gray-200'}`}>

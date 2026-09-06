@@ -201,8 +201,8 @@ export function RoundHistory({ userId, onBack, onViewSettlements, onPlayAgain, e
             if (!anyPositive) {
               outcome = { label: 'All square', tone: 'even' }
             } else if (myNet !== null) {
-              if (myNet > 0) outcome = { label: `You won +${myNet} pts`, tone: 'win' }
-              else if (myNet < 0) outcome = { label: `You lost ${Math.abs(myNet)} pts`, tone: 'loss' }
+              if (myNet > 0) outcome = { label: `You won +${myNet} ${myNet === 1 ? 'token' : 'tokens'}`, tone: 'win' }
+              else if (myNet < 0) outcome = { label: `You lost ${Math.abs(myNet)} ${Math.abs(myNet) === 1 ? 'token' : 'tokens'}`, tone: 'loss' }
               else outcome = { label: 'You broke even', tone: 'even' }
             } else if (winner) {
               outcome = { label: `${winner.displayName} won`, tone: 'even' }

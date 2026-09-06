@@ -29,7 +29,8 @@ export function PaymentButtons({ toPlayer, amountCents, note, compact }: { toPla
   const fullNote = `Gimme Golf — ${note}`
   // amountCents is always real cents here (callers convert points→cents for the
   // deep links); surface it as points (1 pt = $1) so no $ appears in-app.
-  const copyText = `Pay ${toPlayer.name} ${Math.round(amountCents / 100)} pts for ${fullNote}`
+  const tokens = Math.round(amountCents / 100)
+  const copyText = `Pay ${toPlayer.name} ${tokens} ${tokens === 1 ? 'token' : 'tokens'} for ${fullNote}`
   const handleCopy = () => {
     navigator.clipboard.writeText(copyText).then(() => { setCopied(true); setTimeout(() => setCopied(false), 2000) })
   }
