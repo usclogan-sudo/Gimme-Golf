@@ -406,6 +406,11 @@ export function SettleUp({ roundId, userId, eventId, onDone, onContinue }: Props
   const payouts = useMemo((): PlayerPayout[] => {
     if (!game || !playableSnapshot) return []
     if (game.type === 'skins' && skinsResult) {
+      // A per-skin round never collected a pot, so there is nothing to pay out of
+      // one. Its money is already accounted for in skinsNet, which drives the
+      // standings and the settlements; returning pot-model payouts here would put a
+      // fabricated "treasurer keeps" figure on screen next to the real numbers.
+      if ((game.config as SkinsConfig).payModel === 'per_skin') return []
       return calculateSkinsPayouts(skinsResult, game, players.length)
     }
     if (game.type === 'best_ball' && bestBallResult) {
@@ -1827,9 +1832,11 @@ export function SettleUp({ roundId, userId, eventId, onDone, onContinue }: Props
           <section className="bg-gray-50 rounded-2xl p-4 text-center">
             <p className="text-gray-600 font-semibold">Nothing to settle</p>
             <p className="text-gray-500 text-sm mt-1">
-              {treasurerId
-                ? `No leg was completed — each player gets ${fmt(game.buyInCents)} back from the treasurer.`
-                : `No leg was completed — everyone keeps their entry (${fmt(game.buyInCents)}). No points change hands.`}
+              {game.type === 'skins' && (game.config as SkinsConfig).payModel === 'per_skin'
+                ? 'No skin was won outright, so nothing was owed. Nothing was collected up front either.'
+                : treasurerId
+                  ? `No leg was completed — each player gets ${fmt(game.buyInCents)} back from the treasurer.`
+                  : `No leg was completed — everyone keeps their entry (${fmt(game.buyInCents)}). No points change hands.`}
             </p>
           </section>
         )}

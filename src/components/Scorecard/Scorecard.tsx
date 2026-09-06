@@ -161,6 +161,8 @@ function InlineScorePad({
   )
 }
 
+/** `unitCents` is what one skin is worth to the winner: the whole pot under the pot
+ *  model, or value × opponents when each skin is paid for individually. */
 function SkinsStatus({ carry, potCents, stakesMode }: { carry: number; potCents: number; stakesMode?: string }) {
   const valueCents = potCents * (carry + 1)
   if (carry === 0) {
@@ -2175,7 +2177,18 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
             {showGameStatus && skinsResult && game && (
               <div className="flex items-center gap-2">
                 <div className="flex-1">
-                  <SkinsStatus carry={currentCarry} potCents={game.buyInCents * players.length * (1 + ((game.config as any).presses?.length ?? 0))} stakesMode={game.stakesMode} />
+                  <SkinsStatus
+                    carry={currentCarry}
+                    potCents={
+                      (game.config as SkinsConfig).payModel === 'per_skin'
+                        // No pot: a skin is worth its value from each opponent, so
+                        // showing buyIn × everyone would overstate it by one player's
+                        // share and imply money that was never collected.
+                        ? game.buyInCents * Math.max(players.length - 1, 1)
+                        : game.buyInCents * players.length * (1 + ((game.config as any).presses?.length ?? 0))
+                    }
+                    stakesMode={game.stakesMode}
+                  />
                 </div>
                 {SHOW_PRESSES && !readOnly && (
                   <button

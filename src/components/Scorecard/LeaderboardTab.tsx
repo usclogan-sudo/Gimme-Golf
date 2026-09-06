@@ -5,7 +5,7 @@ import type { ResultCardStanding } from '../ResultCard'
 import { shareCard } from '../../lib/share'
 import {
   strokesOnHole, fmtAmount,
-  calculateSkinsPayouts, calculateBestBallPayouts, calculateNassauPayouts,
+  calculateSkinsPayouts, calculateSkinsPerSkinNet, calculateBestBallPayouts, calculateNassauPayouts,
   calculateBBBPayouts, calculateVegasPayouts,
   calculateStablefordPayouts, calculateQuotaPayouts,
   isUnitGame, unitGameNet, netFromPayouts,
@@ -15,7 +15,7 @@ import type {
   HammerResult, VegasResult, StablefordResult, BankerResult, QuotaResult,
   PlayerPayout,
 } from '../../lib/gameLogic'
-import type { Player, HoleScore, CourseSnapshot, Round, Game, BestBallConfig, VegasConfig } from '../../types'
+import type { Player, HoleScore, CourseSnapshot, Round, Game, BestBallConfig, VegasConfig, SkinsConfig } from '../../types'
 
 interface Props {
   snapshot: CourseSnapshot
@@ -77,7 +77,15 @@ export function LeaderboardTab({
       : game.type === 'banker' ? bankerResult ?? undefined
       : game.type === 'hammer' ? hammerResult ?? undefined
       : undefined
-    if (isUnitGame(game.type) && unitRaw) {
+    const skinsCfg = game.type === 'skins' ? (game.config as SkinsConfig) : null
+    if (skinsCfg?.payModel === 'per_skin' && skinsResult) {
+      // Per-skin skins has no pot to divide — each skin is paid for by the other
+      // players in that hole — so the running total comes from the same signed net
+      // the settle screen uses, not from a pot-model payout list.
+      Object.entries(
+        calculateSkinsPerSkinNet(skinsResult, players, game.buyInCents, {}, skinsCfg.presses ?? []),
+      ).forEach(([pid, c]) => m.set(pid, (m.get(pid) ?? 0) + c))
+    } else if (isUnitGame(game.type) && unitRaw) {
       Object.entries(unitGameNet(game.type, game.buyInCents, unitRaw)).forEach(([pid, c]) => m.set(pid, (m.get(pid) ?? 0) + c))
     } else {
       let payouts: PlayerPayout[] = []
