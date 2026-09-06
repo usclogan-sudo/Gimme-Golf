@@ -8,6 +8,26 @@ if (!supabaseUrl || !supabaseAnonKey) {
   throw new Error('Missing VITE_SUPABASE_URL or VITE_SUPABASE_ANON_KEY environment variables')
 }
 
+/**
+ * Whether this page load came from a password-reset link.
+ *
+ * Captured HERE, above createClient, and that placement is the whole point. The
+ * client's constructor kicks off initialize(), which parses the auth hash, sets the
+ * session, emits PASSWORD_RECOVERY — and STRIPS the hash. All of that happens at
+ * module load, before React has mounted, so:
+ *
+ *   * the PASSWORD_RECOVERY event fires before any component has subscribed, and is
+ *     delivered to nobody;
+ *   * by the time App looks at window.location.hash for a `type=recovery` fallback,
+ *     the hash is already gone.
+ *
+ * The result was a valid reset link landing the user on the sign-in screen with no
+ * way to set a password. Reading the hash before the client exists is the only point
+ * at which it is reliably still there.
+ */
+const initialLocationHash = typeof window !== 'undefined' ? window.location.hash : ''
+export const arrivedViaPasswordRecovery = initialLocationHash.includes('type=recovery')
+
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
     detectSessionInUrl: true,

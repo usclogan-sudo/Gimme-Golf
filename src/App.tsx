@@ -1,6 +1,6 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react'
 import type { Session } from '@supabase/supabase-js'
-import { supabase, rowToCourse, rowToRound, rowToHoleScore, fetchOrCreateProfile } from './lib/supabase'
+import { supabase, rowToCourse, rowToRound, rowToHoleScore, fetchOrCreateProfile, arrivedViaPasswordRecovery } from './lib/supabase'
 import { useNotifications } from './hooks/useNotifications'
 import { flush as flushOfflineQueue, getPending as getOfflinePending } from './lib/offlineQueue'
 import { safeWrite } from './lib/safeWrite'
@@ -833,7 +833,11 @@ export default function App() {
   const [activeTournamentId, setActiveTournamentId] = useState<string | null>(null)
   const [activeEventId, setActiveEventId] = useState<string | null>(null)
   const [spectateCode, setSpectateCode] = useState<string | null>(null)
-  const [showResetPassword, setShowResetPassword] = useState(false)
+  // Seeded from the hash captured before the Supabase client stripped it. The
+  // PASSWORD_RECOVERY listener below still runs and is still correct — it just
+  // cannot be relied on alone, because the client emits that event during module
+  // load, before this component exists to hear it.
+  const [showResetPassword, setShowResetPassword] = useState(arrivedViaPasswordRecovery)
   const { latestToast, dismissToast, markRead } = useNotifications(session?.user?.id ?? null)
 
   // Derived early so hooks can safely reference it in dependency arrays
