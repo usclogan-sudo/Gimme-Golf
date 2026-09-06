@@ -69,10 +69,23 @@ isn't an import button".
 
 This is a pattern, not a one-off: optimistic local update, unchecked `error`, no rollback.
 
+The admin dashboard is the same story from the other direction. `admin_get_all_players` and
+`admin_get_all_rounds` both failed with `42702 — column reference "user_id" is ambiguous`: each
+declares `user_id` as an OUT column and then checks admin rights with a bare
+`where user_id = auth.uid()`. The client reported every failure as **"make sure the RPC is
+deployed"**, which is shown for a missing function, a permission error and an empty result alike.
+That message sent the investigation to deployment, then to the admin flag, before the browser
+console gave up the real error in one line. The functions were deployed and the caller was an
+admin throughout.
+
 **Fixes**
 
 - Audit every `await supabase.from(...)` that ignores `error`. Treat an unchecked write as a bug.
 - Local state should follow a confirmed write, or roll back visibly on failure.
+- Empty state and failure state must not share a message. "No players found" is a fact;
+  "you are not an admin" is a different fact; "this function does not exist" is a third.
+- When something is inexplicable, read the console before theorising. Two hours of inference lost
+  to an error string that was sitting there the whole time.
 
 ---
 
@@ -180,5 +193,5 @@ Two things slowed the live debugging and are worth remembering:
 2. **Resolve migration delivery to production** before #84–#86 merge.
 3. **Claim state visible on the scorecard**, plus a claim prompt for signed-in non-members.
 4. **Ship the mid-round scorekeeper picker** (`02f2d8d`).
-5. **Audit unchecked Supabase writes.**
+5. **Audit unchecked Supabase writes**, and split empty states from failure states.
 6. **Make Test 0 a release gate** for any build a group will use.
