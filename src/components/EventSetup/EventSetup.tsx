@@ -943,12 +943,10 @@ export function EventSetup({ userId, onStart, onCancel, onAddCourse }: Props) {
         </div>
         <div className="fixed bottom-0 inset-x-0 p-4 bg-white/95 dark:bg-gray-800/95 backdrop-blur-sm border-t border-gray-200 safe-bottom">
           <div className="max-w-2xl mx-auto">
-            {!treasurerId && (
-              <p className="text-amber-600 text-sm font-semibold text-center mb-2">Select a treasurer to continue</p>
-            )}
+            {/* No treasurer is a valid choice — players settle between themselves —
+                so this must not gate the step. */}
             <button
               onClick={() => setStep('review')}
-              disabled={!treasurerId}
               className="w-full h-14 bg-gray-800 text-white dark:bg-brass dark:text-navy text-lg font-bold rounded-2xl disabled:opacity-40 active:bg-gray-900"
             >
               Next: Review →
