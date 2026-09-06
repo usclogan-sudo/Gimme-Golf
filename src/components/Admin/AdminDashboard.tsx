@@ -38,6 +38,9 @@ function SharedCoursesTab({ userId }: { userId: string }) {
   const [showForm, setShowForm] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [showImport, setShowImport] = useState(false)
+  const [selectedImports, setSelectedImports] = useState<Set<string>>(new Set())
+  const [importing, setImporting] = useState(false)
+  const [importError, setImportError] = useState<string | null>(null)
 
   // Form state
   const [name, setName] = useState('')
@@ -110,16 +113,36 @@ function SharedCoursesTab({ userId }: { userId: string }) {
     })
   }
 
-  const handleImport = async (template: typeof venturaCourses[number]) => {
-    const course: Course = {
+  // Import whatever is ticked. Previously a row tap imported that one course
+  // immediately, discarded the insert error, updated local state regardless and
+  // closed the panel — so a failed write looked exactly like a successful one until
+  // the next reload, when the course was simply gone.
+  const handleImportSelected = async () => {
+    const chosen = venturaCourses.filter(t => selectedImports.has(t.name))
+    if (chosen.length === 0) return
+    setImporting(true)
+    setImportError(null)
+
+    const newCourses: Course[] = chosen.map(t => ({
       id: uuidv4(),
-      name: template.name,
-      tees: template.tees,
-      holes: template.holes,
+      name: t.name,
+      tees: t.tees,
+      holes: t.holes,
       createdAt: new Date(),
+    }))
+
+    const { error } = await supabase
+      .from('shared_courses')
+      .insert(newCourses.map(c => sharedCourseToRow(c, userId)))
+
+    setImporting(false)
+    if (error) {
+      setImportError(`Couldn't import: ${error.message}`)
+      return
     }
-    await supabase.from('shared_courses').insert(sharedCourseToRow(course, userId))
-    setCourses(prev => [...prev, course].sort((a, b) => a.name.localeCompare(b.name)))
+
+    setCourses(prev => [...prev, ...newCourses].sort((a, b) => a.name.localeCompare(b.name)))
+    setSelectedImports(new Set())
     setShowImport(false)
   }
 
@@ -260,21 +283,80 @@ function SharedCoursesTab({ userId }: { userId: string }) {
       <div className="space-y-3">
         <div className="flex items-center justify-between">
           <h3 className="font-semibold text-gray-800 dark:text-gray-100">Import from Catalog</h3>
-          <button onClick={() => setShowImport(false)} className="text-sm text-gray-500">Cancel</button>
+          <button
+            onClick={() => { setShowImport(false); setSelectedImports(new Set()); setImportError(null) }}
+            className="text-sm text-gray-500"
+          >Cancel</button>
         </div>
         {available.length === 0 && (
           <p className="text-gray-400 text-sm py-4 text-center">All catalog courses already imported.</p>
         )}
-        {available.map(t => (
+
+        {available.length > 0 && (
+          <div className="flex items-center justify-between text-sm">
+            <p className="text-gray-500">
+              {selectedImports.size > 0 ? `${selectedImports.size} selected` : 'Tap to select'}
+            </p>
+            <button
+              onClick={() => setSelectedImports(
+                selectedImports.size === available.length
+                  ? new Set()
+                  : new Set(available.map(t => t.name)),
+              )}
+              className="font-semibold text-amber-600"
+            >
+              {selectedImports.size === available.length ? 'Clear all' : 'Select all'}
+            </button>
+          </div>
+        )}
+
+        {/* Ticking rather than importing on tap: a tap used to write immediately with
+            no confirmation, which is both easy to do by accident and impossible to do
+            in bulk. */}
+        {available.map(t => {
+          const picked = selectedImports.has(t.name)
+          return (
+            <button
+              key={t.name}
+              onClick={() => setSelectedImports(prev => {
+                const next = new Set(prev)
+                if (next.has(t.name)) next.delete(t.name); else next.add(t.name)
+                return next
+              })}
+              className={`w-full rounded-xl p-3 border text-left flex items-center gap-3 transition-colors ${
+                picked
+                  ? 'bg-amber-50 border-amber-400 dark:bg-amber-500/10'
+                  : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 active:bg-gray-50'
+              }`}
+            >
+              <span className={`w-5 h-5 rounded-md border-2 flex items-center justify-center text-xs flex-shrink-0 ${
+                picked ? 'bg-amber-500 border-amber-500 text-white' : 'border-gray-300 dark:border-gray-600'
+              }`}>
+                {picked ? '✓' : ''}
+              </span>
+              <span className="flex-1">
+                <span className="block font-semibold text-gray-800 dark:text-gray-100">{t.name}</span>
+                <span className="block text-sm text-gray-500">Par {totalPar(t.holes)} · {t.tees.map(te => te.name).join(', ')}</span>
+              </span>
+            </button>
+          )
+        })}
+
+        {importError && <p className="text-red-500 text-sm">{importError}</p>}
+
+        {available.length > 0 && (
           <button
-            key={t.name}
-            onClick={() => handleImport(t)}
-            className="w-full bg-white rounded-xl p-3 border border-gray-200 text-left active:bg-gray-50"
+            onClick={handleImportSelected}
+            disabled={selectedImports.size === 0 || importing}
+            className="w-full h-12 bg-gray-800 text-white dark:bg-brass dark:text-navy font-bold rounded-xl disabled:opacity-40 active:bg-gray-900"
           >
-            <p className="font-semibold text-gray-800 dark:text-gray-100">{t.name}</p>
-            <p className="text-sm text-gray-500">Par {totalPar(t.holes)} · {t.tees.map(te => te.name).join(', ')}</p>
+            {importing
+              ? 'Importing…'
+              : selectedImports.size === 0
+                ? 'Select courses to import'
+                : `Import ${selectedImports.size} course${selectedImports.size === 1 ? '' : 's'}`}
           </button>
-        ))}
+        )}
       </div>
     )
   }
