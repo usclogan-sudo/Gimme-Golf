@@ -78,7 +78,7 @@ begin
                   where u.id = (select rp.user_id from public.round_participants rp
                                 where rp.round_id = v_round.id and rp.player_id = p->>'id'
                                 limit 1))
-      ) order by p->>'name')
+      ) order by p->>'name'), '[]'::jsonb)
       from jsonb_array_elements(coalesce(v_round.players, '[]'::jsonb)) p)
   ) into v_result;
 
