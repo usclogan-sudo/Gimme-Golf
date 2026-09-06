@@ -130,8 +130,48 @@ grant execute on function public.admin_delete_user(uuid, boolean) to authenticat
 -- publishing a catalogue course made its author permanently undeletable — the same
 -- failure this function exists to solve, one level up, and it would have bitten the
 -- first time an admin who had published a course was removed. The catalogue is
--- deliberately outlives-its-author data, so the reference is nulled rather than
+-- deliberately data that outlives its author, so the reference is nulled rather than
 -- cascaded: the course stays, it just stops naming a row that no longer exists.
+--
+-- The table is created here if missing. It exists in production but was applied
+-- outside the migration history (supabase/legacy-sql), so a database built purely
+-- from migrations — every preview branch, and any fresh environment — does not have
+-- it, and altering it failed. Creating it in its final shape makes this migration
+-- reproducible; on production the create is a no-op and the alters below do the work.
+create table if not exists public.shared_courses (
+  id         text primary key,
+  created_by uuid references auth.users(id) on delete set null,
+  name       text not null,
+  tees       jsonb not null,
+  holes      jsonb not null,
+  created_at timestamptz default now()
+);
+
+alter table public.shared_courses enable row level security;
+
+-- Idempotent: policies have no IF NOT EXISTS, so drop-then-create. Same rules the
+-- catalogue has always had — everyone signed in can read, only admins can write.
+drop policy if exists "all read" on public.shared_courses;
+create policy "all read" on public.shared_courses
+  for select using (auth.uid() is not null);
+
+drop policy if exists "admin insert" on public.shared_courses;
+create policy "admin insert" on public.shared_courses
+  for insert with check (exists (
+    select 1 from public.user_profiles where user_id = auth.uid() and is_admin));
+
+drop policy if exists "admin update" on public.shared_courses;
+create policy "admin update" on public.shared_courses
+  for update using (exists (
+    select 1 from public.user_profiles where user_id = auth.uid() and is_admin));
+
+drop policy if exists "admin delete" on public.shared_courses;
+create policy "admin delete" on public.shared_courses
+  for delete using (exists (
+    select 1 from public.user_profiles where user_id = auth.uid() and is_admin));
+
+-- For databases where the table already existed with the original strict reference.
+-- Both are no-ops on a table just created above.
 alter table public.shared_courses
   alter column created_by drop not null;
 
