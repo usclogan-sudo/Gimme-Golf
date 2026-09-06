@@ -981,3 +981,36 @@ describe('single settlement engine — direct (points) soundness', () => {
     expect(out.find(s => s.fromId === 'p3')?.amountCents).toBe(25)
   })
 })
+
+describe('netFromPayouts — nothing won, nothing owed', () => {
+  const three: Player[] = [
+    { id: 'p1', name: 'A', handicapIndex: 0, tee: 'White', ghinNumber: '' },
+    { id: 'p2', name: 'B', handicapIndex: 0, tee: 'White', ghinNumber: '' },
+    { id: 'p3', name: 'C', handicapIndex: 0, tee: 'White', ghinNumber: '' },
+  ]
+
+  it('leaves everyone at zero when no payout was made', () => {
+    // Every hole tied in Skins: nobody won a thing, so nobody can be down. The old
+    // behaviour charged each player their entry with no winner to receive it, so a
+    // 20-point round read as three players down 20, owed to nobody.
+    const net = netFromPayouts([], three, 2000)
+    expect(net).toEqual({ p1: 0, p2: 0, p3: 0 })
+  })
+
+  it('still sums to zero', () => {
+    const net = netFromPayouts([], three, 2000)
+    expect(Object.values(net).reduce((a, b) => a + b, 0)).toBe(0)
+  })
+
+  it('is unaffected by the entry size', () => {
+    expect(netFromPayouts([], three, 100000)).toEqual({ p1: 0, p2: 0, p3: 0 })
+  })
+
+  it('still antes normally once something is won', () => {
+    const net = netFromPayouts([{ playerId: 'p1', amountCents: 6000, reason: 'won' }], three, 2000)
+    expect(net.p1).toBe(4000)
+    expect(net.p2).toBe(-2000)
+    expect(net.p3).toBe(-2000)
+    expect(Object.values(net).reduce((a, b) => a + b, 0)).toBe(0)
+  })
+})

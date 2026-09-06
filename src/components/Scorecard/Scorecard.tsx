@@ -1694,7 +1694,11 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
           >
             Hole
           </button>
-          {!readOnly && isScoremasterRole && players.length > 1 && (
+          {/* Grid is the fast way to enter several players' scores, so it has to be
+              available to everyone who actually does that. Gating it on
+              isScoremasterRole (creator or game master) hid it from event group
+              scorekeepers — the very people entering a whole foursome's card. */}
+          {!readOnly && players.length > 1 && (isScoremasterRole || isGroupScorekeeper || isEventManager) && (
             <button
               onClick={() => { setScoreTab('scores'); setShowBatchEntry(true) }}
               className={`flex-1 py-2 rounded-lg text-sm font-semibold transition-colors ${
