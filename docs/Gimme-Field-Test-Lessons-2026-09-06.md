@@ -195,3 +195,26 @@ Two things slowed the live debugging and are worth remembering:
 4. **Ship the mid-round scorekeeper picker** (`02f2d8d`).
 5. **Audit unchecked Supabase writes**, and split empty states from failure states.
 6. **Make Test 0 a release gate** for any build a group will use.
+
+---
+
+## Postscript — the migration pipeline
+
+Repairing the history was not enough on its own. Production's `schema_migrations` also
+held seventeen versions with no matching file: fifteen from an earlier renumbering of
+the migration filenames, and two written by applying fixes through the management API,
+which assigns its own version numbers.
+
+The Supabase deploy runner refuses to proceed in that state — `Remote migration
+versions not found in local migrations directory` — so every merge failed the check
+before reaching any SQL, reporting "1 skipped, 2 pending" and applying nothing.
+
+Those rows were dismissed as harmless when the history was first repaired, on the
+grounds that `db push` only cares whether a *local* migration is already recorded.
+That was wrong in the other direction: the runner also requires that every *remote*
+version has a local file. Deleting them is bookkeeping only — it removes history
+entries, not schema — and each was already represented by a file that was recorded.
+
+Worth remembering: applying a migration through the management API records it under a
+generated version, not the repo's filename. Do that often enough and the two histories
+drift apart again.
