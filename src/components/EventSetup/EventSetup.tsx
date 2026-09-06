@@ -339,6 +339,10 @@ export function EventSetup({ userId, onStart, onCancel, onAddCourse }: Props) {
         group_number: groups[userId] ?? 1,
       }), 'insert event manager participant')
 
+      // Same as NewRound: a roster entry alone leaves a player read-only with no
+      // indication why. This gives them a pending invite and a notification.
+      void supabase.rpc('invite_roster_to_round', { p_round_id: roundId })
+
       setCreatedRoundId(roundId)
       setCreatedEventId(eventId)
       setCreatedInviteCode(inviteCode)

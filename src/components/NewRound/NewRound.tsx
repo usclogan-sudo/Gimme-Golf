@@ -2099,6 +2099,11 @@ function TreasurerAndBuyIns({
         supabase.from('buy_ins').insert(buyIns.map(b => buyInToRow(b, userId))),
       ])
 
+      // Tell the registered players they are in. Without this they get a roster
+      // entry and nothing else — no participant row, no notification, no way to know
+      // they need to accept before they can score.
+      void supabase.rpc('invite_roster_to_round', { p_round_id: roundId })
+
       const insertError = rpResult.error || biResult.error
       if (insertError) {
         reportSupabaseError(rpResult.error, 'create_round.round_players', { roundId })
@@ -2395,6 +2400,7 @@ export function NewRound({ userId, onStart, onCancel, onAddCourse, initialStakes
         return
       }
       const rpResult = await supabase.from('round_players').insert(roundPlayers.map(rp => roundPlayerToRow(rp, userId)))
+      void supabase.rpc('invite_roster_to_round', { p_round_id: roundId })
       if (rpResult.error) {
         reportSupabaseError(rpResult.error, 'direct_create_round.round_players', { roundId })
         setDirectCreateError('Failed to create round. Check your connection and try again.')
