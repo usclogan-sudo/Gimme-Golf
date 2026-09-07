@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { v4 as uuidv4 } from 'uuid'
 import { supabase, rowToCourse, rowToPlayer, rowToSharedCourse, roundToRow, roundPlayerToRow, buyInToRow, eventToRow, generateInviteCode, rowToUserProfile } from '../../lib/supabase'
-import { safeWrite } from '../../lib/safeWrite'
+import { safeWrite, describeWriteError } from '../../lib/safeWrite'
 import { reportSupabaseError } from '../../lib/sentry'
 // Events store buy-in in cents (money mode); fmtAmount with no stakesMode
 // converts cents -> points for display (1 pt = $1), so no $ surfaces.
@@ -287,17 +287,44 @@ export function EventSetup({ userId, onStart, onCancel, onAddCourse }: Props) {
         teePlayed: p.tee,
       }))
 
-      // Insert event first (round references it), then the round (parent), then
-      // round_players + buy_ins in parallel. round_players and buy_ins both have
-      // FK constraints on rounds(id), so racing them via Promise.all caused
-      // fk_round_players_round / fk_buy_ins_round violations (same bug pattern
-      // fixed in NewRound.startRound in commit d6358ff).
-      await safeWrite(supabase.from('events').insert(eventToRow(golfEvent, userId)), 'insert event')
+      // ORDER MATTERS, AND THE TWO TABLES POINT AT EACH OTHER
+      //
+      // events.round_id → rounds.id (fk_events_round, baseline schema) and
+      // rounds.event_id → events.id. Neither row can be written with both links
+      // populated, because each names a row the other statement has not created yet.
+      // Inserting the event with its round_id already set is what broke event
+      // creation outright: the FK rejected it, the round insert then failed for the
+      // missing event, and the screen said only "Please try again".
+      //
+      // So the event goes in unlinked, the round follows and can name it, and a third
+      // statement closes the loop. The columns are two descriptions of one
+      // relationship and rounds.event_id is the direction every query reads — the
+      // right end state is dropping events.round_id entirely, which is a schema change
+      // and does not belong in an outage fix.
+      //
+      // round_players + buy_ins still go last and in parallel: both have FK
+      // constraints on rounds(id), so racing them against the round insert caused
+      // fk_round_players_round / fk_buy_ins_round violations (same bug pattern fixed
+      // in NewRound.startRound in commit d6358ff).
+      const eventInserted = await safeWrite(
+        supabase.from('events').insert(eventToRow({ ...golfEvent, roundId: undefined }, userId)),
+        'insert event',
+      )
+      // safeWrite swallows the failure by design, so without this the flow carried on
+      // and reported the round's confusing downstream error instead of the real one.
+      if (!eventInserted) throw new Error('Could not create the event')
+
       const roundResult = await supabase.from('rounds').insert(roundToRow(round, userId))
       if (roundResult.error) {
         reportSupabaseError(roundResult.error, 'create_event.rounds', { eventId, roundId, playerCount: selectedPlayers.length })
         throw roundResult.error
       }
+
+      // Both rows exist now, so the event can finally name its round.
+      await safeWrite(
+        supabase.from('events').update({ round_id: roundId }).eq('id', eventId),
+        'link event to round',
+      )
       const [rpResult, biResult] = await Promise.all([
         supabase.from('round_players').insert(roundPlayers.map(rp => roundPlayerToRow(rp, userId))),
         buyIns.length > 0
@@ -349,7 +376,7 @@ export function EventSetup({ userId, onStart, onCancel, onAddCourse }: Props) {
       setStep('share')
     } catch (err) {
       console.error('Failed to create event:', err)
-      setCreateError('Failed to create event. Please try again.')
+      setCreateError(`Failed to create event. ${describeWriteError(err)}`)
     } finally {
       setSaving(false)
       savingRef.current = false

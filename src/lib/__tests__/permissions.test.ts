@@ -190,3 +190,68 @@ describe('viewer / edge cases', () => {
     expect(perms.myEventGroupNumber).toBe(2)
   })
 })
+
+// ─── Baseline scoring rights come from identity, not membership ─────────────
+//
+// The 6 September regression: six of thirteen players were added to the roster at
+// setup but never invited, so they held no participant row of any kind. The card
+// rendered as normal and silently ignored their taps, which players experienced as
+// "watching" without being told they had been demoted. These pin the rule that
+// owning a roster slot is enough to record your own score.
+
+describe('roster identity as the baseline right', () => {
+  // A registered user's player id IS their auth uuid, so the roster slot is theirs.
+  const roster = [userId, 'pl-2', 'pl-3']
+
+  it('is not readOnly when on the roster with no participant rows at all', () => {
+    const perms = computeScorecardPermissions(userId, makeRound(), [], [], true, false, roster)
+    expect(perms.readOnly).toBe(false)
+    expect(perms.myRosterPlayerId).toBe(userId)
+  })
+
+  it('stays readOnly when not on the roster and holding no membership', () => {
+    const perms = computeScorecardPermissions(userId, makeRound(), [], [], true, false, ['pl-2', 'pl-3'])
+    expect(perms.readOnly).toBe(true)
+    expect(perms.myRosterPlayerId).toBeUndefined()
+  })
+
+  it('grants only self-entry, never rights over the rest of the field', () => {
+    const perms = computeScorecardPermissions(userId, makeRound(), [], [], true, false, roster)
+    expect(perms.selfEntryOnly).toBe(true)
+    expect(perms.isEventManager).toBe(false)
+    expect(perms.isGroupScorekeeper).toBe(false)
+    expect(perms.isScoreMaster).toBe(false)
+    expect(perms.canApproveScores).toBe(false)
+  })
+
+  it('does not demote the creator to self-entry just for being on the roster', () => {
+    const perms = computeScorecardPermissions(
+      userId, makeRound({ createdBy: userId }), [], [], true, false, roster)
+    expect(perms.selfEntryOnly).toBe(false)
+    expect(perms.isScoreMaster).toBe(true)
+  })
+
+  it('leaves an accepted participant unchanged when also on the roster', () => {
+    const perms = computeScorecardPermissions(
+      userId, makeRound(), [makeRoundParticipant(userId)], [], false, false, roster)
+    expect(perms.selfEntryOnly).toBe(true)
+    expect(perms.readOnly).toBe(false)
+  })
+
+  it('still honours an explicit readOnly prop — spectating stays spectating', () => {
+    const perms = computeScorecardPermissions(userId, makeRound(), [], [], true, true, roster)
+    expect(perms.readOnly).toBe(true)
+  })
+
+  it('does not rescue a pending invitee who is absent from the roster', () => {
+    const pending = [makeEventParticipant(userId, 'player', 1, 'pending')]
+    const perms = computeScorecardPermissions(userId, makeRound(), [], pending, true, false, ['pl-2'])
+    expect(perms.readOnly).toBe(true)
+  })
+
+  it('defaults to the old behaviour when no roster is supplied', () => {
+    const perms = computeScorecardPermissions(userId, makeRound(), [], [], true, false)
+    expect(perms.readOnly).toBe(true)
+    expect(perms.myRosterPlayerId).toBeUndefined()
+  })
+})
