@@ -974,6 +974,8 @@ function GroupAssignment({
 function GameSetup({
   players,
   initialStakesMode,
+  scorerId,
+  onScorerChange,
   onNext,
   onBack,
   initialGame,
@@ -982,6 +984,8 @@ function GameSetup({
 }: {
   players: Player[]
   initialStakesMode: StakesMode
+  scorerId: string
+  onScorerChange: (id: string) => void
   onNext: (game: Game, junkConfig?: JunkConfig) => void
   onBack: () => void
   initialGame?: Game
@@ -1967,6 +1971,43 @@ function GameSetup({
 
       <div className="fixed bottom-0 inset-x-0 p-4 bg-white/95 dark:bg-gray-800/95 backdrop-blur-sm border-t border-gray-200 dark:border-gray-700">
         <div className="max-w-2xl mx-auto">
+          {/* WHY THIS LIVES HERE
+              This choice used to sit inside the Treasurer step, which is skipped
+              entirely whenever stakes are points or the entry is zero — i.e. the
+              path almost everyone takes. The round was then created with the
+              organiser silently set as scorer and no way to say otherwise. On
+              6 September that meant one person nominally keeping score for four
+              foursomes. The control was not missed; it was never shown. */}
+          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm p-4 space-y-3">
+            <div>
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Who's keeping score?</p>
+              <p className="text-sm text-gray-500 mt-1">You can change this at any time, including mid-round.</p>
+            </div>
+            <div className="space-y-2">
+              <button
+                onClick={() => onScorerChange('')}
+                className={`w-full p-3 rounded-2xl border-2 text-left transition-colors ${
+                  scorerId === '' ? 'border-amber-500 bg-amber-50 dark:bg-amber-900/20' : 'border-gray-200 dark:border-gray-700'
+                }`}
+              >
+                <span className="font-semibold block">Everyone keeps their own</span>
+                <span className="text-sm text-gray-500">Each player enters their own scores on their phone.</span>
+              </button>
+              {players.map(p => (
+                <button
+                  key={p.id}
+                  onClick={() => onScorerChange(p.id)}
+                  className={`w-full p-3 rounded-2xl border-2 text-left transition-colors ${
+                    scorerId === p.id ? 'border-amber-500 bg-amber-50 dark:bg-amber-900/20' : 'border-gray-200 dark:border-gray-700'
+                  }`}
+                >
+                  <span className="font-semibold block">{p.name}</span>
+                  <span className="text-sm text-gray-500">Enters scores for the whole round.</span>
+                </button>
+              ))}
+            </div>
+          </div>
+
           <button
             onClick={() => {
               const jc = junksEnabled && junkTypes.size > 0
@@ -1977,7 +2018,7 @@ function GameSetup({
             disabled={!canContinue}
             className="w-full h-14 bg-gray-800 text-white dark:bg-brass dark:text-navy text-lg font-bold rounded-2xl shadow-lg disabled:opacity-40 active:bg-gray-900 transition-colors"
           >
-            {buyInCents === 0 || stakesMode === 'points' ? 'Next: Start Round' : 'Next: Collect Buy-ins'}
+            {buyInCents === 0 || stakesMode === 'points' ? 'Next: Start Round' : 'Next: Collect Entries'}
           </button>
         </div>
       </div>
@@ -2000,6 +2041,7 @@ function TreasurerAndBuyIns({
   onCreateRound,
   onBack,
   stepIndicator,
+  initialGameMasterId,
 }: {
   userId: string
   course: Course
@@ -2011,13 +2053,15 @@ function TreasurerAndBuyIns({
   startingHole: number
   onCreateRound: (roundId: string) => void
   onBack: () => void
+  initialGameMasterId?: string
   stepIndicator?: React.ReactNode
 }) {
   const [treasurerId, setTreasurerId] = useState<string | null>(() => {
     const me = players.find(p => p.id === userId)
     return me ? me.id : null
   })
-  const [gameMasterId, setGameMasterId] = useState<string>(players.find(p => p.id === userId)?.id ?? players[0]?.id ?? userId)
+  const [gameMasterId, setGameMasterId] = useState<string>(
+    initialGameMasterId ?? players.find(p => p.id === userId)?.id ?? players[0]?.id ?? userId)
   const [paid, setPaid] = useState<Record<string, boolean>>(() => {
     const init: Record<string, boolean> = {}
     players.forEach(p => (init[p.id] = false))
@@ -2151,7 +2195,7 @@ function TreasurerAndBuyIns({
         <div className="min-w-0">
           <h1 className="text-xl font-bold">Entries & Treasurer</h1>
           <p className="text-gray-300 text-xs truncate">
-            Pot {fmtAmount(potCents, game.stakesMode)} · {course.name}
+            In play {fmtAmount(potCents, game.stakesMode)} · {course.name}
             {game.stakesMode === 'high_roller' && (
               <span className="ml-2 font-bold" style={{ color: '#fbbf24' }}>💎 HIGH ROLLER</span>
             )}
@@ -2216,7 +2260,7 @@ function TreasurerAndBuyIns({
         {/* Game Master */}
         <section className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm p-4 space-y-3">
           <div>
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Game Master (Scorekeeper)</p>
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Scorekeeper</p>
             <p className="text-sm text-gray-500 mt-1">Who enters the scores? Can be the same as treasurer.</p>
           </div>
           <div className="space-y-2">
@@ -2232,7 +2276,7 @@ function TreasurerAndBuyIns({
               >
                 {p.name}
                 {gameMasterId === p.id && (
-                  <span className="ml-2 text-sm font-normal text-amber-600">✓ Game Master</span>
+                  <span className="ml-2 text-sm font-normal text-amber-600">✓ Scorekeeper</span>
                 )}
               </button>
             ))}
@@ -2352,6 +2396,10 @@ export function NewRound({ userId, onStart, onCancel, onAddCourse, initialStakes
     }
   }
 
+  // Defaults to the organiser, which is what the old code did silently. The
+  // difference is that it is now visible and changeable before the round starts.
+  const [scorerId, setScorerId] = useState<string>(userId)
+
   const createRoundDirect = async (g: Game, jc?: JunkConfig) => {
     if (!course || !players || creatingDirect) return
     setCreatingDirect(true)
@@ -2359,7 +2407,10 @@ export function NewRound({ userId, onStart, onCancel, onAddCourse, initialStakes
     try {
       const roundId = uuidv4()
       const inviteCode = generateInviteCode()
-      const gameMasterId = players.find(p => p.id === userId)?.id ?? players[0]?.id ?? userId
+      // '' means nobody holds the pen for the field — everyone self-enters.
+      const gameMasterId = scorerId === ''
+        ? undefined   // stored as null: nobody holds the pen, everyone self-enters
+        : players.find(p => p.id === scorerId)?.id ?? userId
       const firstHole = holesMode === 'back_9'
         ? Math.ceil(course.holes.length / 2) + 1
         : (holesMode === 'full_18' && startingHole > 1 ? startingHole : 1)
@@ -2538,6 +2589,8 @@ export function NewRound({ userId, onStart, onCancel, onAddCourse, initialStakes
         <GameSetup
           players={players}
           initialStakesMode={initialStakesMode}
+          scorerId={scorerId}
+          onScorerChange={setScorerId}
           onNext={(g, jc) => {
             setGame(g); setJunkConfig(jc)
             if (g.buyInCents === 0 || g.stakesMode === 'points') {
@@ -2569,6 +2622,7 @@ export function NewRound({ userId, onStart, onCancel, onAddCourse, initialStakes
         startingHole={startingHole}
         onBack={() => setStep('game')}
         onCreateRound={rid => onStart(rid)}
+        initialGameMasterId={scorerId}
         stepIndicator={stepBar}
       />
     )

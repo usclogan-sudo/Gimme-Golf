@@ -2214,7 +2214,7 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
           if (isEventRound && showContextBanner) {
             if (isScoreMaster) return (
               <div className="bg-purple-50 border border-purple-200 rounded-lg px-3 py-2 flex items-center justify-between">
-                <p className="text-purple-800 text-sm font-semibold">Score Master · All Groups</p>
+                <p className="text-purple-800 text-sm font-semibold">Organizer · All Groups</p>
                 <button onClick={() => setShowContextBanner(false)} className="text-purple-400 font-bold ml-2">&times;</button>
               </div>
             )

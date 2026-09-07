@@ -139,6 +139,21 @@ export function EventSetup({ userId, onStart, onCancel, onAddCourse }: Props) {
         if (!seen.has(p.id)) { seen.add(p.id); all.push(p) }
       }
       setAvailablePlayers(all)
+
+      // THE ORGANISER IS A PLAYER UNTIL THEY SAY OTHERWISE
+      //
+      // The flow never asked whether the person creating the round was playing, so
+      // they were absent from their own event. That is worse than untidy: the
+      // creator is the one person whose scoring rights come from isCreator rather
+      // than from a membership row, so the one person guaranteed never to hit a
+      // permission failure was the one testing the flow. Pre-selecting them means
+      // setup is walked as a participant, and the failure shows up in a kitchen
+      // rather than on a tee box.
+      //
+      // A registered user's player id IS their auth uuid, so this match is exact.
+      // Deselecting is one tap for someone running the outing but not playing.
+      const me = all.find(p => p.id === userId)
+      if (me) setSelectedPlayers(prev => prev.some(p => p.id === me.id) ? prev : [me, ...prev])
     })
   }, [userId])
 
@@ -387,11 +402,13 @@ export function EventSetup({ userId, onStart, onCancel, onAddCourse }: Props) {
     c.name.toLowerCase().includes(courseSearch.toLowerCase())
   )
 
+  // Selected players STAY in place with a check state. Removing a row on tap
+  // shifted every row below it up by one, so selecting four people at a steady
+  // tap rate produced one selection and three mis-taps — and at thirteen players
+  // every mis-tap is a wrong person in the round. Never reorder a list under an
+  // active finger.
   const filteredPlayers = availablePlayers
-    .filter(p =>
-      p.name.toLowerCase().includes(playerSearch.toLowerCase()) &&
-      !selectedPlayers.some(sp => sp.id === p.id)
-    )
+    .filter(p => p.name.toLowerCase().includes(playerSearch.toLowerCase()))
     .sort((a, b) => a.name.localeCompare(b.name))
 
   const GAME_OPTIONS: { type: GameType; label: string; emoji: string }[] = [
@@ -556,16 +573,36 @@ export function EventSetup({ userId, onStart, onCancel, onAddCourse }: Props) {
           />
 
           {/* Available players */}
-          {filteredPlayers.map(p => (
-            <button
-              key={p.id}
-              onClick={() => togglePlayer(p)}
-              className="w-full text-left px-4 py-3 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl active:bg-gray-50"
-            >
-              <p className="font-semibold text-gray-900 dark:text-gray-100">{p.name}</p>
-              <p className="text-xs text-gray-500">HCP {fmtHandicap(p.handicapIndex)} · {p.tee}</p>
-            </button>
-          ))}
+          {filteredPlayers.map(p => {
+            const isSelected = selectedPlayers.some(sp => sp.id === p.id)
+            return (
+              <button
+                key={p.id}
+                onClick={() => togglePlayer(p)}
+                aria-pressed={isSelected}
+                className={`w-full text-left px-4 py-3 rounded-xl border transition-colors ${
+                  isSelected
+                    ? 'bg-amber-50 dark:bg-amber-900/20 border-amber-400'
+                    : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 active:bg-gray-50'
+                }`}
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <div>
+                    <p className="font-semibold text-gray-900 dark:text-gray-100">
+                      {p.name}
+                      {p.id === userId && (
+                        <span className="ml-2 text-xs font-normal text-amber-700">you</span>
+                      )}
+                    </p>
+                    <p className="text-xs text-gray-500">HCP {fmtHandicap(p.handicapIndex)} · {p.tee}</p>
+                  </div>
+                  <span className={`shrink-0 text-lg ${isSelected ? 'text-amber-600' : 'text-gray-300'}`}>
+                    {isSelected ? '✓' : '＋'}
+                  </span>
+                </div>
+              </button>
+            )
+          })}
         </div>
         <div className="fixed bottom-0 inset-x-0 p-4 bg-white/95 dark:bg-gray-800/95 backdrop-blur-sm border-t border-gray-200 safe-bottom">
           <div className="max-w-2xl mx-auto">
@@ -574,7 +611,7 @@ export function EventSetup({ userId, onStart, onCancel, onAddCourse }: Props) {
               disabled={selectedPlayers.length < 2}
               className="w-full h-14 bg-gray-800 text-white dark:bg-brass dark:text-navy text-lg font-bold rounded-2xl disabled:opacity-40 active:bg-gray-900"
             >
-              Next: Assign Groups ({selectedPlayers.length} players) →
+              Next: Assign Groups ({selectedPlayers.length} {selectedPlayers.length === 1 ? 'player' : 'players'}) →
             </button>
           </div>
         </div>
@@ -597,7 +634,7 @@ export function EventSetup({ userId, onStart, onCancel, onAddCourse }: Props) {
           {/* How foursomes get decided. Everyone still scores individually — this is
               about who you walk the course with. */}
           <section className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 p-4 space-y-3">
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Foursomes</p>
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Groups</p>
             <div className="flex rounded-xl overflow-hidden border border-gray-200 dark:border-gray-600">
               {([
                 { mode: 'manual' as GroupMode, label: 'I\u2019ll pick', hint: 'Set who plays with whom' },
@@ -675,7 +712,13 @@ export function EventSetup({ userId, onStart, onCancel, onAddCourse }: Props) {
                   </span>
                 </div>
 
-                {/* Scorekeeper selection */}
+                {/* Scorekeeper selection.
+                    "None" is a perfectly good answer — it is what a casual group
+                    wants — but the screen never said so, leaving the organiser
+                    unable to tell whether the default meant "fine" or
+                    "unfinished". Say what it does, and say that it is reversible,
+                    because this decision is being made before anyone has arrived
+                    and before anyone knows who is in which cart. */}
                 <div className="flex items-center gap-2">
                   <span className="text-xs text-gray-500 font-medium">Scorekeeper:</span>
                   <select
@@ -683,12 +726,17 @@ export function EventSetup({ userId, onStart, onCancel, onAddCourse }: Props) {
                     onChange={e => setGroupScorekeepers(prev => ({ ...prev, [gn]: e.target.value }))}
                     className="text-xs border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-lg px-2 py-1"
                   >
-                    <option value="">None</option>
+                    <option value="">Everyone keeps their own</option>
                     {groupPlayers.map(p => (
                       <option key={p.id} value={p.id}>{p.name}</option>
                     ))}
                   </select>
                 </div>
+                <p className="text-[11px] text-gray-500 -mt-1">
+                  {groupScorekeepers[gn]
+                    ? 'They enter scores for this group. Changeable any time, including mid-round.'
+                    : 'Each player enters their own scores. You can add a scorekeeper any time, including mid-round.'}
+                </p>
 
                 {groupPlayers.map(player => (
                   <div key={player.id} className="flex items-center justify-between bg-gray-50 dark:bg-gray-700 rounded-xl px-3 py-2">
@@ -1110,7 +1158,7 @@ export function EventSetup({ userId, onStart, onCancel, onAddCourse }: Props) {
               <p className="text-xl font-bold text-gray-800 dark:text-gray-100">{numGroups}</p>
             </div>
             <div className="bg-amber-50 dark:bg-amber-900/30 rounded-xl p-3">
-              <p className="text-xs text-amber-600">Pot</p>
+              <p className="text-xs text-amber-600">In play</p>
               <p className="text-xl font-bold text-amber-700">{fmtAmount(buyInCents * selectedPlayers.length)}</p>
             </div>
           </div>
