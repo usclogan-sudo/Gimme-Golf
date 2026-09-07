@@ -18,7 +18,7 @@ export async function safeWrite(
   try {
     const result = await promise
     if (result.error) {
-      console.error(`[safeWrite] ${label}:`, result.error.message)
+      console.error(`[safeWrite] ${label}:`, describeWriteError(result.error))
       reportSupabaseError(result.error, `safeWrite.${label}`)
       return false
     }
@@ -28,4 +28,25 @@ export async function safeWrite(
     reportSupabaseError(err, `safeWrite.${label}.exception`)
     return false
   }
+}
+
+/**
+ * Turn a Supabase/Postgres error into something a human can act on.
+ *
+ * Every write failure used to reach the user as "Please try again", while the part
+ * that actually named the problem — the constraint, the code — sat one line away in
+ * the console. On 6 September that turned a one-line foreign key violation into a
+ * two-hour diagnosis. A raw constraint name in front of a golfer is not elegant, but
+ * it is the difference between a bug that gets reported usefully and one that gets
+ * described as "it didn't work", so the code is included deliberately.
+ */
+export function describeWriteError(
+  err: unknown,
+  fallback = 'Something went wrong. Please try again.',
+): string {
+  const e = err as { message?: string; code?: string; details?: string; hint?: string } | null
+  if (!e || typeof e !== 'object') return fallback
+  const detail = [e.message, e.details].filter(Boolean).join(' — ')
+  if (!detail) return fallback
+  return e.code ? `${detail} (${e.code})` : detail
 }

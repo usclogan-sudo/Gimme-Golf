@@ -1241,7 +1241,11 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
     myEventGroupNumber,
     myParticipant,
     myEventParticipant,
-  } = computeScorecardPermissions(userId, round, roundParticipants, eventParticipants, isEventRound, readOnlyProp)
+    myRosterPlayerId,
+  } = computeScorecardPermissions(
+    userId, round, roundParticipants, eventParticipants, isEventRound, readOnlyProp,
+    players.map(p => p.id),
+  )
 
   // Snapshot the auto-advance guards for setScore (defined earlier). Auto-advance
   // only for a single authoritative scorer on a normal round, in the Hole view —
@@ -2749,8 +2753,14 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
           const hasGroups = round.groups && Object.keys(round.groups).length > 0
           const groupNums = hasGroups ? [...new Set(Object.values(round.groups!))].sort((a, b) => a - b) : []
           const isInActiveGroup = !hasGroups || groupNums.length <= 1 || activeGroupTab === 'all' || activeGroupTab === playerGroup
-          const isMyPlayer = selfEntryOnly && myParticipant?.playerId === player.id
-          const isMyEventPlayer = isEventRound && myEventParticipant?.playerId === player.id
+          // Owning the slot is what matters, and it can be established two ways: a
+          // membership row that names this player, or the roster slot that carries
+          // this user's own id. The second is the baseline that survives a missing
+          // invite — see the note in permissions.ts.
+          const ownsThisSlot = myParticipant?.playerId === player.id || player.id === myRosterPlayerId
+          const isMyPlayer = selfEntryOnly && ownsThisSlot
+          const isMyEventPlayer = isEventRound &&
+            (myEventParticipant?.playerId === player.id || player.id === myRosterPlayerId)
 
           // Event editability: Score Master > Group Scorekeeper > self-entry fallback
           let isEditable: boolean
