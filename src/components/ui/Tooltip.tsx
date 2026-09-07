@@ -18,7 +18,7 @@ const GOLF_TERMS: Record<string, string> = {
   Banker: 'Rotating banker takes on all other players each hole',
   Quota: 'Each player gets a target based on handicap — beat your quota to win',
   Entry: 'The amount each player puts in before the round',
-  Pot: 'The total tokens in play — every player\'s entry combined',
+  'In play': 'The total tokens in play — every player\'s entry combined',
   Carry: 'When a skin is tied, its value carries forward to the next hole',
   'Lone Wolf': 'When the wolf plays alone against all others — double stakes',
   'Course Handicap': 'Your handicap adjusted for the specific course difficulty (slope & rating)',
