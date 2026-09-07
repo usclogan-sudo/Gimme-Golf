@@ -8,6 +8,8 @@ export interface ScorecardPermissions {
   myParticipant: RoundParticipant | undefined
   myEventParticipant: EventParticipant | undefined
   myRosterPlayerId: string | undefined
+  myPendingInvite: boolean
+  groupScorekeeperPlayerId: string | undefined
   isEventManager: boolean
   isGroupScorekeeper: boolean
   isScoreMaster: boolean
@@ -72,12 +74,21 @@ export function computeScorecardPermissions(
 
   // Does the current player's group have an active (joined) scorekeeper?
   // True when a scorekeeper EventParticipant exists for this group and it's not the player themselves
-  const groupHasActiveScorekeeper = isEventRound && myEventGroupNumber != null &&
-    eventParticipants.some(ep =>
-      ep.role === 'scorekeeper' &&
-      ep.groupNumber === myEventGroupNumber &&
-      ep.userId !== userId
-    )
+  const groupScorekeeper = isEventRound && myEventGroupNumber != null
+    ? eventParticipants.find(ep =>
+        ep.role === 'scorekeeper' &&
+        ep.groupNumber === myEventGroupNumber &&
+        ep.userId !== userId)
+    : undefined
+  const groupHasActiveScorekeeper = !!groupScorekeeper
+  const groupScorekeeperPlayerId = groupScorekeeper?.playerId
+
+  // A row that exists but has not been accepted. This is the state that reads as
+  // "watching" while actually being one tap from playing, so it has to be tellable
+  // apart from a genuine outsider — the two were indistinguishable on 6 September.
+  const myPendingInvite =
+    roundParticipants.some(p => p.userId === userId && p.status === 'pending') ||
+    eventParticipants.some(ep => ep.userId === userId && ep.status === 'pending')
 
   const readOnly = readOnlyProp ||
     (!isScoremasterRole && !myParticipant && !myEventParticipant && !myRosterPlayerId)
@@ -90,6 +101,8 @@ export function computeScorecardPermissions(
     myParticipant,
     myEventParticipant,
     myRosterPlayerId,
+    myPendingInvite,
+    groupScorekeeperPlayerId,
     isEventManager,
     isGroupScorekeeper,
     isScoreMaster,

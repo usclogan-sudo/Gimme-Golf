@@ -6,6 +6,7 @@ import { enqueue, flush, getPending } from '../../lib/offlineQueue'
 import { supabase, rowToRound, rowToRoundPlayer, rowToHoleScore, rowToBuyIn, rowToBBBPoint, rowToJunkRecord, rowToSideBet, rowToRoundParticipant, rowToEvent, rowToEventParticipant, rowToUserProfile, holeScoreToRow, bbbPointToRow, junkRecordToRow, sideBetToRow, rowToPropBet, propBetToRow, rowToPropWager, propWagerToRow, generateInviteCode } from '../../lib/supabase'
 import { safeWrite } from '../../lib/safeWrite'
 import { computeScorecardPermissions } from '../../lib/permissions'
+import { getScoringStance } from '../../lib/scoringStance'
 import { parseDollarsToCents } from '../../lib/money'
 import { applyHoleScorePayload, applyBBBPointPayload, applyJunkRecordPayload, applySideBetPayload, applyRoundParticipantPayload, applyBuyInPayload, applyPropBetPayload, applyPropWagerPayload } from '../../lib/realtimeReducers'
 import { getCelebration, CelebrationToast, CelebrationFullscreen } from '../Celebrations'
@@ -1229,6 +1230,12 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
   }
 
   // Role-based access (must be before approvedScores which depends on isEventRound)
+  // Taking your own card back when a scorekeeper has the pen. Session-scoped on
+  // purpose: it is a "just for now" action (their phone died, they walked ahead),
+  // not a standing preference worth persisting and later having to unwind.
+  const [selfScoringOverride, setSelfScoringOverride] = useState(false)
+  const [joiningFromCard, setJoiningFromCard] = useState(false)
+
   const {
     isScoremasterRole,
     selfEntryOnly,
@@ -1242,10 +1249,39 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
     myParticipant,
     myEventParticipant,
     myRosterPlayerId,
+    myPendingInvite,
+    groupScorekeeperPlayerId,
   } = computeScorecardPermissions(
     userId, round, roundParticipants, eventParticipants, isEventRound, readOnlyProp,
     players.map(p => p.id),
   )
+
+  // One derived answer to "what am I here?", replacing the five-word badge that
+  // could not tell an outsider apart from a player who had never been invited.
+  const stance = getScoringStance({
+    perms: {
+      isScoremasterRole, isScoreMaster, isGroupScorekeeper, groupHasActiveScorekeeper,
+      myRosterPlayerId, myParticipant, myEventParticipant, myPendingInvite,
+      myEventGroupNumber, readOnly,
+    },
+    isEventRound,
+    scorekeeperName: players.find(p => p.id === groupScorekeeperPlayerId)?.name,
+    selfScoringOverride,
+  })
+
+  async function acceptInviteFromCard() {
+    setJoiningFromCard(true)
+    const ok = await safeWrite(
+      isEventRound && round?.eventId
+        ? supabase.rpc('respond_to_event_invite', { p_event_id: round.eventId, p_accept: true })
+        : supabase.rpc('respond_to_round_invite', { p_round_id: roundId, p_accept: true }),
+      'accept invite from scorecard',
+    )
+    setJoiningFromCard(false)
+    // Membership changes what every permission below resolves to, so the simplest
+    // correct thing is to re-derive the whole screen from a fresh fetch.
+    if (ok) window.location.reload()
+  }
 
   // Snapshot the auto-advance guards for setScore (defined earlier). Auto-advance
   // only for a single authoritative scorer on a normal round, in the Hole view —
@@ -1545,7 +1581,7 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
                 {event ? `${event.name} · ` : ''}{snapshot.courseName}
                 <span className="inline-flex items-center gap-1 text-[10px] bg-amber-500/30 px-1.5 py-0.5 rounded-full">
                   <span className="w-1.5 h-1.5 bg-amber-400 rounded-full animate-pulse" />
-                  {readOnly ? 'Spectating' : isEventRound ? (isScoreMaster ? 'Score Master' : isGroupScorekeeper ? `Scorekeeper · G${myEventGroupNumber}` : groupHasActiveScorekeeper ? 'View Only' : 'Self-Entry') : selfEntryOnly ? 'Self-Entry' : 'Live'}
+                  {stance.badge}
                 </span>
               </p>
               {/* One hole header — stepper chevrons merged in; the duplicate row below
@@ -1684,6 +1720,31 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
           </div>
         )}
       </header>
+
+      {/* Any state that stops someone doing the obvious thing has to say so, and
+          offer the action that resolves it. A bare badge said "Spectating" to a
+          player who had simply never been invited, and to a spouse on the cart
+          path, and gave neither of them anywhere to go. */}
+      {(stance.action || stance.kind === 'following' || stance.kind === 'scored_for') && (
+        <div className="max-w-2xl mx-auto px-4 pt-3">
+          <div className="flex items-center justify-between gap-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2">
+            <p className="text-sm text-gray-700 dark:text-gray-200">{stance.headline}</p>
+            {stance.action === 'join' && (
+              <button
+                onClick={acceptInviteFromCard}
+                disabled={joiningFromCard}
+                className="shrink-0 text-sm font-semibold px-3 py-1.5 rounded-lg bg-green-600 text-white disabled:opacity-50"
+              >{joiningFromCard ? 'Joining…' : stance.actionLabel}</button>
+            )}
+            {stance.action === 'take_over' && (
+              <button
+                onClick={() => setSelfScoringOverride(true)}
+                className="shrink-0 text-sm font-semibold px-3 py-1.5 rounded-lg border border-gray-300 dark:border-gray-600"
+              >{stance.actionLabel}</button>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* ── Invite strip (§15): the primary invite path, out of the kebab and into
           the open. Host-only; shows live roster status. ── */}
@@ -2772,8 +2833,11 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
             } else if (isGroupScorekeeper && playerInMyGroup) {
               // Group Scorekeeper can edit any player in their group
               isEditable = true
-            } else if (groupHasActiveScorekeeper) {
-              // Player with active scorekeeper is read-only
+            } else if (groupHasActiveScorekeeper && !(selfScoringOverride && ownsThisSlot)) {
+              // A scorekeeper holds the pen for the group — but only until one of
+              // their players asks for it back. This used to be an unconditional
+              // lock, so a dead phone or a scorekeeper who walked ahead left a
+              // player unable to record their own strokes.
               isEditable = false
             } else {
               // No active scorekeeper — fall back to self-entry
