@@ -50,3 +50,24 @@ export function describeWriteError(
   if (!detail) return fallback
   return e.code ? `${detail} (${e.code})` : detail
 }
+
+/**
+ * Like safeWrite, but the failure stops the caller.
+ *
+ * safeWrite deliberately swallows errors so a non-essential write cannot derail a
+ * flow. That is wrong for the writes a flow's success is DEFINED by: event
+ * creation logged two 42P17 failures and still showed a party emoji, a share code
+ * and a QR for an event nobody could join. Use this where "it did not work" must
+ * mean "the screen does not advance".
+ */
+export async function writeOrThrow(
+  promise: PromiseLike<SupabaseResult>,
+  label: string,
+): Promise<void> {
+  const result = await promise
+  if (result.error) {
+    console.error(`[writeOrThrow] ${label}:`, describeWriteError(result.error))
+    reportSupabaseError(result.error, `writeOrThrow.${label}`)
+    throw result.error
+  }
+}

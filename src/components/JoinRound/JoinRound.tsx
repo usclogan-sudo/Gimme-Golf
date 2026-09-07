@@ -65,12 +65,26 @@ export function JoinRound({ userId, initialCode, onJoined, onCancel }: Props) {
       if (eventData && !eventErr) {
         const ed = eventData as any
         const roundData = ed.round ?? {}
+
+        // AN EVENT WITHOUT ITS ROUND IS NOT A FIND, IT IS A FAILURE
+        //
+        // The roster lives on the round, reached through events.round_id. When that
+        // link is missing the screen still said "EVENT FOUND" in confident capitals
+        // above "Unknown Course - 0 players" and an empty "Which player are you?"
+        // list. There were no names to claim, so the only honest thing to report is
+        // that the event is not ready, and to say who can fix it.
+        if (!roundData.id || (roundData.players ?? []).length === 0) {
+          setError("This event isn't ready yet. Ask the organiser to re-share the code.")
+          setStep('code')
+          return
+        }
+
         setEventPreview({
           id: ed.id,
           name: ed.name,
           roundId: roundData.id,
-          courseName: roundData.course_snapshot?.courseName ?? 'Unknown Course',
-          gameType: roundData.game?.type ?? 'Unknown',
+          courseName: roundData.course_snapshot?.courseName ?? undefined,
+          gameType: roundData.game?.type ?? undefined,
           players: (roundData.players ?? []).map((p: any) => ({ id: p.id, name: p.name })),
           groups: roundData.groups ?? undefined,
           participants: (ed.participants ?? []).map((p: any) => ({
@@ -98,8 +112,8 @@ export function JoinRound({ userId, initialCode, onJoined, onCancel }: Props) {
       const roundData = data as any
       setPreview({
         id: roundData.id,
-        courseName: roundData.course_snapshot?.courseName ?? 'Unknown Course',
-        gameType: roundData.game?.type ?? 'Unknown',
+        courseName: roundData.course_snapshot?.courseName ?? undefined,
+        gameType: roundData.game?.type ?? undefined,
         players: (roundData.players ?? []).map((p: any) => ({ id: p.id, name: p.name })),
         participants: (roundData.participants ?? []).map((p: any) => ({
           id: p.id,
@@ -273,13 +287,19 @@ export function JoinRound({ userId, initialCode, onJoined, onCancel }: Props) {
               {eventPreview && (
                 <h2 className="font-display font-bold text-xl text-gray-900 dark:text-gray-100 mt-1">{eventPreview.name}</h2>
               )}
-              <p className={`${eventPreview ? 'text-gray-600 dark:text-gray-400 text-sm mt-0.5' : 'font-display font-bold text-xl text-gray-900 dark:text-gray-100 mt-1'}`}>
-                {eventPreview?.courseName ?? preview?.courseName}
-              </p>
+              {(eventPreview?.courseName ?? preview?.courseName) && (
+                <p className={`${eventPreview ? 'text-gray-600 dark:text-gray-400 text-sm mt-0.5' : 'font-display font-bold text-xl text-gray-900 dark:text-gray-100 mt-1'}`}>
+                  {eventPreview?.courseName ?? preview?.courseName}
+                </p>
+              )}
               <div className="flex items-center gap-3 mt-2 text-sm text-gray-600 dark:text-gray-400">
-                <span>{GAME_LABELS[(eventPreview?.gameType ?? preview?.gameType) ?? ''] ?? (eventPreview?.gameType ?? preview?.gameType)}</span>
-                <span>·</span>
-                <span>{activePlayers.length} players</span>
+                {(eventPreview?.gameType ?? preview?.gameType) && (
+                  <>
+                    <span>{GAME_LABELS[(eventPreview?.gameType ?? preview?.gameType) ?? ''] ?? (eventPreview?.gameType ?? preview?.gameType)}</span>
+                    <span>·</span>
+                  </>
+                )}
+                <span>{activePlayers.length} {activePlayers.length === 1 ? 'player' : 'players'}</span>
                 {eventPreview && eventPreview.groups && (
                   <>
                     <span>·</span>
@@ -312,6 +332,16 @@ export function JoinRound({ userId, initialCode, onJoined, onCancel }: Props) {
               )}
 
               {error && <p className="text-red-500 text-sm">{error}</p>}
+
+              {/* Never leave a question hanging over an empty list. If there is
+                  nobody to claim, say so plainly rather than rendering a heading
+                  above nothing and letting the user conclude the app is broken. */}
+              {sortedPlayers.length === 0 && (
+                <p className="text-sm text-gray-500">
+                  Nobody has been added to this round yet. Ask the organiser to add you,
+                  then enter the code again.
+                </p>
+              )}
 
               <div className="space-y-2">
                 {sortedPlayers.map(player => {

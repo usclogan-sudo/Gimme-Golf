@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { v4 as uuidv4 } from 'uuid'
 import { supabase, rowToCourse, rowToPlayer, rowToSharedCourse, roundToRow, roundPlayerToRow, buyInToRow, eventToRow, generateInviteCode, rowToUserProfile } from '../../lib/supabase'
-import { safeWrite, describeWriteError } from '../../lib/safeWrite'
+import { writeOrThrow, describeWriteError } from '../../lib/safeWrite'
 import { reportSupabaseError } from '../../lib/sentry'
 // Events store buy-in in cents (money mode); fmtAmount with no stakesMode
 // converts cents -> points for display (1 pt = $1), so no $ surfaces.
@@ -237,9 +237,15 @@ export function EventSetup({ userId, onStart, onCancel, onAddCourse }: Props) {
     savingRef.current = true
     setSaving(true)
     setCreateError(null)
+    // Hoisted above the try so the catch can undo whatever was written. An event
+    // row with no round is the exact artifact that stranded the 6 September round,
+    // so a half-built event gets removed rather than left for someone to find.
+    const roundId = uuidv4()
+    const eventId = uuidv4()
+    let createdEvent = false
+    let createdRound = false
+
     try {
-      const roundId = uuidv4()
-      const eventId = uuidv4()
       const inviteCode = generateInviteCode()
       const game = buildGame()
 
@@ -321,13 +327,11 @@ export function EventSetup({ userId, onStart, onCancel, onAddCourse }: Props) {
       // constraints on rounds(id), so racing them against the round insert caused
       // fk_round_players_round / fk_buy_ins_round violations (same bug pattern fixed
       // in NewRound.startRound in commit d6358ff).
-      const eventInserted = await safeWrite(
+      await writeOrThrow(
         supabase.from('events').insert(eventToRow({ ...golfEvent, roundId: undefined }, userId)),
         'insert event',
       )
-      // safeWrite swallows the failure by design, so without this the flow carried on
-      // and reported the round's confusing downstream error instead of the real one.
-      if (!eventInserted) throw new Error('Could not create the event')
+      createdEvent = true
 
       const roundResult = await supabase.from('rounds').insert(roundToRow(round, userId))
       if (roundResult.error) {
@@ -335,8 +339,13 @@ export function EventSetup({ userId, onStart, onCancel, onAddCourse }: Props) {
         throw roundResult.error
       }
 
-      // Both rows exist now, so the event can finally name its round.
-      await safeWrite(
+      createdRound = true
+
+      // Both rows exist now, so the event can finally name its round. This is not
+      // optional bookkeeping: the join screen follows events.round_id to reach the
+      // roster, so an event without it renders "Unknown Course - 0 players" and an
+      // empty list of names to claim.
+      await writeOrThrow(
         supabase.from('events').update({ round_id: roundId }).eq('id', eventId),
         'link event to round',
       )
@@ -372,7 +381,7 @@ export function EventSetup({ userId, onStart, onCancel, onAddCourse }: Props) {
       // A registered user's player id IS their auth uuid (see the self-player
       // synthesis in NewRound and the profilePlayers mapping above), so `userId` is
       // both correct when they are playing and safely uncollidable when they are not.
-      await safeWrite(supabase.from('event_participants').insert({
+      await writeOrThrow(supabase.from('event_participants').insert({
         id: uuidv4(),
         event_id: eventId,
         user_id: userId,
@@ -391,7 +400,14 @@ export function EventSetup({ userId, onStart, onCancel, onAddCourse }: Props) {
       setStep('share')
     } catch (err) {
       console.error('Failed to create event:', err)
-      setCreateError(`Failed to create event. ${describeWriteError(err)}`)
+      // Best effort, and deliberately not awaited into the error path: if cleanup
+      // also fails there is nothing further to tell the user that the message below
+      // does not already say.
+      try {
+        if (createdRound) await supabase.from('rounds').delete().eq('id', roundId)
+        if (createdEvent) await supabase.from('events').delete().eq('id', eventId)
+      } catch { /* leave it; the message below is still accurate */ }
+      setCreateError(`Event not created. ${describeWriteError(err)} Nothing was saved — try again.`)
     } finally {
       setSaving(false)
       savingRef.current = false
