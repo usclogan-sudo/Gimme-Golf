@@ -120,7 +120,15 @@ export function Ledger({ userId, onBack }: Props) {
 
       const opponentId = isFrom ? s.toPlayerId : s.fromPlayerId
       const sign = isTo ? 1 : -1
-      const amount = s.status === 'paid' ? 0 : sign * s.amountCents
+      // settlements.amountCents holds TOKENS in a points round and real cents in a
+      // money one. The ledger spans rounds, so the two have to be reconciled before
+      // they are added — and everything downstream (the display, and the x100 for
+      // payment links) then works in tokens consistently.
+      const stakes = round.game?.stakesMode
+      const tokens = stakes === 'points' || stakes == null
+        ? s.amountCents
+        : Math.round(s.amountCents / 100)
+      const amount = s.status === 'paid' ? 0 : sign * tokens
 
       if (!opponentMap.has(opponentId)) {
         opponentMap.set(opponentId, { netCents: 0, rounds: new Map() })
