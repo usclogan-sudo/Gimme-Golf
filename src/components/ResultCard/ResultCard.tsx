@@ -44,15 +44,6 @@ export interface ResultCardProps {
   }
   standings: ResultCardStanding[]
   settlements: ResultCardSettlement[]
-  /**
-   * Optional per-category points table. Present for BBB, where the settlement is
-   * a division nobody can check without seeing the points it divided.
-   */
-  pointsTable?: {
-    columns: string[]
-    rows: { name: string; values: number[]; total: number }[]
-    footnote?: string
-  }
   /** screen = responsive width; export = fixed 1080. */
   variant?: 'screen' | 'export'
   /** 9:16 or 4:5. */
@@ -173,7 +164,7 @@ function buildHeadline(winners: ResultCardStanding[], isAllSquare: boolean, inPr
 }
 
 export const ResultCard = forwardRef<HTMLDivElement, ResultCardProps>(function ResultCard(
-  { round, standings, settlements, pointsTable, variant = 'screen', ratio = 'story', roundId, winnerFirstWin = false, inProgress = false },
+  { round, standings, settlements, variant = 'screen', ratio = 'story', roundId, winnerFirstWin = false, inProgress = false },
   ref,
 ) {
   const { w: W, h: H } = RATIOS[ratio]
@@ -415,52 +406,6 @@ export const ResultCard = forwardRef<HTMLDivElement, ResultCardProps>(function R
           >
             +{moreStandings} more
           </div>
-        )}
-
-        {/* Points breakdown — the figures the settlement divided, so it can be
-            checked rather than taken on trust. */}
-        {pointsTable && pointsTable.rows.length > 0 && (
-          <>
-            {hairline('hr-points')}
-            <div
-              style={{
-                fontFamily: SANS, fontWeight: 600, fontSize: u(M.settleLabel),
-                letterSpacing: '0.18em', color: CREAM_DIM, marginBottom: u(12),
-              }}
-            >
-              POINTS
-            </div>
-            <div style={{ display: 'flex', fontFamily: SANS, fontSize: u(M.settle), color: CREAM_DIM, marginBottom: u(6) }}>
-              <span style={{ flex: 1, minWidth: 0 }} />
-              {pointsTable.columns.map(c => (
-                <span key={c} style={{ width: u(56), textAlign: 'right', letterSpacing: '0.08em' }}>{c}</span>
-              ))}
-              <span style={{ width: u(56), textAlign: 'right', color: CREAM, letterSpacing: '0.08em' }}>TOTAL</span>
-            </div>
-            {pointsTable.rows.map((r, i) => (
-              <div
-                key={`${r.name}-${i}`}
-                style={{
-                  display: 'flex', alignItems: 'baseline', height: u(M.settleRow),
-                  fontFamily: SANS, fontSize: u(M.settle), color: CREAM_DIM,
-                  fontVariantNumeric: 'tabular-nums',
-                }}
-              >
-                <span style={{ flex: 1, minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', color: CREAM }}>
-                  {middleTruncate(r.name, 14)}
-                </span>
-                {r.values.map((v, j) => (
-                  <span key={j} style={{ width: u(56), textAlign: 'right' }}>{v}</span>
-                ))}
-                <span style={{ width: u(56), textAlign: 'right', color: BRASS, fontWeight: 600 }}>{r.total}</span>
-              </div>
-            ))}
-            {pointsTable.footnote && (
-              <div style={{ fontFamily: SANS, fontSize: u(M.settle), color: CREAM_DIM, marginTop: u(8) }}>
-                {pointsTable.footnote}
-              </div>
-            )}
-          </>
         )}
 
         {/* Settle up */}

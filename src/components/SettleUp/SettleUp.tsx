@@ -894,6 +894,12 @@ export function SettleUp({ roundId, userId, eventId, onDone, onContinue }: Props
   const toPayCents = (amt: number) => (isPoints ? amt * 100 : amt)
   const headerClass = isHighRoller ? 'hr-header' : 'app-header'
 
+  // The source tag exists to separate a game debt from a prop, a junk or a side
+  // bet. When every line came from the same place it labels nothing — it just puts
+  // a coloured pill that looks tappable next to a reason that already says so.
+  const settlementSourcesVary =
+    new Set(settlementRecords.map(s => s.source ?? 'game')).size > 1
+
   const owedSettlements = settlementRecords.filter(s => s.status === 'owed')
   const paidSettlements = settlementRecords.filter(s => s.status === 'paid')
   const allSettled = settlementRecords.length > 0 && owedSettlements.length === 0
@@ -914,6 +920,12 @@ export function SettleUp({ roundId, userId, eventId, onDone, onContinue }: Props
       const pts = bbbResult?.totalPoints
       return `at ${fmtAmount(v, game.stakesMode)} per point${pts != null ? ` · ${pts} awarded` : ''}`
     }
+    // A pot round's value per point is not agreed up front — it is the pot divided
+    // by however many points were awarded. Stating the division is what makes the
+    // settlement checkable, and it is one line rather than a table.
+    if (bbbResult && bbbResult.totalPoints > 0) {
+      return `${fmtAmount(game.buyInCents * players.length, game.stakesMode)} ÷ ${bbbResult.totalPoints} points`
+    }
     if (cfg?.payModel === 'per_skin') {
       return `at ${fmtAmount(game.buyInCents, game.stakesMode)} per skin`
     }
@@ -926,32 +938,13 @@ export function SettleUp({ roundId, userId, eventId, onDone, onContinue }: Props
     return undefined
   })()
 
-  // The figures the settlement divided. Printed on the card so the arithmetic is
-  // checkable: 19/13/12/10 against 54 awarded explains +11 / -1 / -3 / -7 without
-  // anyone having to be told.
-  const pointsTable = (() => {
-    if (game?.type !== 'bingo_bango_bongo' || bbbPoints.length === 0) return undefined
-    const rows = bbbCategoryBreakdown(bbbPoints, players)
-      .filter(r => r.total > 0)
-      .map(r => ({
-        name: players.find(p => p.id === r.playerId)?.name ?? 'Player',
-        values: [r.bingo, r.bango, r.bongo],
-        total: r.total,
-      }))
-    if (rows.length === 0) return undefined
-    const awarded = rows.reduce((s, r) => s + r.total, 0)
-    // A pot round's value per point is not agreed up front — it is the pot divided
-    // by however many points ended up being awarded. Showing that division is the
-    // only way the number can be checked, and it is what nobody could see on
-    // 7 September.
-    const cfg = game.config as { payModel?: string; valueCentsPerPoint?: number } | undefined
-    const footnote = cfg?.payModel === 'per_point'
-      ? `${fmtAmount(cfg.valueCentsPerPoint ?? game.buyInCents, game.stakesMode)} per point · ${awarded} awarded`
-      : awarded > 0
-        ? `${fmtAmount(game.buyInCents * players.length, game.stakesMode)} ÷ ${awarded} points`
-        : `${awarded} awarded`
-    return { columns: ['BINGO', 'BANGO', 'BONGO'], rows, footnote }
-  })()
+  // Per-category tallies for the BBB section below. This lives on the screen, not
+  // on the share card: the card is a fixed-size image where a four-column table
+  // reads as clutter, and the screen has room and is where anyone actually checks
+  // the arithmetic. The card keeps the one line that makes it checkable — the rate.
+  const bbbBreakdown = game?.type === 'bingo_bango_bongo' && bbbPoints.length > 0
+    ? bbbCategoryBreakdown(bbbPoints, players)
+    : null
 
   const resultCardProps = buildResultCardProps({
     roundId,
@@ -960,7 +953,6 @@ export function SettleUp({ roundId, userId, eventId, onDone, onContinue }: Props
     formats: [gameLabel],
     holesPlayed: holesWithActivity({ holeScores, bbbPoints, junkRecords, sideBets }),
     rateLine,
-    pointsTable,
     players,
     settlements: settlementRecords,
     payouts,
@@ -1491,9 +1483,20 @@ export function SettleUp({ roundId, userId, eventId, onDone, onContinue }: Props
                 {players.slice().sort((a, b) => (bbbResult.pointsWon[b.id] ?? 0) - (bbbResult.pointsWon[a.id] ?? 0)).map(p => {
                   const pts = bbbResult.pointsWon[p.id] ?? 0
                   return (
-                    <div key={p.id} className={`flex items-center justify-between p-3 rounded-xl ${pts > 0 ? 'bg-amber-50' : 'bg-gray-50'}`}>
-                      <span className="font-semibold text-gray-800 dark:text-gray-100">{p.name}</span>
-                      <span className={`font-bold ${pts > 0 ? 'text-amber-700' : 'text-gray-400'}`}>{pts} point{pts !== 1 ? 's' : ''}</span>
+                    <div key={p.id} className={`flex items-center justify-between gap-3 p-3 rounded-xl ${pts > 0 ? 'bg-amber-50' : 'bg-gray-50'}`}>
+                      <span className="font-semibold text-gray-800 dark:text-gray-100 truncate">{p.name}</span>
+                      <span className="flex items-baseline gap-3 flex-shrink-0 tabular-nums">
+                        {bbbBreakdown && (() => {
+                          const r = bbbBreakdown.find(b => b.playerId === p.id)
+                          if (!r) return null
+                          return (['bingo', 'bango', 'bongo'] as const).map(cat => (
+                            <span key={cat} className="text-xs text-gray-500">
+                              <span className="uppercase tracking-wide">{cat.slice(0, 2)}</span> {r[cat]}
+                            </span>
+                          ))
+                        })()}
+                        <span className={`font-bold ${pts > 0 ? 'text-amber-700' : 'text-gray-400'}`}>{pts} point{pts !== 1 ? 's' : ''}</span>
+                      </span>
                     </div>
                   )
                 })}
@@ -1773,11 +1776,13 @@ export function SettleUp({ roundId, userId, eventId, onDone, onContinue }: Props
                       </button>
                       <div className="flex items-center gap-2 mt-0.5">
                         {s.reason && <p className="text-xs text-gray-500 truncate">{s.reason}</p>}
-                        <span className={`text-xs font-semibold px-1.5 py-0.5 rounded flex-shrink-0 ${
-                          s.source === 'prop' ? 'bg-purple-100 text-purple-700' : s.source === 'side_bet' ? 'bg-amber-100 text-amber-700' : s.source === 'junk' ? 'bg-indigo-100 text-indigo-700' : 'bg-blue-100 text-blue-700'
-                        }`}>
-                          {s.source === 'prop' ? 'Prop' : s.source === 'side_bet' ? 'Side Bet' : s.source === 'junk' ? 'Junk' : 'Game'}
-                        </span>
+                        {settlementSourcesVary && (
+                          <span className={`text-xs font-semibold px-1.5 py-0.5 rounded flex-shrink-0 ${
+                            s.source === 'prop' ? 'bg-purple-100 text-purple-700' : s.source === 'side_bet' ? 'bg-amber-100 text-amber-700' : s.source === 'junk' ? 'bg-indigo-100 text-indigo-700' : 'bg-blue-100 text-blue-700'
+                          }`}>
+                            {s.source === 'prop' ? 'Prop' : s.source === 'side_bet' ? 'Side Bet' : s.source === 'junk' ? 'Junk' : 'Game'}
+                          </span>
+                        )}
                       </div>
                       {playerReported && (
                         <p className="text-xs text-amber-600 font-semibold mt-0.5">
