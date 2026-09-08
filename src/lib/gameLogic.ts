@@ -522,6 +522,48 @@ export function holesWithActivity(sources: {
   return holes.size
 }
 
+/**
+ * How complete a BBB card is.
+ *
+ * Three points are available per hole and every one of them moves money. When a tap
+ * is missed the point is not merely absent — under the pot model it silently raises
+ * the value of every other point, because the pot is divided by the points actually
+ * awarded. On 7 September four missed taps raised every other point by 8% and
+ * nobody could see it.
+ *
+ * `thru` is the furthest hole with any assignment, so `expected` is what should
+ * have been recorded by now rather than a full 54 that would make every live round
+ * look broken.
+ */
+export function bbbGridSummary(bbbPoints: { holeNumber: number; bingo: string | null; bango: string | null; bongo: string | null }[]): {
+  thru: number
+  assigned: number
+  expected: number
+  unassigned: number
+} {
+  let thru = 0
+  let assigned = 0
+  for (const row of bbbPoints) {
+    const n = [row.bingo, row.bango, row.bongo].filter(Boolean).length
+    if (n > 0 && row.holeNumber > thru) thru = row.holeNumber
+    assigned += n
+  }
+  const expected = thru * 3
+  return { thru, assigned, expected, unassigned: Math.max(0, expected - assigned) }
+}
+
+/**
+ * Short label for a grid cell. Two letters so four columns fit a 393px viewport,
+ * and drawn from separate name parts so "Austin Logan" and "Jeff Logan" cannot
+ * collapse to the same thing — which truncation would do.
+ */
+export function playerInitials(name: string): string {
+  const parts = name.split(/[^A-Za-z0-9]+/).filter(Boolean)
+  if (parts.length === 0) return '??'
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase()
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase()
+}
+
 /** True when a points format is paid per point rather than out of a pot. */
 export function isPerPoint(config: { payModel?: PointsPayModel } | undefined | null): boolean {
   return config?.payModel === 'per_point'
