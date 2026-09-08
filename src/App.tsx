@@ -7,7 +7,7 @@ import { safeWrite } from './lib/safeWrite'
 import { setSentryUser, clearSentryUser } from './lib/sentry'
 import { checkAppVersion } from './lib/appVersion'
 import { SHOW_PROP_BETS } from './lib/featureFlags'
-import { fmtHandicap } from './lib/gameLogic'
+import { fmtHandicap, fmtAmount } from './lib/gameLogic'
 import { NotificationToast } from './components/NotificationToast'
 import { Auth } from './components/Auth/Auth'
 import { ResetPassword } from './components/Auth/ResetPassword'
@@ -247,11 +247,30 @@ function Home({
         if (setData) {
           const uniqueRounds = new Set(setData.map((d: any) => d.round_id))
           setUnsettledCount(uniqueRounds.size)
+
+          // settlements.amount_cents holds TOKENS in a points round and real cents
+          // in a money one, so the two cannot be added together, and neither can be
+          // divided by 100 on the way out. This banner did exactly that and told the
+          // winner of a 11-token round he was owed $0.11.
+          //
+          // Normalise every row to tokens against its own round before summing.
+          const stakesByRound = new Map<string, string | undefined>()
+          for (const r of [...ownedRows, ...partRows] as any[]) {
+            stakesByRound.set(r.id, r.game?.stakesMode)
+          }
+          // Unknown rounds fall back to points: every round in production is a
+          // points round, and guessing money here is the mistake being fixed.
+          const toTokens = (cents: number, roundId: string) =>
+            stakesByRound.get(roundId) === 'points' || !stakesByRound.has(roundId)
+              ? cents
+              : Math.round(cents / 100)
+
           let youOwe = 0
           let owedToYou = 0
           for (const s of setData) {
-            if (myPlayerIds.has(s.from_player_id)) youOwe += s.amount_cents
-            if (myPlayerIds.has(s.to_player_id)) owedToYou += s.amount_cents
+            const tokens = toTokens(s.amount_cents, s.round_id)
+            if (myPlayerIds.has(s.from_player_id)) youOwe += tokens
+            if (myPlayerIds.has(s.to_player_id)) owedToYou += tokens
           }
           setUnsettledAmounts({ youOwe, owedToYou })
         }
@@ -481,10 +500,13 @@ function Home({
             className="w-full bg-amber-50 border border-amber-200 rounded-2xl px-4 py-3 text-left active:bg-amber-100 transition-colors"
           >
             <p className="text-amber-800 text-sm font-semibold">
+              {/* Already normalised to tokens above, so this renders them as tokens.
+                  The old form hardcoded a "$" as well, which is the one symbol the
+                  product deliberately avoids. */}
               {unsettledAmounts.youOwe > 0
-                ? `You owe $${(unsettledAmounts.youOwe / 100).toFixed(2)} across ${unsettledCount} round${unsettledCount !== 1 ? 's' : ''}`
+                ? `You owe ${fmtAmount(unsettledAmounts.youOwe, 'points')} across ${unsettledCount} round${unsettledCount !== 1 ? 's' : ''}`
                 : unsettledAmounts.owedToYou > 0
-                ? `$${(unsettledAmounts.owedToYou / 100).toFixed(2)} owed to you across ${unsettledCount} round${unsettledCount !== 1 ? 's' : ''}`
+                ? `${fmtAmount(unsettledAmounts.owedToYou, 'points')} owed to you across ${unsettledCount} round${unsettledCount !== 1 ? 's' : ''}`
                 : `${unsettledCount} round${unsettledCount !== 1 ? 's' : ''} ha${unsettledCount !== 1 ? 've' : 's'} unsettled payouts`
               }
             </p>
