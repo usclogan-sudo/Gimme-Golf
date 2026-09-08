@@ -21,6 +21,12 @@ export interface DeriveResultCardInput {
   payouts?: { playerId: string; amountCents: number }[]
   buyInCents?: number
   isPoints: boolean
+  /**
+   * How the number was arrived at — "At 2 per point · 50 points awarded", or
+   * "Pot of 100 · 12 skins". The 7 September card asserted a settlement with no way
+   * to check it, which is why it needed explaining to the group afterwards.
+   */
+  rateLine?: string
 }
 
 export function buildResultCardProps(input: DeriveResultCardInput): ResultCardProps {
@@ -66,6 +72,7 @@ export function buildResultCardProps(input: DeriveResultCardInput): ResultCardPr
       date: input.date,
       formats: input.formats,
       holesPlayed: input.holesPlayed,
+      rateLine: input.rateLine,
     },
     standings,
     settlements: settlementsOut,

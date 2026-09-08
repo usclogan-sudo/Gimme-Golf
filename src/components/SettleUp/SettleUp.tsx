@@ -41,6 +41,7 @@ import {
   buildDirectSettlements,
   netFromPayouts,
   perPointNet,
+  holesWithActivity,
   isUnitGame,
   unitGameNet,
   JUNK_LABELS,
@@ -898,12 +899,39 @@ export function SettleUp({ roundId, userId, eventId, onDone, onContinue }: Props
 
   // ── ResultCard props (UX v2.0 §3 / v2.1 §4) ────────────────────────────────
   // Shared derivation (buildResultCardProps) so SettleUp and RoundHistory can't drift.
+  // WHY THE CARD STATES ITS RATE
+  //
+  // The 7 September BBB card showed +11 / −1 / −3 / −7 with nothing to check it
+  // against, and the effective value of a point was not 2 by agreement — it was 2
+  // because 50 of 54 points happened to get tapped in. A settlement nobody can
+  // verify is one that gets argued about.
+  const rateLine = (() => {
+    if (!game) return undefined
+    const cfg = game.config as { payModel?: string; valueCentsPerPoint?: number } | undefined
+    if (cfg?.payModel === 'per_point') {
+      const v = cfg.valueCentsPerPoint ?? game.buyInCents
+      const pts = bbbResult?.totalPoints
+      return `at ${fmtAmount(v, game.stakesMode)} per point${pts != null ? ` · ${pts} awarded` : ''}`
+    }
+    if (cfg?.payModel === 'per_skin') {
+      return `at ${fmtAmount(game.buyInCents, game.stakesMode)} per skin`
+    }
+    if (isUnitGame(game.type)) {
+      return `at ${fmtAmount(game.buyInCents, game.stakesMode)} per unit`
+    }
+    if (game.buyInCents > 0) {
+      return `pot of ${fmtAmount(game.buyInCents * players.length, game.stakesMode)}`
+    }
+    return undefined
+  })()
+
   const resultCardProps = buildResultCardProps({
     roundId,
     courseName: snapshot.courseName,
     date: round.date,
     formats: [gameLabel],
-    holesPlayed: new Set(holeScores.map(h => h.holeNumber)).size,
+    holesPlayed: holesWithActivity({ holeScores, bbbPoints, junkRecords, sideBets }),
+    rateLine,
     players,
     settlements: settlementRecords,
     payouts,
