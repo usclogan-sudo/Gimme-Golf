@@ -4,7 +4,7 @@ import { supabase, courseToRow, playerToRow, roundToRow, roundPlayerToRow, buyIn
 import { safeWrite } from '../../lib/safeWrite'
 import { reportSupabaseError } from '../../lib/sentry'
 import { SHOW_HOLE_BETS, SHOW_EXTRA_GAMES, SHOW_DOTS, SHOW_BEST_BALL_STROKE_PLAY } from '../../lib/featureFlags'
-import { fmtMoney, fmtAmount, fmtHandicap, JUNK_LABELS, DOT_LABELS } from '../../lib/gameLogic'
+import { fmtMoney, fmtAmount, fmtHandicap, JUNK_LABELS, DOT_LABELS, computeCourseHandicap } from '../../lib/gameLogic'
 import { parseDollarsToCents, parsePointsValue } from '../../lib/money'
 import { venturaCourses } from '../../data/venturaCourses'
 import { NearMeCourses } from '../NearMeCourses/NearMeCourses'
@@ -2261,6 +2261,8 @@ function TreasurerAndBuyIns({
         roundId,
         playerId: p.id,
         teePlayed: p.tee,
+        // Frozen at setup so a later handicap edit cannot rewrite a settled round.
+        courseHandicap: computeCourseHandicap(p.handicapIndex, p.tee, round.courseSnapshot!, round.holesMode),
       }))
 
       // Insert the round first, then the child rows in parallel — round_players
@@ -2576,6 +2578,8 @@ export function NewRound({ userId, onStart, onCancel, onAddCourse, initialStakes
         roundId,
         playerId: p.id,
         teePlayed: p.tee,
+        // Frozen at setup so a later handicap edit cannot rewrite a settled round.
+        courseHandicap: computeCourseHandicap(p.handicapIndex, p.tee, round.courseSnapshot!, round.holesMode),
       }))
       // Parent first, then child — round_players has an FK on rounds(id),
       // and Promise.all races caused fk_round_players_round violations.

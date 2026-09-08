@@ -81,24 +81,59 @@ export function fmtHandicap(index: number | null | undefined): string {
 
 /** Build playerId → courseHandicap map for all players in a round.
  *  When holesMode is front_9 or back_9, the course handicap is halved. */
+/**
+ * A player's course handicap for a given tee, adjusted for a 9-hole round.
+ *
+ * Extracted so it can be called at SETUP as well as at settlement, which is the
+ * whole point of the freeze below.
+ */
+export function computeCourseHandicap(
+  handicapIndex: number,
+  teeName: string,
+  snapshot: CourseSnapshot,
+  holesMode?: HolesMode,
+): number {
+  const par = snapshot.holes.reduce((s, h) => s + h.par, 0)
+  const tee = snapshot.tees.find(t => t.name === teeName)
+  let hcp = tee
+    ? calcCourseHandicap(handicapIndex, tee.slope, tee.rating, par)
+    : Math.round(handicapIndex)
+  if (holesMode === 'front_9' || holesMode === 'back_9') hcp = Math.round(hcp / 2)
+  return hcp
+}
+
+/**
+ * playerId → course handicap for a round, preferring the value FROZEN at setup.
+ *
+ * THE FREEZE, AND WHY IT MATTERS
+ *
+ * Course handicap used to be recomputed from `Player.handicapIndex` every time a
+ * settlement was viewed. A player's index is a living value — it changes when they
+ * post a score, and an organiser can edit it from the admin panel — so editing a
+ * handicap after a round retroactively rewrote net scores, and therefore the
+ * settlement, for a round that had already been agreed and possibly paid.
+ *
+ * `round_players.course_handicap` is written at setup and read here in preference,
+ * so a round settles at the handicaps it was played at. The recomputation stays as
+ * the fallback for every round created before the freeze — their column is null,
+ * and they keep behaving exactly as they always have rather than shifting under a
+ * new rule.
+ */
 export function buildCourseHandicaps(
   players: Player[],
   roundPlayers: RoundPlayer[],
   snapshot: CourseSnapshot,
   holesMode?: HolesMode,
 ): Record<string, number> {
-  const par = snapshot.holes.reduce((s, h) => s + h.par, 0)
-  const is9 = holesMode === 'front_9' || holesMode === 'back_9'
   const map: Record<string, number> = {}
   for (const p of players) {
     const rp = roundPlayers.find(x => x.playerId === p.id)
-    const teeName = rp?.teePlayed ?? p.tee
-    const tee = snapshot.tees.find(t => t.name === teeName)
-    let hcp = tee
-      ? calcCourseHandicap(p.handicapIndex, tee.slope, tee.rating, par)
-      : Math.round(p.handicapIndex)
-    if (is9) hcp = Math.round(hcp / 2)
-    map[p.id] = hcp
+    map[p.id] = rp?.courseHandicap ?? computeCourseHandicap(
+      p.handicapIndex,
+      rp?.teePlayed ?? p.tee,
+      snapshot,
+      holesMode,
+    )
   }
   return map
 }

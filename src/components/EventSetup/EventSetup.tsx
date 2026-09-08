@@ -5,7 +5,7 @@ import { writeOrThrow, describeWriteError } from '../../lib/safeWrite'
 import { reportSupabaseError } from '../../lib/sentry'
 // Events store buy-in in cents (money mode); fmtAmount with no stakesMode
 // converts cents -> points for display (1 pt = $1), so no $ surfaces.
-import { fmtAmount, fmtHandicap } from '../../lib/gameLogic'
+import { fmtAmount, fmtHandicap, computeCourseHandicap } from '../../lib/gameLogic'
 import { autoAssignGroups, randomAssignGroups, fillMissingGroups, autoAssignShotgunStarts, MAX_PER_GROUP } from '../../lib/eventUtils'
 import type { GroupMode } from '../../lib/eventUtils'
 import { parseDollarsToCents } from '../../lib/money'
@@ -306,6 +306,8 @@ export function EventSetup({ userId, onStart, onCancel, onAddCourse }: Props) {
         roundId,
         playerId: p.id,
         teePlayed: p.tee,
+        // Frozen at setup so a later handicap edit cannot rewrite a settled round.
+        courseHandicap: computeCourseHandicap(p.handicapIndex, p.tee, round.courseSnapshot!, round.holesMode),
       }))
 
       // ORDER MATTERS, AND THE TWO TABLES POINT AT EACH OTHER

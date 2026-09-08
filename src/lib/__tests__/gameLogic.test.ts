@@ -36,6 +36,7 @@ import {
   vegasPerPointNet,
   perPointNet,
   bbbGridSummary,
+  computeCourseHandicap,
   calculateBBB,
   bbbCategoryBreakdown,
   playerInitials,
@@ -1409,5 +1410,49 @@ describe('bbbCategoryBreakdown', () => {
   it('counts unassigned slots as nothing rather than throwing', () => {
     const rows = bbbCategoryBreakdown([pt(null, null, null)], players)
     expect(rows.every(r => r.total === 0)).toBe(true)
+  })
+})
+
+// ─── Handicap freeze (deferred-selection spec §2.1) ─────────────────────────
+
+describe('buildCourseHandicaps — the freeze', () => {
+  const rp = (playerId: string, teePlayed: string, courseHandicap?: number) =>
+    ({ id: `rp-${playerId}`, roundId: 'r1', playerId, teePlayed, courseHandicap } as RoundPlayer)
+
+  it('uses the value frozen at setup in preference to the live index', () => {
+    // p1's index has since moved to 10; the round was played off 14 and settles off 14.
+    const map = buildCourseHandicaps(players, [rp('p1', 'White', 14)], snapshot)
+    expect(map.p1).toBe(14)
+  })
+
+  it('is immune to a later handicap edit, which is the whole point', () => {
+    const frozen = [rp('p1', 'White', 14)]
+    const before = buildCourseHandicaps(players, frozen, snapshot).p1
+    const edited = players.map(p => p.id === 'p1' ? { ...p, handicapIndex: 30 } : p)
+    const after = buildCourseHandicaps(edited, frozen, snapshot).p1
+    expect(after).toBe(before)
+  })
+
+  it('falls back to recomputation for rounds created before the freeze', () => {
+    // No stored value: behave exactly as the app always did, rather than shifting
+    // an old round under a new rule.
+    const map = buildCourseHandicaps(players, [rp('p1', 'White')], snapshot)
+    expect(map.p1).toBe(computeCourseHandicap(10, 'White', snapshot))
+  })
+
+  it('falls back when a player has no round_players row at all', () => {
+    const map = buildCourseHandicaps(players, [], snapshot)
+    expect(map.p2).toBe(computeCourseHandicap(20, 'White', snapshot))
+  })
+
+  it('freezes zero rather than treating it as absent', () => {
+    // A scratch player must not silently fall back to a recomputed value.
+    const map = buildCourseHandicaps(players, [rp('p3', 'White', 0)], snapshot)
+    expect(map.p3).toBe(0)
+  })
+
+  it('halves a 9-hole course handicap', () => {
+    expect(computeCourseHandicap(20, 'White', snapshot, 'front_9'))
+      .toBe(Math.round(computeCourseHandicap(20, 'White', snapshot) / 2))
   })
 })
