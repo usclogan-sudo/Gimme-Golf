@@ -3,6 +3,7 @@ import type {
   CourseSnapshot,
   HoleScore,
   SkinsConfig,
+  PointsPayModel,
   BestBallConfig,
   NassauConfig,
   WolfConfig,
@@ -359,6 +360,188 @@ export function calculateSkinsPerSkinNet(
 /** True when this Skins round is paid per skin rather than out of a pot. */
 export function isPerSkin(config: SkinsConfig): boolean {
   return config.payModel === 'per_skin'
+}
+
+// ─── Per-point settlement for points formats ─────────────────────────────────
+
+/**
+ * WHY THESE FORMATS CANNOT USE A POT
+ *
+ * The pot model divides `buyIn × N` by a metric. That behaves sensibly only when
+ * the metric starts at zero — skins won, units won, points over quota. Two of the
+ * points formats break it:
+ *
+ * Stableford has a large common base. Par scores 2, so everyone finishes on roughly
+ * 30–38 points however the match went. Four players on 38/36/34/30 (total 138) with
+ * a 25 entry settle +2.5 / +1.1 / −0.4 / −3.3. An eight-point win — comfortable —
+ * pays two and a half tokens. The game produces no result. BBB has the same defect
+ * in milder form: a base near 12.5 points against a spread of 9–18.
+ *
+ * Vegas loses magnitude instead. The winning team splits the pot whether they won
+ * by 5 points or 200, which removes the entire character of the format.
+ *
+ * A pot also makes the rate unknowable in advance, because the denominator is the
+ * metric produced during play: four unassigned BBB points raise the value of every
+ * other point by 8%.
+ *
+ * HEAD-TO-HEAD (the alternative, retained and labelled)
+ *
+ * `pointsHeadToHeadNet` settles each player against every other at `value` per point
+ * of difference:
+ *
+ *   net[i] = value × Σ_{j≠i} (pts[i] − pts[j])  =  value × (N·pts[i] − total)
+ *
+ * That is integer-exact and zero-sum with no rounding, but the effective stake is
+ * N times what the group said, so it is only honest when labelled "per point, per
+ * opponent". `pointsVsAverageNet` is the default for that reason.
+ */
+export function pointsHeadToHeadNet(
+  points: Record<string, number>,
+  players: Player[],
+  valueCents: number,
+): Record<string, number> {
+  const ids = players.map(p => p.id)
+  const n = ids.length
+  const net: Record<string, number> = {}
+  if (n === 0) return net
+
+  // Only players still on the roster count, so a removed player cannot skew the
+  // total and quietly break zero-sum for everyone else.
+  const total = ids.reduce((sum, id) => sum + (points[id] ?? 0), 0)
+  for (const id of ids) net[id] = valueCents * (n * (points[id] ?? 0) - total)
+  return net
+}
+
+/**
+ * Vegas settles on the accumulated team differential rather than a pot share.
+ *
+ * Every player on the losing side pays `diff × value`; that whole amount is shared
+ * by the winners, so it is zero-sum for any team sizes rather than only for the
+ * usual 2v2. The remainder is dripped one cent at a time so the round sums exactly
+ * to zero on uneven splits.
+ */
+export function vegasPerPointNet(
+  result: VegasResult,
+  config: VegasConfig,
+  players: Player[],
+  valueCents: number,
+): Record<string, number> {
+  const net: Record<string, number> = {}
+  players.forEach(p => (net[p.id] = 0))
+  if (result.winner === 'tie') return net
+
+  const diff = Math.abs(result.netPoints.A - result.netPoints.B)
+  if (diff === 0) return net
+
+  const winners = players.filter(p => config.teams[p.id] === result.winner)
+  const losers = players.filter(p => config.teams[p.id] && config.teams[p.id] !== result.winner)
+  if (winners.length === 0 || losers.length === 0) return net
+
+  const perLoser = diff * valueCents
+  for (const l of losers) net[l.id] = -perLoser
+
+  const purse = perLoser * losers.length
+  const each = Math.floor(purse / winners.length)
+  let remainder = purse - each * winners.length
+  for (const w of winners) {
+    net[w.id] = each + (remainder > 0 ? 1 : 0)
+    if (remainder > 0) remainder--
+  }
+  return net
+}
+
+/**
+ * Settle each player against the field average at `valueCents` per point.
+ *
+ *   net[i] = valueCents × (pts[i] − T/n)
+ *
+ * This is the method the spec recommends (§2.4) and the one the competitor guides
+ * document: a group agreeing "a token a point" gets exactly that. Head-to-head
+ * (`pointsHeadToHeadNet`) multiplies the effective stake by the player count, so it
+ * has to be relabelled "per point, per opponent" to be honest, which is a different
+ * agreement from the one people make on the first tee.
+ *
+ * T/n is usually fractional, so the exact net is computed as a numerator over n and
+ * the remainder is dripped one cent at a time. That keeps the round zero-sum to the
+ * cent while leaving the displayed token value free to carry a decimal — 2.5 tokens
+ * is 250 cents, which is exact.
+ */
+export function pointsVsAverageNet(
+  points: Record<string, number>,
+  players: Player[],
+  valueCents: number,
+): Record<string, number> {
+  const ids = players.map(p => p.id)
+  const n = ids.length
+  const net: Record<string, number> = {}
+  if (n === 0) return net
+
+  const total = ids.reduce((sum, id) => sum + (points[id] ?? 0), 0)
+
+  // numerator[i] / n is the exact net. Floor toward negative infinity so the
+  // remainder is always non-negative and can be handed out.
+  const exact = ids.map(id => valueCents * (n * (points[id] ?? 0) - total))
+  const floored = exact.map(v => Math.floor(v / n))
+  let remainder = -floored.reduce((s, v) => s + v, 0)
+
+  ids.forEach((id, i) => { net[id] = floored[i] })
+  // Give the leftover cents to the biggest earners first, matching how every other
+  // remainder in this file is resolved.
+  const order = ids
+    .map((id, i) => ({ id, e: exact[i] }))
+    .sort((a, b) => b.e - a.e)
+  for (let i = 0; i < order.length && remainder > 0; i++) {
+    net[order[i].id]++
+    remainder--
+  }
+  return net
+}
+
+/** True when a points format is paid per point rather than out of a pot. */
+export function isPerPoint(config: { payModel?: PointsPayModel } | undefined | null): boolean {
+  return config?.payModel === 'per_point'
+}
+
+/**
+ * The per-point net for a round, or null when this round is not per-point — in
+ * which case the caller falls through to its existing pot path unchanged.
+ *
+ * One entry point for all three consumers (roundNet, SettleUp, LeaderboardTab) so
+ * they cannot drift apart the way two settlement paths for one format would.
+ */
+export function perPointNet(
+  game: Game,
+  players: Player[],
+  results: {
+    bbb?: BBBResult | null
+    stableford?: StablefordResult | null
+    vegas?: VegasResult | null
+    quota?: QuotaResult | null
+  },
+): Record<string, number> | null {
+  const cfg = game.config as { payModel?: PointsPayModel; valueCentsPerPoint?: number } | undefined
+  if (!isPerPoint(cfg)) return null
+  // Falling back to buyInCents keeps a half-configured round settling at a sane
+  // rate rather than at zero, which would read as "nobody owes anything".
+  const value = cfg?.valueCentsPerPoint ?? game.buyInCents
+  if (!value) return null
+
+  switch (game.type) {
+    case 'bingo_bango_bongo':
+      return results.bbb ? pointsVsAverageNet(results.bbb.pointsWon, players, value) : null
+    case 'stableford':
+      return results.stableford ? pointsVsAverageNet(results.stableford.points, players, value) : null
+    case 'quota':
+      // netPoints is already zero-based (stableford − quota), so pairwise on it
+      // rewards beating your own target rather than raw scoring ability.
+      return results.quota ? pointsVsAverageNet(results.quota.netPoints, players, value) : null
+    case 'vegas':
+      return results.vegas
+        ? vegasPerPointNet(results.vegas, game.config as VegasConfig, players, value)
+        : null
+    default:
+      return null
+  }
 }
 
 // ─── Best Ball ────────────────────────────────────────────────────────────────

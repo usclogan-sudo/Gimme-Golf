@@ -8,7 +8,7 @@ import {
   calculateSkinsPayouts, calculateSkinsPerSkinNet, calculateBestBallPayouts, calculateNassauPayouts,
   calculateBBBPayouts, calculateVegasPayouts,
   calculateStablefordPayouts, calculateQuotaPayouts,
-  isUnitGame, unitGameNet, netFromPayouts,
+  isUnitGame, unitGameNet, netFromPayouts, perPointNet,
 } from '../../lib/gameLogic'
 import type {
   SkinsResult, BestBallResult, NassauResult, WolfResult, BBBResult,
@@ -85,6 +85,15 @@ export function LeaderboardTab({
       Object.entries(
         calculateSkinsPerSkinNet(skinsResult, players, game.buyInCents, {}, skinsCfg.presses ?? []),
       ).forEach(([pid, c]) => m.set(pid, (m.get(pid) ?? 0) + c))
+    } else if (perPointNet(game, players, {
+      bbb: bbbResult, stableford: stablefordResult, vegas: vegasResult, quota: quotaResult,
+    })) {
+      // Per-point rounds settle directly, so the running total must come from the
+      // same signed net the settle screen uses — otherwise the leaderboard and the
+      // settlement disagree about the same round.
+      Object.entries(perPointNet(game, players, {
+        bbb: bbbResult, stableford: stablefordResult, vegas: vegasResult, quota: quotaResult,
+      })!).forEach(([pid, c]) => m.set(pid, (m.get(pid) ?? 0) + c))
     } else if (isUnitGame(game.type) && unitRaw) {
       Object.entries(unitGameNet(game.type, game.buyInCents, unitRaw)).forEach(([pid, c]) => m.set(pid, (m.get(pid) ?? 0) + c))
     } else {

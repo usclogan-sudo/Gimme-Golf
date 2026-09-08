@@ -40,6 +40,7 @@ import {
   buildUnifiedSettlements,
   buildDirectSettlements,
   netFromPayouts,
+  perPointNet,
   isUnitGame,
   unitGameNet,
   JUNK_LABELS,
@@ -463,12 +464,23 @@ export function SettleUp({ roundId, userId, eventId, onDone, onContinue }: Props
     return calculateSkinsNet(skinsResult, game, players, startHoles)
   }, [game, skinsResult, players, startHoles])
 
+  // Points formats set to per_point are direct settlements too: no pot was ever
+  // collected, each point is worth a stated amount, and players settle against each
+  // other. Null for pot rounds, which keep their existing path untouched.
+  const pointsNet = useMemo((): Record<string, number> | null => {
+    if (!game) return null
+    return perPointNet(game, players, {
+      bbb: bbbResult, stableford: stablefordResult, vegas: vegasResult, quota: quotaResult,
+    })
+  }, [game, players, bbbResult, stablefordResult, vegasResult, quotaResult])
+
   // Unit games (wolf/banker/hammer/dots) settle from a signed net, not a pot, so
   // the pot-model "Winners" payout and "Total pot" (buyIn × N) would contradict the
   // actual settlement. Compute the real signed net here and drive the display from
   // it for unit games — and for skins-with-a-joiner. Null for plain pot games.
   const unitNet = useMemo((): Record<string, number> | null => {
     if (skinsNet) return skinsNet
+    if (pointsNet) return pointsNet
     if (!game || !isUnitGame(game.type)) return null
     const raw =
       game.type === 'wolf' ? wolfResult
@@ -478,7 +490,7 @@ export function SettleUp({ roundId, userId, eventId, onDone, onContinue }: Props
       : null
     if (!raw) return null
     return unitGameNet(game.type, game.buyInCents, raw)
-  }, [game, wolfResult, bankerResult, hammerResult, dotsResult, skinsNet])
+  }, [game, wolfResult, bankerResult, hammerResult, dotsResult, skinsNet, pointsNet])
   const unitTotalWon = unitNet
     ? Object.values(unitNet).filter(n => n > 0).reduce((s, n) => s + n, 0)
     : null
@@ -531,9 +543,11 @@ export function SettleUp({ roundId, userId, eventId, onDone, onContinue }: Props
       : undefined
     // Skins-with-a-joiner settles from its prorated signed net (Option A), head-to-
     // head like a unit game — never through the treasurer/pot path.
-    const settleDirect = isUnit || skinsNet != null
+    const settleDirect = isUnit || skinsNet != null || pointsNet != null
     const gameNet = skinsNet
       ? skinsNet
+      : pointsNet
+      ? pointsNet
       : isUnit && game && unitRaw
         ? unitGameNet(game.type, game.buyInCents, unitRaw)
         : netFromPayouts(payouts, players, game?.buyInCents ?? 0)

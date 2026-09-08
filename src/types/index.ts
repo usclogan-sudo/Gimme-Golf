@@ -105,6 +105,17 @@ export interface Press {
  *                 does. This is how most groups actually play "$20 a skin". */
 export type SkinsPayModel = 'pot' | 'per_skin'
 
+/**
+ * How a points/units format converts play into money.
+ *
+ * 'pot'       — everyone antes; the pot is divided by the metric. Capped downside,
+ *               but the value of a point is unknown until the round ends and the
+ *               magnitude of a win cannot affect the total.
+ * 'per_point' — a point is worth a stated amount. Direct, zero-sum, unbounded, and
+ *               the rate is knowable at setup. This is how these games are played.
+ */
+export type PointsPayModel = 'pot' | 'per_point'
+
 export interface SkinsConfig {
   mode: SkinsMode
   carryovers: boolean
@@ -131,10 +142,26 @@ export interface WolfConfig {
   mode: 'gross' | 'net'
   wolfOrder: string[]
   holeDecisions?: Record<number, { partnerId: string | null }>
+  /**
+   * Absent ⇒ 'pot', so every existing round settles exactly as before. Same
+   * contract as SkinsConfig.payModel — there is real history in production for
+   * these formats and settlements are computed live, so pot behaviour is frozen.
+   */
+  payModel?: PointsPayModel
+  /** Only read when payModel is 'per_point'. */
+  valueCentsPerPoint?: number
 }
 
 export interface BBBConfig {
   mode: 'gross' | 'net'
+  /**
+   * Absent ⇒ 'pot', so every existing round settles exactly as before. Same
+   * contract as SkinsConfig.payModel — there is real history in production for
+   * these formats and settlements are computed live, so pot behaviour is frozen.
+   */
+  payModel?: PointsPayModel
+  /** Only read when payModel is 'per_point'. */
+  valueCentsPerPoint?: number
 }
 
 export interface HammerConfig {
@@ -156,10 +183,26 @@ export interface HammerHoleState {
 export interface VegasConfig {
   mode: 'gross' | 'net'
   teams: Record<string, 'A' | 'B'>
+  /**
+   * Absent ⇒ 'pot', so every existing round settles exactly as before. Same
+   * contract as SkinsConfig.payModel — there is real history in production for
+   * these formats and settlements are computed live, so pot behaviour is frozen.
+   */
+  payModel?: PointsPayModel
+  /** Only read when payModel is 'per_point'. */
+  valueCentsPerPoint?: number
 }
 
 export interface StablefordConfig {
   mode: 'gross' | 'net'
+  /**
+   * Absent ⇒ 'pot', so every existing round settles exactly as before. Same
+   * contract as SkinsConfig.payModel — there is real history in production for
+   * these formats and settlements are computed live, so pot behaviour is frozen.
+   */
+  payModel?: PointsPayModel
+  /** Only read when payModel is 'per_point'. */
+  valueCentsPerPoint?: number
 }
 
 export type DotType = JunkType | 'fairway_hit' | 'up_and_down' | 'one_putt' | 'longest_drive' | 'par_save'
@@ -172,11 +215,27 @@ export interface DotsConfig {
 export interface BankerConfig {
   mode: 'gross' | 'net'
   bankerOrder: string[]
+  /**
+   * Absent ⇒ 'pot', so every existing round settles exactly as before. Same
+   * contract as SkinsConfig.payModel — there is real history in production for
+   * these formats and settlements are computed live, so pot behaviour is frozen.
+   */
+  payModel?: PointsPayModel
+  /** Only read when payModel is 'per_point'. */
+  valueCentsPerPoint?: number
 }
 
 export interface QuotaConfig {
   mode: 'gross' | 'net'
   quotas: Record<string, number>
+  /**
+   * Absent ⇒ 'pot', so every existing round settles exactly as before. Same
+   * contract as SkinsConfig.payModel — there is real history in production for
+   * these formats and settlements are computed live, so pot behaviour is frozen.
+   */
+  payModel?: PointsPayModel
+  /** Only read when payModel is 'per_point'. */
+  valueCentsPerPoint?: number
 }
 
 // ─── Junks (side bets) ─────────────────────────────────────────────────────

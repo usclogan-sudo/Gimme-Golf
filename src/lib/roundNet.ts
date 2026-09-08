@@ -14,6 +14,7 @@ import {
   buildCourseHandicaps,
   unitGameNet,
   netFromPayouts,
+  perPointNet,
   calculateJunks,
   calculateSideBetSettlements,
   calculateSkins, calculateSkinsPayouts, calculateSkinsNet, calculateSkinsPerSkinNet,
@@ -104,22 +105,26 @@ export function computeRoundPlayerNets(input: RoundNetInputs): RoundNetResult {
         }
         case 'bingo_bango_bongo': {
           const result = calculateBBB(players, bbbPoints)
-          gameNet = netFromPayouts(calculateBBBPayouts(result, game, players), players, buyIn)
+          gameNet = perPointNet(game, players, { bbb: result })
+            ?? netFromPayouts(calculateBBBPayouts(result, game, players), players, buyIn)
           break
         }
         case 'stableford': {
           const result = calculateStableford(players, roundScores, pSnap, cfg as StablefordConfig, chm)
-          gameNet = netFromPayouts(calculateStablefordPayouts(result, game, players), players, buyIn)
+          gameNet = perPointNet(game, players, { stableford: result })
+            ?? netFromPayouts(calculateStablefordPayouts(result, game, players), players, buyIn)
           break
         }
         case 'quota': {
           const result = calculateQuota(players, roundScores, pSnap, cfg as QuotaConfig, chm)
-          gameNet = netFromPayouts(calculateQuotaPayouts(result, game, players), players, buyIn)
+          gameNet = perPointNet(game, players, { quota: result })
+            ?? netFromPayouts(calculateQuotaPayouts(result, game, players), players, buyIn)
           break
         }
         case 'vegas': {
           const result = calculateVegas(players, roundScores, pSnap, cfg as VegasConfig, chm)
-          gameNet = netFromPayouts(calculateVegasPayouts(result, cfg as VegasConfig, game, players), players, buyIn)
+          gameNet = perPointNet(game, players, { vegas: result })
+            ?? netFromPayouts(calculateVegasPayouts(result, cfg as VegasConfig, game, players), players, buyIn)
           break
         }
         // Unit games settle from a signed net, not a pot.
