@@ -1943,9 +1943,14 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
               {showMiniBoard ? (
                 <span className="text-xs font-semibold text-gray-500 uppercase">Standings</span>
               ) : (
-                <div className="flex-1 flex items-center gap-1.5 overflow-x-auto text-xs font-semibold text-gray-600">
+                <div className="flex-1 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-xs font-semibold text-gray-600">
+                  {/* Wraps rather than scrolling sideways. As a horizontal scroller
+                      this quietly hid the last players on a narrow phone — and in a
+                      points game the standings strip is the only thing that reveals
+                      a mis-tapped award, so a hidden player is a wrong score nobody
+                      catches. */}
                   {miniBoard.map((e, i) => (
-                    <span key={e.player.id}>
+                    <span key={e.player.id} className="whitespace-nowrap">
                       {i > 0 && <span className="text-gray-300 mx-0.5">·</span>}
                       {e.pos}. {e.player.name}{' '}
                       {e.rankBy === 'points' ? (
@@ -2509,17 +2514,31 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
                 icon: string
                 label: string
               }) => (
-                <div className="space-y-1">
+                <div className="space-y-1.5">
                   <p className="text-xs font-semibold text-amber-700">{icon} {label}</p>
-                  <div className="flex flex-wrap gap-1.5">
+                  {/* TOUCH TARGETS, AND WHY THEY ARE THIS SIZE
+                      These chips were 26px tall with 6px gaps. A foursome awards
+                      three points a hole, so a round is 54 taps onto targets 41%
+                      under the 44px minimum, one-handed, outdoors, sometimes with a
+                      glove on — and a mis-tap does not error, it quietly gives
+                      Bango to the wrong player. Reported as "super clunky" after a
+                      real foursome, which is exactly what that adds up to.
+
+                      Two columns on a phone rather than four: it makes the card
+                      taller, but each target becomes roughly 170x44 instead of
+                      83x26, and full names stay readable. That last part matters
+                      here more than it looks — truncating would render "Austin
+                      Logan" and "Jeff Logan" identically. */}
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                     {players.map(p => (
                       <button
                         key={p.id}
                         onClick={() => setBBBPoint(category, p.id)}
-                        className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-colors ${
+                        aria-pressed={currentBBB?.[category] === p.id}
+                        className={`min-h-[44px] px-3 py-2 rounded-xl text-sm font-semibold leading-tight transition-colors ${
                           currentBBB?.[category] === p.id
-                            ? 'bg-amber-500 text-white'
-                            : 'bg-white border border-amber-200 text-amber-700'
+                            ? 'bg-amber-500 text-white shadow-sm'
+                            : 'bg-white border border-amber-200 text-amber-700 active:bg-amber-100'
                         }`}
                       >
                         {p.name}
