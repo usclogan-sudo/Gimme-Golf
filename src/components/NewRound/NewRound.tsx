@@ -1967,47 +1967,47 @@ function GameSetup({
           </section>
         )}
 
+        {/* WHY THIS LIVES HERE
+            This choice used to sit inside the Treasurer step, which is skipped
+            entirely whenever stakes are points or the entry is zero — i.e. the
+            path almost everyone takes. The round was then created with the
+            organiser silently set as scorer and no way to say otherwise. On
+            6 September that meant one person nominally keeping score for four
+            foursomes. The control was not missed; it was never shown. */}
+        <section className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm p-4 space-y-3">
+          <div>
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Who's keeping score?</p>
+            <p className="text-sm text-gray-500 mt-1">You can change this at any time, including mid-round.</p>
+          </div>
+          <div className="space-y-2">
+            <button
+              onClick={() => onScorerChange('')}
+              className={`w-full p-3 rounded-2xl border-2 text-left transition-colors ${
+                scorerId === '' ? 'border-amber-500 bg-amber-50 dark:bg-amber-900/20' : 'border-gray-200 dark:border-gray-700'
+              }`}
+            >
+              <span className="font-semibold block">Everyone keeps their own</span>
+              <span className="text-sm text-gray-500">Each player enters their own scores on their phone.</span>
+            </button>
+            {players.map(p => (
+              <button
+                key={p.id}
+                onClick={() => onScorerChange(p.id)}
+                className={`w-full p-3 rounded-2xl border-2 text-left transition-colors ${
+                  scorerId === p.id ? 'border-amber-500 bg-amber-50 dark:bg-amber-900/20' : 'border-gray-200 dark:border-gray-700'
+                }`}
+              >
+                <span className="font-semibold block">{p.name}</span>
+                <span className="text-sm text-gray-500">Enters scores for the whole round.</span>
+              </button>
+            ))}
+          </div>
+        </section>
+
       </div>
 
       <div className="fixed bottom-0 inset-x-0 p-4 bg-white/95 dark:bg-gray-800/95 backdrop-blur-sm border-t border-gray-200 dark:border-gray-700">
         <div className="max-w-2xl mx-auto">
-          {/* WHY THIS LIVES HERE
-              This choice used to sit inside the Treasurer step, which is skipped
-              entirely whenever stakes are points or the entry is zero — i.e. the
-              path almost everyone takes. The round was then created with the
-              organiser silently set as scorer and no way to say otherwise. On
-              6 September that meant one person nominally keeping score for four
-              foursomes. The control was not missed; it was never shown. */}
-          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm p-4 space-y-3">
-            <div>
-              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Who's keeping score?</p>
-              <p className="text-sm text-gray-500 mt-1">You can change this at any time, including mid-round.</p>
-            </div>
-            <div className="space-y-2">
-              <button
-                onClick={() => onScorerChange('')}
-                className={`w-full p-3 rounded-2xl border-2 text-left transition-colors ${
-                  scorerId === '' ? 'border-amber-500 bg-amber-50 dark:bg-amber-900/20' : 'border-gray-200 dark:border-gray-700'
-                }`}
-              >
-                <span className="font-semibold block">Everyone keeps their own</span>
-                <span className="text-sm text-gray-500">Each player enters their own scores on their phone.</span>
-              </button>
-              {players.map(p => (
-                <button
-                  key={p.id}
-                  onClick={() => onScorerChange(p.id)}
-                  className={`w-full p-3 rounded-2xl border-2 text-left transition-colors ${
-                    scorerId === p.id ? 'border-amber-500 bg-amber-50 dark:bg-amber-900/20' : 'border-gray-200 dark:border-gray-700'
-                  }`}
-                >
-                  <span className="font-semibold block">{p.name}</span>
-                  <span className="text-sm text-gray-500">Enters scores for the whole round.</span>
-                </button>
-              ))}
-            </div>
-          </div>
-
           <button
             onClick={() => {
               const jc = junksEnabled && junkTypes.size > 0
