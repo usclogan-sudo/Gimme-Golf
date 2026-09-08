@@ -1,6 +1,10 @@
 # Gimme · Teams, Best Ball tournaments and Nassau · Scope
 
-**September 8, 2026 · Design scope, not a work order**
+**September 8, 2026 · BACKLOG — scoped, not scheduled**
+
+> Status: on the backlog as of 8 September. Nothing here is committed to. Picked up
+> when a real event needs 2-person teams; until then Best Ball remains limited to
+> two teams and Nassau remains understated threefold, both known and both survivable.
 
 > Two formats that cannot currently be played the way people play them. They look
 > like separate jobs and are not: both need the same missing concept, and once that
