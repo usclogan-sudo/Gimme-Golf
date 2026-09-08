@@ -564,6 +564,39 @@ export function playerInitials(name: string): string {
   return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase()
 }
 
+/**
+ * Per-player, per-category BBB tally for the result card.
+ *
+ * The 7 September card asserted +11 / −1 / −3 / −7 with nothing to check it
+ * against, and the group had to have it explained. With the breakdown printed
+ * beside the settlement — 19 / 13 / 12 / 10 against 54 awarded — anyone can do the
+ * division themselves. That is the whole point: a settlement people can verify is
+ * one they stop arguing about.
+ *
+ * Only roster players are counted, matching calculateBBB, so a removed player's
+ * points cannot appear in a table whose total is meant to equal the divisor.
+ */
+export function bbbCategoryBreakdown(
+  bbbPoints: { bingo: string | null; bango: string | null; bongo: string | null }[],
+  players: Player[],
+): { playerId: string; bingo: number; bango: number; bongo: number; total: number }[] {
+  const rows = new Map<string, { bingo: number; bango: number; bongo: number }>()
+  players.forEach(p => rows.set(p.id, { bingo: 0, bango: 0, bongo: 0 }))
+  for (const pt of bbbPoints) {
+    for (const cat of ['bingo', 'bango', 'bongo'] as const) {
+      const id = pt[cat]
+      const row = id ? rows.get(id) : undefined
+      if (row) row[cat]++
+    }
+  }
+  return players
+    .map(p => {
+      const r = rows.get(p.id)!
+      return { playerId: p.id, ...r, total: r.bingo + r.bango + r.bongo }
+    })
+    .sort((a, b) => b.total - a.total)
+}
+
 /** True when a points format is paid per point rather than out of a pot. */
 export function isPerPoint(config: { payModel?: PointsPayModel } | undefined | null): boolean {
   return config?.payModel === 'per_point'

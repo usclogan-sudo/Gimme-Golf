@@ -27,6 +27,8 @@ export interface DeriveResultCardInput {
    * to check it, which is why it needed explaining to the group afterwards.
    */
   rateLine?: string
+  /** Per-category points table, for formats whose settlement divides points. */
+  pointsTable?: ResultCardProps['pointsTable']
 }
 
 export function buildResultCardProps(input: DeriveResultCardInput): ResultCardProps {
@@ -76,6 +78,7 @@ export function buildResultCardProps(input: DeriveResultCardInput): ResultCardPr
     },
     standings,
     settlements: settlementsOut,
+    pointsTable: input.pointsTable,
     roundId: input.roundId,
   }
 }
