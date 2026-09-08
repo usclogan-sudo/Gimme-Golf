@@ -66,14 +66,19 @@ export function HoleBetsPanel({
                 <p className={`text-xs font-semibold ${isSnake ? 'text-red-600' : 'text-indigo-700 dark:text-indigo-300'}`}>
                   {info.emoji} {info.name} — {info.description}
                 </p>
-                <div className="flex flex-wrap gap-1.5">
+                {/* 44px targets in a two-column grid on phones, matching the BBB awards.
+                  Same defect, same reasoning: these were 26px chips with 6px gaps,
+                  tapped repeatedly per hole on a phone outdoors, and a mis-tap
+                  silently awards a dot to the wrong player. */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                   {players.map(p => {
                     const active = holeJunks.some(jr => jr.playerId === p.id && jr.junkType === jt)
                     return (
                       <button
                         key={p.id}
                         onClick={() => toggleJunk(jt, p.id)}
-                        className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-colors ${
+                        aria-pressed={active}
+                        className={`min-h-[44px] px-3 py-2 rounded-xl text-sm font-semibold leading-tight transition-colors ${
                           active
                             ? isSnake ? 'bg-red-500 text-white' : 'bg-indigo-500 text-white'
                             : 'bg-white dark:bg-gray-700 border border-indigo-200 dark:border-indigo-600 text-indigo-700 dark:text-indigo-300'
@@ -169,14 +174,15 @@ export function HoleBetsPanel({
             <span className="text-xs text-gray-500 dark:text-gray-400">per loser</span>
           </div>
           <p className="text-xs text-gray-500 dark:text-gray-400 font-medium">Participants:</p>
-          <div className="flex flex-wrap gap-1.5">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
             {players.map(p => {
               const active = sideBetParticipants.includes(p.id)
               return (
                 <button
                   key={p.id}
                   onClick={() => setSideBetParticipants(prev => active ? prev.filter(id => id !== p.id) : [...prev, p.id])}
-                  className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-colors ${
+                  aria-pressed={active}
+                  className={`min-h-[44px] px-3 py-2 rounded-xl text-sm font-semibold leading-tight transition-colors ${
                     active ? 'bg-amber-500 text-white' : 'bg-white dark:bg-gray-700 border border-amber-200 dark:border-amber-600 text-amber-700 dark:text-amber-300'
                   }`}
                 >

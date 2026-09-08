@@ -58,7 +58,11 @@ export function DotsPanel({ currentHole, holePar, players, config, junkRecords, 
             <p className={`text-xs font-semibold ${isSnake ? 'text-red-600' : 'text-rose-700 dark:text-rose-300'}`}>
               {info.emoji} {info.name} — <span className="font-normal">{info.description}</span>
             </p>
-            <div className="flex flex-wrap gap-1.5">
+            {/* 44px targets in a two-column grid on phones, matching the BBB awards.
+              Same defect, same reasoning: these were 26px chips with 6px gaps,
+              tapped repeatedly per hole on a phone outdoors, and a mis-tap
+              silently awards a dot to the wrong player. */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
               {players.map(p => {
                 const active = holeDots.some(jr => jr.playerId === p.id && jr.junkType === dt)
                 return (
@@ -66,7 +70,8 @@ export function DotsPanel({ currentHole, holePar, players, config, junkRecords, 
                     key={p.id}
                     onClick={() => !readOnly && toggleDot(dt, p.id)}
                     disabled={readOnly}
-                    className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-colors disabled:opacity-60 ${
+                    aria-pressed={active}
+                    className={`min-h-[44px] px-3 py-2 rounded-xl text-sm font-semibold leading-tight transition-colors disabled:opacity-60 ${
                       active
                         ? isSnake ? 'bg-red-500 text-white' : 'bg-rose-500 text-white'
                         : 'bg-white dark:bg-gray-700 border border-rose-200 dark:border-rose-600 text-rose-700 dark:text-rose-300'
