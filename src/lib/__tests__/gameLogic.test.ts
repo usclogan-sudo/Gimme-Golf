@@ -1,15 +1,4 @@
-import type {
-  Player,
-  CourseSnapshot,
-  HoleScore,
-  SkinsConfig,
-  StablefordConfig,
-  JunkConfig,
-  JunkRecord,
-  SideBet,
-  Game,
-  RoundPlayer,
-} from '../../types'
+import type { Player, CourseSnapshot, HoleScore, SkinsConfig, StablefordConfig, JunkConfig, JunkRecord, SideBet, Game, RoundPlayer, VegasConfig, BBBConfig, QuotaConfig } from '../../types'
 
 import {
   calcCourseHandicap,
@@ -42,7 +31,12 @@ import {
   cashAppLink,
   zelleLink,
   paypalLink,
+  pointsVsAverageNet,
+  pointsHeadToHeadNet,
+  vegasPerPointNet,
+  perPointNet,
 } from '../gameLogic'
+import type { VegasResult } from '../gameLogic'
 
 // ─── Shared Fixtures ────────────────────────────────────────────────────────
 
@@ -825,7 +819,7 @@ describe('settlement net-zero invariants', () => {
     // pot = base 3000 × (1 + 1 press) = 6000, distributed over weighted units 1 + 2 = 3.
     expect(payouts.reduce((s, p) => s + p.amountCents, 0)).toBe(6000)
     const net = netFromPayouts(payouts, players, game.buyInCents)
-    expect(Object.values(net).reduce((s, n) => s + n, 0)).toBe(0) // nets to zero
+    expect(sum(net)).toBe(0) // nets to zero
     const out = buildDirectSettlements(net, null)
     expect(out.reduce((s, x) => s + x.amountCents, 0)).toBe(2000) // p2 collects, p3 pays
     expect(out.every(s => s.amountCents > 0 && s.fromId !== s.toId)).toBe(true)
@@ -1100,5 +1094,217 @@ describe('calculateSkinsPerSkinNet', () => {
     const net = calculateSkinsPerSkinNet(mk([[1, 'p1', 1]]), three, V)
     expect(net.p1).toBe(4000)
     expect(Object.values(net).reduce((a, b) => a + b, 0)).toBe(0)
+  })
+})
+
+// ─── Per-point settlement for points formats ────────────────────────────────
+//
+// From docs/Game Formats/Gimme-Game-Formats-vs-Standard-Practice.md. The pot model
+// divides buyIn × N by a metric, which only behaves when the metric starts at zero.
+// Stableford's base of ~30–38 points and BBB's of ~12.5 collapse under it, and Vegas
+// loses the magnitude of a win entirely.
+
+const four: Player[] = [
+  ...players,
+  { id: 'p4', name: 'Dave', handicapIndex: 15, tee: 'White', ghinNumber: '' },
+]
+
+const sum = (net: Record<string, number>) => Object.values(net).reduce((s, n) => s + n, 0)
+
+describe('pointsVsAverageNet — the default', () => {
+  it('is zero-sum', () => {
+    expect(sum(pointsVsAverageNet({ p1: 38, p2: 36, p3: 34, p4: 30 }, four, 100))).toBe(0)
+  })
+
+  it('pays the spec\'s worked BBB round exactly', () => {
+    // §2.2: 18/12/11/9, 50 points, 1 token per point → +5.5 / −0.5 / −1.5 / −3.5.
+    // Cents are exact even though tokens carry a decimal.
+    const net = pointsVsAverageNet({ p1: 18, p2: 12, p3: 11, p4: 9 }, four, 100)
+    expect(net.p1).toBe(550)
+    expect(net.p2).toBe(-50)
+    expect(net.p3).toBe(-150)
+    expect(net.p4).toBe(-350)
+    expect(sum(net)).toBe(0)
+  })
+
+  it('means what the group agreed: the rate is the rate', () => {
+    // One point clear of a three-way tie at 1/pt is 0.75 tokens, not 3.
+    const net = pointsVsAverageNet({ p1: 10, p2: 9, p3: 9, p4: 9 }, four, 100)
+    expect(net.p1).toBe(75)
+  })
+
+  it('scales linearly with the value per point, unlike a pot', () => {
+    const at1 = pointsVsAverageNet({ p1: 10, p2: 5, p3: 5, p4: 5 }, four, 100)
+    const at2 = pointsVsAverageNet({ p1: 10, p2: 5, p3: 5, p4: 5 }, four, 200)
+    expect(at2.p1).toBe(at1.p1 * 2)
+  })
+
+  it('keeps magnitude: a big win pays more than a small one', () => {
+    const narrow = pointsVsAverageNet({ p1: 13, p2: 12, p3: 12, p4: 12 }, four, 100)
+    const wide = pointsVsAverageNet({ p1: 30, p2: 6, p3: 6, p4: 6 }, four, 100)
+    expect(wide.p1).toBeGreaterThan(narrow.p1)
+  })
+
+  it('pays nothing when everyone ties', () => {
+    expect(Object.values(pointsVsAverageNet({ p1: 9, p2: 9, p3: 9, p4: 9 }, four, 100)))
+      .toEqual([0, 0, 0, 0])
+  })
+
+  it('stays zero-sum when the average does not divide evenly', () => {
+    // 3 players, 7 points: T/n is 2.333…, so the drip has to close the gap.
+    expect(sum(pointsVsAverageNet({ p1: 4, p2: 2, p3: 1 }, players, 100))).toBe(0)
+    expect(sum(pointsVsAverageNet({ p1: 1, p2: 0, p3: 0 }, players, 1))).toBe(0)
+  })
+
+  it('ignores points belonging to players no longer on the roster', () => {
+    const net = pointsVsAverageNet({ p1: 10, p2: 5, p3: 5, ghost: 999 }, players, 100)
+    expect(sum(net)).toBe(0)
+    expect(net.ghost).toBeUndefined()
+  })
+
+  it('treats a missing player as zero rather than NaN', () => {
+    const net = pointsVsAverageNet({ p1: 6 }, players, 100)
+    expect(sum(net)).toBe(0)
+    expect(Number.isNaN(net.p2)).toBe(false)
+  })
+})
+
+describe('pointsHeadToHeadNet — the labelled alternative', () => {
+  it('is zero-sum and integer-exact', () => {
+    const net = pointsHeadToHeadNet({ p1: 38, p2: 36, p3: 34, p4: 30 }, four, 100)
+    expect(sum(net)).toBe(0)
+    expect(net.p1).toBe(100 * (4 * 38 - 138))
+  })
+
+  it('is N times the vs-average stake, which is why it needs its own label', () => {
+    const pts = { p1: 18, p2: 12, p3: 11, p4: 9 }
+    const avg = pointsVsAverageNet(pts, four, 100)
+    const h2h = pointsHeadToHeadNet(pts, four, 100)
+    expect(h2h.p1).toBe(avg.p1 * 4)
+  })
+})
+
+describe('vegasPerPointNet', () => {
+  const teams = { p1: 'A', p2: 'A', p3: 'B', p4: 'B' } as Record<string, 'A' | 'B'>
+  const cfg = { mode: 'gross', teams } as VegasConfig
+  const res = (a: number, b: number): VegasResult => ({
+    holeResults: [],
+    netPoints: { A: a, B: b },
+    winner: a === b ? 'tie' : a > b ? 'A' : 'B',
+  })
+
+  it('is zero-sum', () => {
+    const net = vegasPerPointNet(res(120, 40), cfg, four, 10)
+    expect(sum(net)).toBe(0)
+  })
+
+  it('settles on the differential, so a blow-out costs more than a squeaker', () => {
+    const squeaker = vegasPerPointNet(res(45, 40), cfg, four, 10)
+    const blowout = vegasPerPointNet(res(240, 40), cfg, four, 10)
+    expect(squeaker.p1).toBe(50)      // 5 points × 10
+    expect(blowout.p1).toBe(2000)     // 200 points × 10
+    expect(blowout.p1).toBe(squeaker.p1 * 40)
+  })
+
+  it('pays the losing side out and the winning side in', () => {
+    const net = vegasPerPointNet(res(40, 100), cfg, four, 10)
+    expect(net.p3).toBeGreaterThan(0)
+    expect(net.p1).toBeLessThan(0)
+  })
+
+  it('pays nothing on a tie', () => {
+    const net = vegasPerPointNet(res(80, 80), cfg, four, 10)
+    expect(Object.values(net)).toEqual([0, 0, 0, 0])
+  })
+
+  it('stays zero-sum with uneven teams', () => {
+    const uneven = { p1: 'A', p2: 'B', p3: 'B', p4: 'B' } as Record<string, 'A' | 'B'>
+    const net = vegasPerPointNet(res(70, 33), { mode: 'gross', teams: uneven } as VegasConfig, four, 7)
+    expect(sum(net)).toBe(0)
+  })
+})
+
+describe('perPointNet — opt-in only', () => {
+  const bbb = { pointsWon: { p1: 18, p2: 12, p3: 9 }, totalPoints: 39, unknownPlayerIds: [] }
+
+  it('returns null without payModel, so pot rounds are untouched', () => {
+    const game: Game = {
+      id: 'g1', type: 'bingo_bango_bongo', buyInCents: 2500,
+      config: { mode: 'gross' } as BBBConfig,
+    }
+    expect(perPointNet(game, players, { bbb })).toBeNull()
+  })
+
+  it('returns null when payModel is explicitly pot', () => {
+    const game: Game = {
+      id: 'g1', type: 'bingo_bango_bongo', buyInCents: 2500,
+      config: { mode: 'gross', payModel: 'pot' } as BBBConfig,
+    }
+    expect(perPointNet(game, players, { bbb })).toBeNull()
+  })
+
+  it('settles per point when opted in, and stays zero-sum', () => {
+    const game: Game = {
+      id: 'g1', type: 'bingo_bango_bongo', buyInCents: 2500,
+      config: { mode: 'gross', payModel: 'per_point', valueCentsPerPoint: 100 } as BBBConfig,
+    }
+    const net = perPointNet(game, players, { bbb })!
+    expect(net).not.toBeNull()
+    expect(sum(net)).toBe(0)
+    // vs-average: 18 points against an average of 13 → +5 tokens at 1/pt.
+    expect(net.p1).toBe(100 * (18 - 39 / 3))
+  })
+
+  it('falls back to buyInCents when the rate was never set', () => {
+    const game: Game = {
+      id: 'g1', type: 'bingo_bango_bongo', buyInCents: 50,
+      config: { mode: 'gross', payModel: 'per_point' } as BBBConfig,
+    }
+    const net = perPointNet(game, players, { bbb })!
+    expect(net.p1).toBe(50 * (18 - 39 / 3))
+  })
+
+  it('returns null when the result is missing rather than settling at zero', () => {
+    const game: Game = {
+      id: 'g1', type: 'stableford', buyInCents: 100,
+      config: { mode: 'gross', payModel: 'per_point', valueCentsPerPoint: 100 } as StablefordConfig,
+    }
+    expect(perPointNet(game, players, { stableford: null })).toBeNull()
+  })
+
+  it('uses quota netPoints, so it rewards beating your own target', () => {
+    const game: Game = {
+      id: 'g1', type: 'quota', buyInCents: 100,
+      config: { mode: 'gross', payModel: 'per_point', valueCentsPerPoint: 100 } as QuotaConfig,
+    }
+    const quota = {
+      stablefordPoints: { p1: 40, p2: 20, p3: 30 },
+      quotas: { p1: 38, p2: 15, p3: 30 },
+      netPoints: { p1: 2, p2: 5, p3: 0 },
+      winner: 'p2',
+    }
+    const net = perPointNet(game, players, { quota })!
+    // p2 beat quota by most, so p2 wins despite the lowest raw Stableford score.
+    expect(net.p2).toBeGreaterThan(net.p1)
+    expect(sum(net)).toBe(0)
+  })
+
+  it('resolves the nobody-beats-quota case without winner-take-all', () => {
+    const game: Game = {
+      id: 'g1', type: 'quota', buyInCents: 100,
+      config: { mode: 'gross', payModel: 'per_point', valueCentsPerPoint: 100 } as QuotaConfig,
+    }
+    const quota = {
+      stablefordPoints: { p1: 30, p2: 25, p3: 20 },
+      quotas: { p1: 31, p2: 33, p3: 35 },
+      netPoints: { p1: -1, p2: -8, p3: -15 },
+      winner: 'p1',
+    }
+    const net = perPointNet(game, players, { quota })!
+    // Under the pot model p1 takes 100% of the pot for missing by one. Here p1 is
+    // simply up a little, which is the outcome a group would expect.
+    expect(net.p1).toBeGreaterThan(0)
+    expect(net.p1).toBeLessThan(100 * 24)
+    expect(sum(net)).toBe(0)
   })
 })
