@@ -21,6 +21,7 @@ import type { ExtractionResult } from '../../lib/photoImport'
 import { NumberPad } from './NumberPad'
 import { BuyInBanner } from './BuyInBanner'
 import { LeaderboardTab } from './LeaderboardTab'
+import { BBBGrid } from './BBBGrid'
 import { HoleBetsPanel } from './HoleBetsPanel'
 import { DotsPanel } from './DotsPanel'
 import { PropBetsPanel } from './PropBetsPanel'
@@ -1817,7 +1818,11 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
               available to everyone who actually does that. Gating it on
               isScoremasterRole (creator or game master) hid it from event group
               scorekeepers — the very people entering a whole foursome's card. */}
-          {!readOnly && players.length > 1 && (isScoremasterRole || isGroupScorekeeper || isEventManager) && (
+          {/* On a BBB round Grid is the points card — the audit trail for a format
+              where every missed tap moves the settlement — so it is offered to
+              everyone, not only whoever is entering strokes. */}
+          {(game?.type === 'bingo_bango_bongo' ||
+            (!readOnly && players.length > 1 && (isScoremasterRole || isGroupScorekeeper || isEventManager))) && (
             <button
               onClick={() => { setScoreTab('scores'); setShowBatchEntry(true) }}
               className={`flex-1 py-2 rounded-lg text-sm font-semibold transition-colors ${
@@ -2693,7 +2698,17 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
         {/* === end game ribbon === */}
 
         {/* Batch Entry Grid — the "Grid" segment (§7g) */}
-        {showBatchEntry && !readOnly && snapshot && (() => {
+        {showBatchEntry && game?.type === 'bingo_bango_bongo' && (
+          <BBBGrid
+            players={players}
+            bbbPoints={bbbPoints}
+            currentHole={currentHole}
+            readOnly={readOnly}
+            onSelectHole={h => { goToHole(h); setShowBatchEntry(false) }}
+          />
+        )}
+
+        {showBatchEntry && game?.type !== 'bingo_bango_bongo' && !readOnly && snapshot && (() => {
           const half = Math.ceil(playableHoleNums.length / 2)
           const idx = playableHoleNums.indexOf(currentHole)
           const isBack = idx >= half

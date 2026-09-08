@@ -35,6 +35,8 @@ import {
   pointsHeadToHeadNet,
   vegasPerPointNet,
   perPointNet,
+  bbbGridSummary,
+  playerInitials,
 } from '../gameLogic'
 import type { VegasResult } from '../gameLogic'
 
@@ -1306,5 +1308,64 @@ describe('perPointNet — opt-in only', () => {
     expect(net.p1).toBeGreaterThan(0)
     expect(net.p1).toBeLessThan(100 * 24)
     expect(sum(net)).toBe(0)
+  })
+})
+
+// ─── BBB card completeness (spec §2.5) ──────────────────────────────────────
+
+describe('bbbGridSummary', () => {
+  const row = (holeNumber: number, bingo: string | null, bango: string | null, bongo: string | null) =>
+    ({ holeNumber, bingo, bango, bongo })
+
+  it('counts three points per hole played', () => {
+    const s = bbbGridSummary([row(1, 'p1', 'p2', 'p3'), row(2, 'p1', 'p1', 'p2')])
+    expect(s).toEqual({ thru: 2, assigned: 6, expected: 6, unassigned: 0 })
+  })
+
+  it('surfaces the gap that silently moved the rate on 7 September', () => {
+    // 17 holes recorded, one bango never tapped: 50 of 51.
+    const rows = Array.from({ length: 17 }, (_, i) => row(i + 1, 'p1', 'p2', 'p3'))
+    rows[3] = row(4, 'p1', null, 'p3')
+    const s = bbbGridSummary(rows)
+    expect(s.thru).toBe(17)
+    expect(s.assigned).toBe(50)
+    expect(s.expected).toBe(51)
+    expect(s.unassigned).toBe(1)
+  })
+
+  it('measures against holes played, not a full 54, so a live round is not "broken"', () => {
+    const s = bbbGridSummary([row(1, 'p1', 'p2', 'p3')])
+    expect(s.expected).toBe(3)
+    expect(s.unassigned).toBe(0)
+  })
+
+  it('ignores rows that exist but assign nothing', () => {
+    const s = bbbGridSummary([row(1, 'p1', 'p2', 'p3'), row(2, null, null, null)])
+    expect(s.thru).toBe(1)
+    expect(s.unassigned).toBe(0)
+  })
+
+  it('is empty for a round with no points yet', () => {
+    expect(bbbGridSummary([])).toEqual({ thru: 0, assigned: 0, expected: 0, unassigned: 0 })
+  })
+})
+
+describe('playerInitials', () => {
+  it('keeps two Logans apart, which truncation would not', () => {
+    expect(playerInitials('Austin Logan')).toBe('AL')
+    expect(playerInitials('Jeff Logan')).toBe('JL')
+  })
+
+  it('handles hyphens and single names', () => {
+    expect(playerInitials('A-Aron')).toBe('AA')
+    expect(playerInitials('Admin')).toBe('AD')
+  })
+
+  it('uses first and last for a middle name', () => {
+    expect(playerInitials('Michael J Ek')).toBe('ME')
+  })
+
+  it('does not throw on an empty name', () => {
+    expect(playerInitials('')).toBe('??')
   })
 })
