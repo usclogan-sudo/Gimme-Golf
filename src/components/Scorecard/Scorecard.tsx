@@ -243,7 +243,30 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
   const [showGameStatus, setShowGameStatus] = useState(true)
   // BBB (Bingo Bango Bongo) settles from points, not strokes — so golf-score entry
   // is optional and collapsed by default, and the standings/nags key off points.
-  const [showScoreEntry, setShowScoreEntry] = useState(false)
+  //
+  // ASKING ONCE PER ROUND, NOT ONCE PER VISIT
+  //
+  // As plain component state this already survived hole navigation, but not a
+  // remount — leaving the round and coming back, closing the app, or any reload
+  // (including the service-worker one that fires when a deploy lands mid-round)
+  // silently collapsed it again. A real BBB foursome on 7 September finished
+  // eighteen holes with "No scores" against all four players, and a preference
+  // that quietly resets is a good way to end up there.
+  //
+  // Scoped per round and to this device: it is a display choice, not data, and
+  // "I want strokes in this round" should not follow someone into the next one.
+  const scoreEntryKey = `gimme_score_entry_${roundId}`
+  const [showScoreEntry, setShowScoreEntry] = useState(() => {
+    try { return localStorage.getItem(scoreEntryKey) === '1' } catch { return false }
+  })
+  const toggleScoreEntry = () => setShowScoreEntry(prev => {
+    const next = !prev
+    try {
+      if (next) localStorage.setItem(scoreEntryKey, '1')
+      else localStorage.removeItem(scoreEntryKey)
+    } catch { /* private mode: the toggle still works for this session */ }
+    return next
+  })
   const { isOnline } = useOnlineStatus()
   const [syncing, setSyncing] = useState(false)
   const [pendingCount, setPendingCount] = useState(getPending())
@@ -2793,10 +2816,10 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
         {/* BBB doesn't need strokes — offer golf-score entry as an optional, collapsed section. */}
         {!showBatchEntry && game?.type === 'bingo_bango_bongo' && (
           <button
-            onClick={() => setShowScoreEntry(v => !v)}
+            onClick={toggleScoreEntry}
             className="w-full text-sm font-semibold text-gray-500 py-2.5 rounded-xl bg-gray-50 dark:bg-gray-800 active:bg-gray-100 transition-colors"
           >
-            {showScoreEntry ? 'Hide golf scores' : 'Enter golf scores (optional) ▸'}
+            {showScoreEntry ? 'Hide golf scores' : 'Enter golf scores (optional) — stays open for the round ▸'}
           </button>
         )}
 
