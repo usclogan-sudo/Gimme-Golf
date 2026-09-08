@@ -187,6 +187,10 @@ function Home({
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [accountMenuOpen])
+  // Event names for live rounds. The scorecard header shows "Audit A · Camarillo
+  // Springs" but this row showed only the course, dropping the one word that tells
+  // an organiser which of their outings they are looking at.
+  const [eventNames, setEventNames] = useState<Record<string, string>>({})
   const [unsettledCount, setUnsettledCount] = useState(0)
   const [unsettledAmounts, setUnsettledAmounts] = useState<{ youOwe: number; owedToYou: number }>({ youOwe: 0, owedToYou: 0 })
   const [fetchError, setFetchError] = useState<string | null>(null)
@@ -231,6 +235,13 @@ function Home({
       const ownedRows = ownedRes.data ?? []
       const partRows = (partRoundsRes.data ?? []) as any[]
       setActiveRounds(ownedRows.map(rowToRound))
+      const eventIds = Array.from(new Set(
+        [...ownedRows, ...partRows].map((r: any) => r.event_id).filter(Boolean)))
+      if (eventIds.length > 0) {
+        supabase.from('events').select('id,name').in('id', eventIds).then(({ data }) => {
+          if (data) setEventNames(Object.fromEntries(data.map((e: any) => [e.id, e.name])))
+        })
+      }
       // Participant list excludes rounds the user owns (already in activeRounds).
       const ownedIds = new Set(ownedRows.map((r: any) => r.id))
       setParticipantRounds(partRows.filter(r => !ownedIds.has(r.id)).map(rowToRound))
@@ -560,7 +571,11 @@ function Home({
                     <div className="flex items-center gap-3 min-w-0">
                       <span className="w-2.5 h-2.5 rounded-full bg-brass flex-shrink-0" style={{ boxShadow: '0 0 0 3px rgba(194,162,76,0.18)' }} />
                       <div className="min-w-0">
-                        <p className="font-semibold text-gray-900 dark:text-gray-100 text-sm truncate">{round.courseSnapshot?.courseName ?? 'Round in progress'}</p>
+                        <p className="font-semibold text-gray-900 dark:text-gray-100 text-sm truncate">
+                          {round.eventId && eventNames[round.eventId]
+                            ? `${eventNames[round.eventId]} · ${round.courseSnapshot?.courseName ?? ''}`
+                            : round.courseSnapshot?.courseName ?? 'Round in progress'}
+                        </p>
                         <p className="text-xs text-gray-500 dark:text-gray-400 truncate">
                           Live · {round.players?.length ?? 0} players · Hole {round.currentHole}
                         </p>

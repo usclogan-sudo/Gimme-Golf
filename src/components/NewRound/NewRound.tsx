@@ -59,11 +59,14 @@ const STEP_LABELS: Record<string, string> = {
   players: 'Players',
   groups: 'Groups',
   game: 'Game',
-  money: 'Stakes',
+  money: 'Entry',
 }
 
 function StepIndicator({ current, skipGroups, stakesMode }: { current: string; skipGroups: boolean; stakesMode?: StakesMode }) {
-  const steps = STEP_ORDER.filter(s => !(s === 'groups' && skipGroups))
+  // A points round never reaches the treasurer step — GameSetup creates the round
+  // directly — so showing it in the indicator promises a step that never arrives.
+  const steps = STEP_ORDER.filter(s =>
+    !(s === 'groups' && skipGroups) && !(s === 'money' && stakesMode === 'points'))
   const currentIdx = steps.indexOf(current as any)
   const isHR = stakesMode === 'high_roller'
   const goldColor = isHR ? '#fbbf24' : '#f59e0b'
@@ -1021,9 +1024,16 @@ function GameSetup({
     if (initialGame && !['skins', 'best_ball', 'nassau', 'wolf', 'bingo_bango_bongo'].includes(initialGame.type)) return true
     return false
   })
-  const [buyInDollars, setBuyInDollars] = useState(
-    initialGame ? String(initialGame.buyInCents / 100) : DEFAULT_BUY_IN[initialStakesMode]
-  )
+  const [buyInDollars, setBuyInDollars] = useState(() => {
+    if (!initialGame) return DEFAULT_BUY_IN[initialStakesMode]
+    // buyInCents holds a RAW TOKEN COUNT in points mode and real cents in money
+    // mode. Dividing unconditionally turned a 25-token entry into "0.25", which
+    // parsePointsValue then rounds to 0 — so Play Again and templates opened with
+    // nothing at stake and copy that said "Everyone puts in 0 tokens".
+    return initialStakesMode === 'points'
+      ? String(initialGame.buyInCents)
+      : String(initialGame.buyInCents / 100)
+  })
 
   // Skins
   const [carryovers, setCarryovers] = useState(
@@ -1031,7 +1041,10 @@ function GameSetup({
   )
   // Points formats (BBB, Stableford, Vegas, Quota). Default 'pot' keeps the
   // existing behaviour for anyone who does not touch the control.
-  const [pointsPayModel, setPointsPayModel] = useState<PointsPayModel>('pot')
+  // Per point is how these games are actually played, so it is the default. A
+  // stored round with no payModel still settles as a pot — that contract is about
+  // history and is untouched by what a new round starts on.
+  const [pointsPayModel, setPointsPayModel] = useState<PointsPayModel>('per_point')
   const [pointsValue, setPointsValue] = useState('1')
 
   const [skinsPayModel, setSkinsPayModel] = useState<SkinsPayModel>(
@@ -1158,6 +1171,10 @@ function GameSetup({
     ? parsePointsValue(buyInDollars)
     : parseDollarsToCents(buyInDollars)
 
+  // When a points format settles per point, the pot entry is not just unused — it
+  // is a second, contradictory number on the same screen.
+  const perPointSelected = POINTS_FORMATS.includes(type) && pointsPayModel === 'per_point'
+
   const bestBallAllowed = players.length >= 2 && players.length % 2 === 0
   const wolfAllowed = players.length >= 3
   const hammerAllowed = players.length === 2
@@ -1184,8 +1201,16 @@ function GameSetup({
   }, [players, vegasTeams])
   const vegasTeamsValid = vegasTeamCounts.a >= 1 && vegasTeamCounts.a === vegasTeamCounts.b
 
+  // A pot round with a zero entry is a round with nothing at stake, and its own
+  // copy says so — "Everyone puts in 0 tokens. Nobody can lose more than that."
+  // Per-point rounds are exempt: they never collect an entry, so the pot value is
+  // irrelevant and its own rate is validated separately.
+  const stakeIsSet = perPointSelected
+    ? Math.max(0, parsePointsValue(pointsValue)) > 0 || stakesMode !== 'points'
+    : buyInCents > 0
+
   const canContinue =
-    (type === 'hammer' || type === 'dots' || buyInCents >= 0) &&
+    (type === 'hammer' || type === 'dots' || stakeIsSet) &&
     (type === 'skins' ||
       type === 'nassau' ||
       type === 'bingo_bango_bongo' ||
@@ -1599,12 +1624,15 @@ function GameSetup({
 
         {/* Buy-in */}
         <section className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm p-4 space-y-3">
+          {!perPointSelected && (
           <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
             {stakesMode === 'points'
               ? 'Points Per Player'
               : <><Tooltip term="Entry">Entry Per Player</Tooltip>{type === 'nassau' ? ' (covers all 3 legs)' : ''}</>}
           </p>
+          )}
 
+          {!perPointSelected && (
           <div className="flex items-center gap-2">
             <span className="text-xl font-bold text-gray-500">{stakesMode === 'points' ? 'tokens' : '$'}</span>
             <input
@@ -1617,6 +1645,7 @@ function GameSetup({
               className="flex-1 h-12 px-4 rounded-xl border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 text-base focus:outline-none focus:ring-2 focus:ring-amber-500"
             />
           </div>
+          )}
 
           {/* HOW A POINTS FORMAT PAYS
               A pot divides buyIn x N by the metric, which only behaves when the
@@ -1704,7 +1733,7 @@ function GameSetup({
                 {fmtAmount(buyInCents, stakesMode)} from each of the other {Math.max(players.length - 1, 1)} player{players.length - 1 === 1 ? '' : 's'}. No total up front — it depends how many skins fall.
               </p>
             </div>
-          ) : (
+          ) : perPointSelected ? null : (
             <div className="bg-amber-50 rounded-xl px-4 py-3 flex items-center justify-between">
               <span className="text-sm text-gray-600">{stakesMode === 'points' ? 'Total points' : 'Total pot'}</span>
               <span className="font-bold text-gray-800 dark:text-gray-100 text-lg">
