@@ -169,6 +169,9 @@ export function LeaderboardTab({
           courseName: snapshot.courseName,
           date: round?.date ?? new Date(),
           formats: gameLabel ? [gameLabel] : [],
+          // Strokes only: this component receives computed results, not the
+          // hole-level BBB/junk records, so a points round still under-reports
+          // here. SettleUp's card — the one that printed "0 HOLES" — is fixed.
           holesPlayed: new Set(holeScores.map(h => h.holeNumber)).size,
         },
         standings: cardStandings,

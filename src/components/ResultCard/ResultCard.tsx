@@ -39,6 +39,8 @@ export interface ResultCardProps {
     date: Date
     formats: string[] // ['Skins'] or ['Skins', 'Best Ball']
     holesPlayed: number
+    /** Stated rate, so the settlement is checkable rather than asserted. */
+    rateLine?: string
   }
   standings: ResultCardStanding[]
   settlements: ResultCardSettlement[]
@@ -209,11 +211,14 @@ export const ResultCard = forwardRef<HTMLDivElement, ResultCardProps>(function R
 
   const eyebrowFormats = formatFormats(round.formats)
   const eyebrowLine1 = [round.courseName, eyebrowFormats].filter(Boolean).join(' · ').toUpperCase()
-  const eyebrowLine2 = (
+  // The rate rides on the existing eyebrow rather than claiming new layout: it is
+  // one short clause, and it turns an asserted settlement into a checkable one.
+  const eyebrowLine2 = [
     inProgress
       ? `${dateStr} · LIVE · THRU ${round.holesPlayed}`
-      : `${dateStr} · ${round.holesPlayed} ${round.holesPlayed === 1 ? 'HOLE' : 'HOLES'}`
-  ).toUpperCase()
+      : `${dateStr} · ${round.holesPlayed} ${round.holesPlayed === 1 ? 'HOLE' : 'HOLES'}`,
+    round.rateLine,
+  ].filter(Boolean).join(' · ').toUpperCase()
 
   // ── Style fragments ─────────────────────────────────────────────────────────
   const hairline = (key?: string) => (

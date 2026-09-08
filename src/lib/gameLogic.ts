@@ -497,6 +497,31 @@ export function pointsVsAverageNet(
   return net
 }
 
+/**
+ * How many holes actually saw play, counted from every kind of record rather than
+ * strokes alone.
+ *
+ * Holes played was `new Set(holeScores.map(h => h.holeNumber)).size`. BBB points and
+ * dots live in their own tables and stroke entry is an optional collapsed section
+ * for points formats, so a complete BBB round printed "0 HOLES" on its result card —
+ * which is what the 7 September round at Las Posas did after eighteen holes.
+ *
+ * A hole counts if anything was recorded on it: a stroke, a BBB point, a dot, or a
+ * side bet. Nothing else about the card changes.
+ */
+export function holesWithActivity(sources: {
+  holeScores?: { holeNumber: number }[]
+  bbbPoints?: { holeNumber: number }[]
+  junkRecords?: { holeNumber: number }[]
+  sideBets?: { holeNumber: number }[]
+}): number {
+  const holes = new Set<number>()
+  for (const list of [sources.holeScores, sources.bbbPoints, sources.junkRecords, sources.sideBets]) {
+    for (const r of list ?? []) if (r?.holeNumber != null) holes.add(r.holeNumber)
+  }
+  return holes.size
+}
+
 /** True when a points format is paid per point rather than out of a pot. */
 export function isPerPoint(config: { payModel?: PointsPayModel } | undefined | null): boolean {
   return config?.payModel === 'per_point'

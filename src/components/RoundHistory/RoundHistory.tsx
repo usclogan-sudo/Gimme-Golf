@@ -185,6 +185,9 @@ export function RoundHistory({ userId, onBack, onViewSettlements, onPlayAgain, e
                 courseName: snapshot!.courseName,
                 date: round.date,
                 formats: [gameLabelOf(game!.type)],
+                // Same limitation as LeaderboardTab: history expands stroke rows
+                // only, so points-format rounds under-report until it also loads
+                // bbb_points/junk_records.
                 holesPlayed: new Set(expandedScores.map(h => h.holeNumber)).size,
                 players,
                 settlements: recs,

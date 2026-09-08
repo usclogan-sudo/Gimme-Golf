@@ -11,6 +11,7 @@ import { NearMeCourses } from '../NearMeCourses/NearMeCourses'
 import { GameRulesModal } from '../GameRulesModal'
 import { Tooltip } from '../ui/Tooltip'
 import type {
+  PointsPayModel,
   Course,
   Player,
   Round,
@@ -971,6 +972,24 @@ function GroupAssignment({
 
 // ─── Step 4: Game Setup ───────────────────────────────────────────────────────
 
+/** The formats that can settle per point rather than out of a pot. */
+const POINTS_FORMATS: GameType[] = ['bingo_bango_bongo', 'stableford', 'vegas', 'quota']
+
+/**
+ * What a round realistically swings, so the organiser knows what they are agreeing
+ * to before the first tee. This is the line that does the work a pot used to do.
+ */
+const POINTS_RANGE_HINT: Partial<Record<GameType, string>> = {
+  bingo_bango_bongo:
+    '54 points in a full round — about 13 each in a foursome. At 1 per point, expect to finish within about ±5.',
+  stableford:
+    'Stableford rounds usually spread 6–10 points between first and last. At 1 per point, expect ±3 to ±6.',
+  vegas:
+    'Vegas totals run high — 50 to 200 points is common, and one blow-up hole can add 30. Most groups use 0.1 to 0.25 a point.',
+  quota:
+    'Quota nets usually land within ±8 of target. At 1 per point, expect ±3 to ±8.',
+}
+
 function GameSetup({
   players,
   initialStakesMode,
@@ -1010,6 +1029,11 @@ function GameSetup({
   const [carryovers, setCarryovers] = useState(
     initialGame?.type === 'skins' ? (initialGame.config as any).carryovers : true
   )
+  // Points formats (BBB, Stableford, Vegas, Quota). Default 'pot' keeps the
+  // existing behaviour for anyone who does not touch the control.
+  const [pointsPayModel, setPointsPayModel] = useState<PointsPayModel>('pot')
+  const [pointsValue, setPointsValue] = useState('1')
+
   const [skinsPayModel, setSkinsPayModel] = useState<SkinsPayModel>(
     initialGame?.type === 'skins' ? ((initialGame.config as any).payModel ?? 'pot') : 'pot'
   )
@@ -1190,6 +1214,18 @@ function GameSetup({
     setBankerOrder(next)
   }
 
+  /**
+   * Only emitted when the organiser chose per-point, so an untouched round keeps
+   * settling out of a pot exactly as before. Points mode stores the raw value the
+   * same way Dots and Hammer do — otherwise "1" becomes 100 and settles 100x high.
+   */
+  const pointsPay = () => pointsPayModel !== 'per_point' ? {} : {
+    payModel: 'per_point' as PointsPayModel,
+    valueCentsPerPoint: stakesMode === 'points'
+      ? Math.max(1, parsePointsValue(pointsValue))
+      : Math.max(1, parseDollarsToCents(pointsValue)),
+  }
+
   const makeGame = (): Game => {
     const id = uuidv4()
     if (type === 'skins') {
@@ -1218,11 +1254,11 @@ function GameSetup({
       return { id, type: 'hammer', buyInCents: 0, stakesMode, config }
     }
     if (type === 'vegas') {
-      const config: VegasConfig = { mode: 'net', teams: vegasTeams }
+      const config: VegasConfig = { mode: 'net', teams: vegasTeams, ...pointsPay() }
       return { id, type: 'vegas', buyInCents, stakesMode, config }
     }
     if (type === 'stableford') {
-      const config: StablefordConfig = { mode: 'net' }
+      const config: StablefordConfig = { mode: 'net', ...pointsPay() }
       return { id, type: 'stableford', buyInCents, stakesMode, config }
     }
     if (type === 'dots') {
@@ -1242,11 +1278,11 @@ function GameSetup({
       for (const p of players) {
         quotas[p.id] = Math.max(0, Math.min(36, Math.round(36 - p.handicapIndex)))
       }
-      const config: QuotaConfig = { mode: 'net', quotas }
+      const config: QuotaConfig = { mode: 'net', quotas, ...pointsPay() }
       return { id, type: 'quota', buyInCents, stakesMode, config }
     }
     // bingo_bango_bongo
-    const config: BBBConfig = { mode: 'net' }
+    const config: BBBConfig = { mode: 'net', ...pointsPay() }
     return { id, type: 'bingo_bango_bongo', buyInCents, stakesMode, config }
   }
 
@@ -1581,6 +1617,77 @@ function GameSetup({
               className="flex-1 h-12 px-4 rounded-xl border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 text-base focus:outline-none focus:ring-2 focus:ring-amber-500"
             />
           </div>
+
+          {/* HOW A POINTS FORMAT PAYS
+              A pot divides buyIn x N by the metric, which only behaves when the
+              metric starts at zero. Stableford's base is ~30-38 points whatever
+              happens, so an eight-point win settles for 2.5 tokens on a 25 entry and
+              the game produces no result. BBB has the same defect at a base near
+              12.5, and Vegas loses magnitude entirely — the winning team splits the
+              pot whether it won by 5 or 200.
+
+              Per point is unbounded, which is the honest argument for the pot, so
+              the expected range is stated rather than avoided. Both options are
+              labelled: a choice beats a default nobody recognises. */}
+          {POINTS_FORMATS.includes(type) && (
+            <div className="space-y-3">
+              <div>
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">How to settle</p>
+                <div className="space-y-2">
+                  {([
+                    { v: 'per_point' as PointsPayModel, label: 'Per point',
+                      hint: 'Standard. Swings match the play.' },
+                    { v: 'pot' as PointsPayModel, label: 'Split a pot',
+                      hint: `Everyone puts in ${fmtAmount(buyInCents, stakesMode)}. Nobody can lose more than that.` },
+                  ]).map(opt => (
+                    <button
+                      key={opt.v}
+                      onClick={() => setPointsPayModel(opt.v)}
+                      className={`w-full text-left p-3 rounded-2xl border-2 transition-colors ${
+                        pointsPayModel === opt.v
+                          ? 'border-amber-500 bg-amber-50 dark:bg-amber-900/20'
+                          : 'border-gray-200 dark:border-gray-700'
+                      }`}
+                    >
+                      <span className="font-semibold block">{opt.label}</span>
+                      <span className="text-sm text-gray-500">{opt.hint}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {pointsPayModel === 'per_point' && (
+                <div>
+                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Value per point</p>
+                  <div className="flex gap-2 mb-2">
+                    {['0.25', '0.5', '1', '2'].map(v => (
+                      <button
+                        key={v}
+                        onClick={() => setPointsValue(v)}
+                        className={`flex-1 min-h-[44px] rounded-xl text-sm font-semibold border-2 transition-colors ${
+                          pointsValue === v
+                            ? 'border-amber-500 bg-amber-500 text-white'
+                            : 'border-gray-200 dark:border-gray-700'
+                        }`}
+                      >{v}</button>
+                    ))}
+                  </div>
+                  <input
+                    type="number"
+                    inputMode="decimal"
+                    min="0"
+                    step="0.25"
+                    value={pointsValue}
+                    onChange={e => setPointsValue(e.target.value)}
+                    className="w-full h-12 px-4 rounded-xl border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 text-base focus:outline-none focus:ring-2 focus:ring-amber-500"
+                  />
+                  <p className="text-sm text-gray-500 bg-gray-50 dark:bg-gray-700 rounded-xl p-3 mt-2">
+                    {POINTS_RANGE_HINT[type] ?? ''}
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
 
           {/* A per-skin round collects nothing up front, so a "total" here would be
               a number that never exists. Show what a single skin is worth instead —
