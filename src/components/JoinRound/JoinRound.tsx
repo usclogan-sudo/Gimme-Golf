@@ -239,7 +239,7 @@ export function JoinRound({ userId, initialCode, onJoined, onCancel }: Props) {
       <header className="app-header text-white px-4 py-3 shadow-xl">
         <div className="max-w-2xl mx-auto flex items-center justify-between">
           <h1 className="text-xl font-bold font-display">Join Round</h1>
-          <button onClick={onCancel} className="text-gray-300 text-sm font-medium px-3 py-1.5 rounded-lg hover:bg-gray-600">
+          <button onClick={onCancel} className="text-gray-300 text-sm font-medium px-3 min-h-[44px] rounded-lg hover:bg-gray-600">
             Cancel
           </button>
         </div>

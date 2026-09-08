@@ -1348,7 +1348,7 @@ function GameSetup({
       </button>
       <button
         onClick={(e) => { e.stopPropagation(); setRulesModalType(gameType) }}
-        className={`absolute top-1 right-1 w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold transition-colors ${
+        className={`absolute top-1 right-1 w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold transition-colors before:absolute before:-inset-2 before:content-[''] ${
           type === gameType
             ? 'bg-white/20 text-white/80 active:bg-white/30'
             : 'bg-gray-200 text-gray-500 active:bg-gray-300'
@@ -1465,7 +1465,7 @@ function GameSetup({
           {SHOW_EXTRA_GAMES && (
             <button
               onClick={() => setShowAllGames(v => !v)}
-              className="w-full text-sm font-semibold text-gray-500 py-2 rounded-xl bg-gray-50 active:bg-gray-100 transition-colors"
+              className="w-full text-sm font-semibold text-gray-500 min-h-[44px] rounded-xl bg-gray-50 active:bg-gray-100 transition-colors"
             >
               {showAllGames ? 'Hide extra games' : `More Games (${SHOW_DOTS ? 5 : 4} more)`}
             </button>
