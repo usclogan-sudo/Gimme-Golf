@@ -42,6 +42,7 @@ import {
   netFromPayouts,
   perPointNet,
   holesWithActivity,
+  bbbCategoryBreakdown,
   isUnitGame,
   unitGameNet,
   JUNK_LABELS,
@@ -925,6 +926,33 @@ export function SettleUp({ roundId, userId, eventId, onDone, onContinue }: Props
     return undefined
   })()
 
+  // The figures the settlement divided. Printed on the card so the arithmetic is
+  // checkable: 19/13/12/10 against 54 awarded explains +11 / -1 / -3 / -7 without
+  // anyone having to be told.
+  const pointsTable = (() => {
+    if (game?.type !== 'bingo_bango_bongo' || bbbPoints.length === 0) return undefined
+    const rows = bbbCategoryBreakdown(bbbPoints, players)
+      .filter(r => r.total > 0)
+      .map(r => ({
+        name: players.find(p => p.id === r.playerId)?.name ?? 'Player',
+        values: [r.bingo, r.bango, r.bongo],
+        total: r.total,
+      }))
+    if (rows.length === 0) return undefined
+    const awarded = rows.reduce((s, r) => s + r.total, 0)
+    // A pot round's value per point is not agreed up front — it is the pot divided
+    // by however many points ended up being awarded. Showing that division is the
+    // only way the number can be checked, and it is what nobody could see on
+    // 7 September.
+    const cfg = game.config as { payModel?: string; valueCentsPerPoint?: number } | undefined
+    const footnote = cfg?.payModel === 'per_point'
+      ? `${fmtAmount(cfg.valueCentsPerPoint ?? game.buyInCents, game.stakesMode)} per point · ${awarded} awarded`
+      : awarded > 0
+        ? `${fmtAmount(game.buyInCents * players.length, game.stakesMode)} ÷ ${awarded} points`
+        : `${awarded} awarded`
+    return { columns: ['BINGO', 'BANGO', 'BONGO'], rows, footnote }
+  })()
+
   const resultCardProps = buildResultCardProps({
     roundId,
     courseName: snapshot.courseName,
@@ -932,6 +960,7 @@ export function SettleUp({ roundId, userId, eventId, onDone, onContinue }: Props
     formats: [gameLabel],
     holesPlayed: holesWithActivity({ holeScores, bbbPoints, junkRecords, sideBets }),
     rateLine,
+    pointsTable,
     players,
     settlements: settlementRecords,
     payouts,

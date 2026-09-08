@@ -36,6 +36,8 @@ import {
   vegasPerPointNet,
   perPointNet,
   bbbGridSummary,
+  calculateBBB,
+  bbbCategoryBreakdown,
   playerInitials,
 } from '../gameLogic'
 import type { VegasResult } from '../gameLogic'
@@ -1367,5 +1369,45 @@ describe('playerInitials', () => {
 
   it('does not throw on an empty name', () => {
     expect(playerInitials('')).toBe('??')
+  })
+})
+
+// ─── BBB category breakdown for the result card (spec §2.6) ─────────────────
+
+describe('bbbCategoryBreakdown', () => {
+  const pt = (bingo: string | null, bango: string | null, bongo: string | null) => ({ bingo, bango, bongo })
+
+  it('tallies each category separately and totals them', () => {
+    const rows = bbbCategoryBreakdown(
+      [pt('p1', 'p1', 'p2'), pt('p1', 'p3', 'p2')], players)
+    const p1 = rows.find(r => r.playerId === 'p1')!
+    expect(p1).toMatchObject({ bingo: 2, bango: 1, bongo: 0, total: 3 })
+    expect(rows.find(r => r.playerId === 'p2')!.total).toBe(2)
+  })
+
+  it('ranks by total so the card reads top-down', () => {
+    const rows = bbbCategoryBreakdown([pt('p2', 'p2', 'p2'), pt('p1', null, null)], players)
+    expect(rows[0].playerId).toBe('p2')
+  })
+
+  it('totals to the same number calculateBBB divides by', () => {
+    // The table and the divisor must agree, or the card shows arithmetic that
+    // does not reconcile — the exact failure it exists to prevent.
+    const rows2 = [pt('p1', 'p2', 'p3'), pt('p1', 'p1', 'p2')]
+    const table = bbbCategoryBreakdown(rows2, players).reduce((s, r) => s + r.total, 0)
+    const bbb = calculateBBB(players, rows2.map((r, i) => ({
+      id: `b${i}`, roundId: 'r1', holeNumber: i + 1, ...r,
+    })))
+    expect(table).toBe(bbb.totalPoints)
+  })
+
+  it('ignores points held by players no longer on the roster', () => {
+    const rows = bbbCategoryBreakdown([pt('ghost', 'p1', null)], players)
+    expect(rows.reduce((s, r) => s + r.total, 0)).toBe(1)
+  })
+
+  it('counts unassigned slots as nothing rather than throwing', () => {
+    const rows = bbbCategoryBreakdown([pt(null, null, null)], players)
+    expect(rows.every(r => r.total === 0)).toBe(true)
   })
 })
