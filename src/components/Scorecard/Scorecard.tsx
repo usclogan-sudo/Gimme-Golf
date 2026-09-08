@@ -1614,14 +1614,14 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
                 <button
                   onClick={() => { const idx = playableHoleNums.indexOf(currentHole); if (idx > 0) goToHole(playableHoleNums[idx - 1]) }}
                   disabled={playableHoleNums.indexOf(currentHole) <= 0}
-                  className="w-7 h-7 flex items-center justify-center rounded-full text-gray-300 hover:bg-black/20 disabled:opacity-30"
+                  className="w-11 h-11 -my-2 flex items-center justify-center rounded-full text-gray-300 hover:bg-black/20 disabled:opacity-30"
                   aria-label="Previous hole"
                 >‹</button>
-                <button onClick={() => setShowHoleGrid(v => !v)} className="active:opacity-80" aria-label="Choose hole">Hole {currentHole}</button>
+                <button onClick={() => setShowHoleGrid(v => !v)} className="min-h-[44px] -my-2 px-1 flex items-center active:opacity-80" aria-label="Choose hole">Hole {currentHole}</button>
                 <button
                   onClick={() => { const idx = playableHoleNums.indexOf(currentHole); if (idx < playableHoleNums.length - 1) goToHole(playableHoleNums[idx + 1]) }}
                   disabled={playableHoleNums.indexOf(currentHole) >= playableHoleNums.length - 1}
-                  className="w-7 h-7 flex items-center justify-center rounded-full text-gray-300 hover:bg-black/20 disabled:opacity-30"
+                  className="w-11 h-11 -my-2 flex items-center justify-center rounded-full text-gray-300 hover:bg-black/20 disabled:opacity-30"
                   aria-label="Next hole"
                 >›</button>
                 <span className="text-gray-300 font-normal text-base ml-1">Par {par} · <Tooltip term="SI">SI {strokeIndex}</Tooltip></span>
@@ -1784,13 +1784,13 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
             <div className="flex items-center gap-1.5 flex-shrink-0">
               <button
                 onClick={shareJoinLink}
-                className="text-sm font-semibold text-navy dark:text-brass px-2 py-1.5 rounded-lg active:opacity-70"
+                className="text-sm font-semibold text-navy dark:text-brass px-3 min-h-[44px] rounded-lg active:opacity-70"
               >
                 Share link
               </button>
               <button
                 onClick={() => setShowInviteModal(true)}
-                className="text-sm font-bold bg-navy text-white dark:bg-brass dark:text-navy px-3 py-1.5 rounded-lg active:opacity-90"
+                className="text-sm font-bold bg-navy text-white dark:bg-brass dark:text-navy px-3 min-h-[44px] rounded-lg active:opacity-90"
               >
                 + Add players
               </button>
@@ -1808,7 +1808,7 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
         <div className="max-w-2xl mx-auto flex gap-1">
           <button
             onClick={() => { setScoreTab('scores'); setShowBatchEntry(false) }}
-            className={`flex-1 py-2 rounded-lg text-sm font-semibold transition-colors ${
+            className={`flex-1 min-h-[44px] rounded-lg text-sm font-semibold transition-colors ${
               scoreTab === 'scores' && !showBatchEntry ? 'bg-gray-800 text-white dark:bg-brass dark:text-navy' : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300'
             }`}
           >
@@ -1825,7 +1825,7 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
             (!readOnly && players.length > 1 && (isScoremasterRole || isGroupScorekeeper || isEventManager))) && (
             <button
               onClick={() => { setScoreTab('scores'); setShowBatchEntry(true) }}
-              className={`flex-1 py-2 rounded-lg text-sm font-semibold transition-colors ${
+              className={`flex-1 min-h-[44px] rounded-lg text-sm font-semibold transition-colors ${
                 scoreTab === 'scores' && showBatchEntry ? 'bg-gray-800 text-white dark:bg-brass dark:text-navy' : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300'
               }`}
             >
@@ -1834,7 +1834,7 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
           )}
           <button
             onClick={() => setScoreTab('leaderboard')}
-            className={`flex-1 py-2 rounded-lg text-sm font-semibold transition-colors ${
+            className={`flex-1 min-h-[44px] rounded-lg text-sm font-semibold transition-colors ${
               scoreTab === 'leaderboard' ? 'bg-gray-800 text-white dark:bg-brass dark:text-navy' : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300'
             }`}
           >
@@ -2280,7 +2280,7 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
             {(skinsResult || bestBallResult || nassauResult || (wolfConfig && wolfId) || (game?.type === 'hammer' && hammerConfig) || (game?.type === 'bingo_bango_bongo') || (junkConfig && junkConfig.types.length > 0)) && (
               <button
                 onClick={() => setShowGameStatus(!showGameStatus)}
-                className="w-full flex items-center justify-between bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-4 py-2.5 active:bg-gray-50 dark:active:bg-gray-700 transition-colors"
+                className="w-full min-h-[44px] flex items-center justify-between bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-4 active:bg-gray-50 dark:active:bg-gray-700 transition-colors"
               >
                 <span className="text-sm font-semibold text-gray-700 dark:text-gray-200">Game · Hole {currentHole}</span>
                 <span className="text-gray-400 text-sm">{showGameStatus ? '▾' : '▸'}</span>
