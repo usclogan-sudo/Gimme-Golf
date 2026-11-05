@@ -1292,17 +1292,44 @@ export function wolfForHole(wolfOrder: string[], holeNumber: number): string {
 export interface WolfHoleResult {
   holeNumber: number
   wolfId: string
-  partnerId: string | null   // null = lone wolf
+  partnerId: string | null   // null = wolf alone (lone or blind)
   loneWolf: boolean
-  wolfTeamWon: boolean | null // null = tie or incomplete
+  /** Declared alone before any tee shot: 3× instead of 2×. */
+  blind: boolean
+  wolfTeamWon: boolean | null // null = tie, incomplete, or unresolved
   tied: boolean
+  /** Scores exist for this hole but no pick is recorded. Scores are kept; the
+   *  hole resolves normally once the pick is entered (Finding 4). */
+  unresolved: boolean
+  /** Units carried into this hole from halved holes (carryHalved on). */
+  carriedIn: number
+  /** Units at stake per opponent: (1 + carriedIn) × 1 / 2 (lone) / 3 (blind). */
+  units: number
 }
 
 export interface WolfResult {
   holeResults: WolfHoleResult[]
   netUnits: Record<string, number>  // playerId → net units (can be negative)
+  /** Holes with scores but no pick, in course order. */
+  unresolvedHoles: number[]
+  /** Units still carrying after the last decided hole (carryHalved on). */
+  carryPending: number
 }
 
+/**
+ * Wolf, hole by hole. Every branch here is defensive on purpose (Finding 3): a
+ * hole with scores but no pick, a pick naming a player no longer on the roster,
+ * an empty rotation, or a one-player roster must all produce a null result for
+ * that hole — never a throw, never a hang — because the same object feeds the
+ * scorecard header, the leaderboard, the rules modal's host and Settle Up.
+ *
+ * Holes come from the playable snapshot (so a back-nine round scores holes 10–18,
+ * not a phantom 1–9). Units: a decided, non-halved hole moves `units` from every
+ * loser to every winner, where units = (1 + carriedIn) × 1, × 2 for lone wolf,
+ * × 3 for blind wolf. With `carryHalved` on, a halved hole adds one unit to the
+ * next decided hole; off (the default and the legacy behaviour) a halved hole
+ * simply pushes.
+ */
 export function calculateWolf(
   players: Player[],
   holeScores: HoleScore[],
@@ -1312,23 +1339,49 @@ export function calculateWolf(
 ): WolfResult {
   const holeResults: WolfHoleResult[] = []
   const netUnits: Record<string, number> = {}
+  const unresolvedHoles: number[] = []
   players.forEach(p => (netUnits[p.id] = 0))
 
   const totalHoles = snapshot.holes.length
+  const rosterIds = new Set(players.map(p => p.id))
+  const wolfOrder = (config.wolfOrder ?? []).filter(id => rosterIds.has(id))
+  const carryHalved = config.carryHalved === true
+  let carry = 0
 
-  for (let holeNum = 1; holeNum <= totalHoles; holeNum++) {
-    const wolfId = wolfForHole(config.wolfOrder, holeNum)
+  const nullResult = (holeNumber: number, wolfId: string, partial: Partial<WolfHoleResult> = {}): WolfHoleResult => ({
+    holeNumber, wolfId, partnerId: null, loneWolf: false, blind: false,
+    wolfTeamWon: null, tied: false, unresolved: false, carriedIn: carry, units: 0, ...partial,
+  })
+
+  for (const hole of snapshot.holes) {
+    const holeNum = hole.number
+    const wolfId = wolfForHole(wolfOrder, holeNum)
     const decision = config.holeDecisions?.[holeNum]
+    const scored = holeScores.some(s => s.holeNumber === holeNum)
 
-    if (!decision) {
-      holeResults.push({ holeNumber: holeNum, wolfId, partnerId: null, loneWolf: false, wolfTeamWon: null, tied: false })
+    // No rotation (or nobody from it is still playing): nothing can resolve.
+    if (!wolfId || !rosterIds.has(wolfId)) {
+      holeResults.push(nullResult(holeNum, wolfId ?? ''))
       continue
     }
 
-    const { partnerId } = decision
-    const loneWolf = partnerId === null
-    const hole = snapshot.holes.find(h => h.number === holeNum)
-    if (!hole) continue
+    if (!decision) {
+      if (scored) unresolvedHoles.push(holeNum)
+      holeResults.push(nullResult(holeNum, wolfId, { unresolved: scored }))
+      continue
+    }
+
+    const partnerId = decision.partnerId ?? null
+    const alone = partnerId === null
+    const blind = alone && decision.blind === true
+    const others = players.filter(p => p.id !== wolfId)
+
+    // A one-player "round" has nobody to play against; a partner who left the
+    // roster leaves the wolf with no decidable team. Both are null holes.
+    if (others.length === 0 || (!alone && !rosterIds.has(partnerId!))) {
+      holeResults.push(nullResult(holeNum, wolfId, { partnerId, loneWolf: alone, blind }))
+      continue
+    }
 
     const getScore = (playerId: string): number | null => {
       const hs = holeScores.find(s => s.playerId === playerId && s.holeNumber === holeNum)
@@ -1338,58 +1391,40 @@ export function calculateWolf(
         : hs.grossScore
     }
 
-    const wolfScore = getScore(wolfId)
+    const wolfTeam = alone ? [wolfId] : [wolfId, partnerId!]
+    const otherTeam = others.filter(p => !wolfTeam.includes(p.id)).map(p => p.id)
+    const wolfTeamScores = wolfTeam.map(getScore)
+    const otherTeamScores = otherTeam.map(getScore)
+    const multiplier = blind ? 3 : alone ? 2 : 1
+    const units = (1 + carry) * multiplier
 
-    if (loneWolf) {
-      const others = players.filter(p => p.id !== wolfId)
-      const otherScores = others.map(p => getScore(p.id))
-      if (wolfScore === null || otherScores.some(s => s === null)) {
-        holeResults.push({ holeNumber: holeNum, wolfId, partnerId: null, loneWolf: true, wolfTeamWon: null, tied: false })
-        continue
-      }
-      const othersMin = Math.min(...(otherScores as number[]))
-      const wolfWon = wolfScore < othersMin
-      const tied = wolfScore === othersMin
-      holeResults.push({ holeNumber: holeNum, wolfId, partnerId: null, loneWolf: true, wolfTeamWon: tied ? null : wolfWon, tied })
-
-      if (!tied) {
-        const units = 2  // lone wolf = double value
-        if (wolfWon) {
-          netUnits[wolfId] += units * others.length
-          others.forEach(p => (netUnits[p.id] -= units))
-        } else {
-          netUnits[wolfId] -= units * others.length
-          others.forEach(p => (netUnits[p.id] += units))
-        }
-      }
-    } else {
-      const wolfTeam = [wolfId, partnerId]
-      const otherTeam = players.filter(p => !wolfTeam.includes(p.id)).map(p => p.id)
-      const wolfTeamScores = wolfTeam.map(getScore)
-      const otherTeamScores = otherTeam.map(getScore)
-
-      if (wolfTeamScores.some(s => s === null) || otherTeamScores.some(s => s === null)) {
-        holeResults.push({ holeNumber: holeNum, wolfId, partnerId, loneWolf: false, wolfTeamWon: null, tied: false })
-        continue
-      }
-
-      const wolfBest = Math.min(...(wolfTeamScores as number[]))
-      const otherBest = Math.min(...(otherTeamScores as number[]))
-      const wolfWon = wolfBest < otherBest
-      const tied = wolfBest === otherBest
-
-      holeResults.push({ holeNumber: holeNum, wolfId, partnerId, loneWolf: false, wolfTeamWon: tied ? null : wolfWon, tied })
-
-      if (!tied) {
-        const winners = wolfWon ? wolfTeam : otherTeam
-        const losers = wolfWon ? otherTeam : wolfTeam
-        winners.forEach(id => (netUnits[id] += losers.length))
-        losers.forEach(id => (netUnits[id] -= winners.length))
-      }
+    if (otherTeam.length === 0 || wolfTeamScores.some(s => s === null) || otherTeamScores.some(s => s === null)) {
+      holeResults.push(nullResult(holeNum, wolfId, { partnerId, loneWolf: alone, blind, units }))
+      continue
     }
+
+    const wolfBest = Math.min(...(wolfTeamScores as number[]))
+    const otherBest = Math.min(...(otherTeamScores as number[]))
+    const wolfWon = wolfBest < otherBest
+    const tied = wolfBest === otherBest
+
+    holeResults.push({
+      holeNumber: holeNum, wolfId, partnerId, loneWolf: alone, blind,
+      wolfTeamWon: tied ? null : wolfWon, tied, unresolved: false, carriedIn: carry, units,
+    })
+
+    if (tied) {
+      if (carryHalved) carry += 1
+      continue
+    }
+    const winners = wolfWon ? wolfTeam : otherTeam
+    const losers = wolfWon ? otherTeam : wolfTeam
+    winners.forEach(id => (netUnits[id] += units * losers.length))
+    losers.forEach(id => (netUnits[id] -= units * winners.length))
+    carry = 0
   }
 
-  return { holeResults, netUnits }
+  return { holeResults, netUnits, unresolvedHoles, carryPending: carry }
 }
 
 export function calculateWolfPayouts(

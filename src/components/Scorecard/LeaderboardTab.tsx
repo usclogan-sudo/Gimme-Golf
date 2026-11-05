@@ -363,6 +363,11 @@ export function LeaderboardTab({
         {wolfResult && (
           <div className="mt-3 pt-3 border-t border-gray-100">
             <p className="text-xs font-semibold text-gray-500 uppercase mb-2">Wolf ({primaryLabel}) — Units</p>
+            {(wolfResult.unresolvedHoles?.length ?? 0) > 0 && (
+              <p className="text-xs text-amber-700 dark:text-brass mb-2">
+                Waiting on a pick: hole{wolfResult.unresolvedHoles.length === 1 ? '' : 's'} {wolfResult.unresolvedHoles.join(', ')} — scores are in, the wolf&apos;s pick isn&apos;t recorded yet.
+              </p>
+            )}
             <div className="flex flex-wrap gap-2">
               {players.slice().sort((a, b) => (wolfResult.netUnits[b.id] ?? 0) - (wolfResult.netUnits[a.id] ?? 0)).map(p => {
                 const u = wolfResult.netUnits[p.id] ?? 0

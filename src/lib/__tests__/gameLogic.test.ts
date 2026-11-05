@@ -1,4 +1,4 @@
-import type { Player, CourseSnapshot, HoleScore, SkinsConfig, StablefordConfig, JunkConfig, JunkRecord, SideBet, Game, RoundPlayer, VegasConfig, BBBConfig, QuotaConfig, NassauConfig } from '../../types'
+import type { Player, CourseSnapshot, HoleScore, SkinsConfig, StablefordConfig, JunkConfig, JunkRecord, SideBet, Game, RoundPlayer, VegasConfig, BBBConfig, QuotaConfig, NassauConfig, WolfConfig } from '../../types'
 
 import {
   calcCourseHandicap,
@@ -15,6 +15,7 @@ import {
   calculateSkinsPerSkinNet,
   calculateBBBPayouts,
   calculateWolfPayouts,
+  calculateWolf,
   calculateNassau,
   calculateNassauPayouts,
   nassauLive,
@@ -673,6 +674,112 @@ describe('Nassau match play', () => {
     const legacy: NassauConfig = { mode: 'gross' }
     const live = nassauLive(two, holes({ 1: 1, 2: 1, 3: 3 }, 3), snapshot, legacy, hcps)
     expect(live.front.margin).toBe(5)
+  })
+})
+
+// ─── Wolf (Findings 3 and 4) ────────────────────────────────────────────────
+
+describe('calculateWolf', () => {
+  // Alice p1, Bob p2, Carol p3. Rotation p1, p2, p3 → Alice is wolf on 1, 4, 7…
+  const cfg = (extra: Partial<WolfConfig> = {}): WolfConfig =>
+    ({ mode: 'gross', wolfOrder: ['p1', 'p2', 'p3'], ...extra })
+  const hcps = { p1: 0, p2: 0, p3: 0 }
+  const hole = (n: number, a: number, b: number, c: number): HoleScore[] =>
+    [hs('p1', n, a), hs('p2', n, b), hs('p3', n, c)]
+
+  it('a hole with scores and no pick is unresolved, keeps its scores, and moves no units', () => {
+    const r = calculateWolf(players, hole(1, 4, 5, 5), snapshot, cfg(), hcps)
+    const h1 = r.holeResults.find(h => h.holeNumber === 1)!
+    expect(h1.unresolved).toBe(true)
+    expect(h1.wolfTeamWon).toBeNull()
+    expect(r.unresolvedHoles).toEqual([1])
+    expect(r.netUnits).toEqual({ p1: 0, p2: 0, p3: 0 })
+  })
+
+  it('a hole with no scores and no pick is simply not started (not unresolved)', () => {
+    const r = calculateWolf(players, [], snapshot, cfg(), hcps)
+    expect(r.unresolvedHoles).toEqual([])
+    expect(r.holeResults.every(h => !h.unresolved)).toBe(true)
+  })
+
+  it('recording the pick late resolves the hole normally (recovery, Finding 4)', () => {
+    const scores = hole(1, 4, 5, 5)
+    const before = calculateWolf(players, scores, snapshot, cfg(), hcps)
+    expect(before.netUnits.p1).toBe(0)
+    const after = calculateWolf(players, scores, snapshot,
+      cfg({ holeDecisions: { 1: { partnerId: 'p2', recordedLate: true } } }), hcps)
+    const h1 = after.holeResults.find(h => h.holeNumber === 1)!
+    expect(h1.unresolved).toBe(false)
+    expect(h1.wolfTeamWon).toBe(true)        // Alice+Bob best 4 beats Carol 5
+    expect(after.unresolvedHoles).toEqual([])
+    expect(after.netUnits).toEqual({ p1: 1, p2: 1, p3: -2 })
+  })
+
+  it('lone wolf is 2× per opponent; blind wolf is 3×', () => {
+    const lone = calculateWolf(players, hole(1, 3, 5, 5), snapshot,
+      cfg({ holeDecisions: { 1: { partnerId: null } } }), hcps)
+    expect(lone.netUnits).toEqual({ p1: 4, p2: -2, p3: -2 })
+    expect(lone.holeResults[0].units).toBe(2)
+    const blind = calculateWolf(players, hole(1, 3, 5, 5), snapshot,
+      cfg({ blindWolf: true, holeDecisions: { 1: { partnerId: null, blind: true } } }), hcps)
+    expect(blind.netUnits).toEqual({ p1: 6, p2: -3, p3: -3 })
+    expect(blind.holeResults[0].blind).toBe(true)
+    expect(blind.holeResults[0].units).toBe(3)
+    // Losing blind costs 3× too.
+    const blindLoss = calculateWolf(players, hole(1, 6, 4, 5), snapshot,
+      cfg({ blindWolf: true, holeDecisions: { 1: { partnerId: null, blind: true } } }), hcps)
+    expect(blindLoss.netUnits).toEqual({ p1: -6, p2: 3, p3: 3 })
+  })
+
+  it('a halved hole pushes by default (legacy), and carries when carryHalved is on', () => {
+    // Hole 1 halved (wolf Alice+Bob best 4 vs Carol 4); hole 2 Bob (wolf) + Carol beat Alice.
+    const scores = [...hole(1, 4, 5, 4), ...hole(2, 5, 4, 5)]
+    const decisions = { 1: { partnerId: 'p2' }, 2: { partnerId: 'p3' } }
+    const push = calculateWolf(players, scores, snapshot, cfg({ holeDecisions: decisions }), hcps)
+    expect(push.holeResults[0].tied).toBe(true)
+    expect(push.holeResults[1].units).toBe(1)
+    expect(push.netUnits).toEqual({ p1: -2, p2: 1, p3: 1 })
+    expect(push.carryPending).toBe(0)
+
+    const carry = calculateWolf(players, scores, snapshot, cfg({ carryHalved: true, holeDecisions: decisions }), hcps)
+    expect(carry.holeResults[1].carriedIn).toBe(1)
+    expect(carry.holeResults[1].units).toBe(2)
+    expect(carry.netUnits).toEqual({ p1: -4, p2: 2, p3: 2 })
+  })
+
+  it('carry stacks with lone wolf and stays pending until a hole is decided', () => {
+    const scores = [...hole(1, 4, 5, 4)]
+    const r = calculateWolf(players, scores, snapshot,
+      cfg({ carryHalved: true, holeDecisions: { 1: { partnerId: 'p2' } } }), hcps)
+    expect(r.carryPending).toBe(1)
+    const r2 = calculateWolf(players, [...scores, ...hole(2, 5, 3, 5)], snapshot,
+      cfg({ carryHalved: true, holeDecisions: { 1: { partnerId: 'p2' }, 2: { partnerId: null } } }), hcps)
+    expect(r2.holeResults[1].units).toBe(4)  // (1 + 1 carried) × 2 lone
+    expect(r2.netUnits).toEqual({ p1: -4, p2: 8, p3: -4 })
+    expect(r2.carryPending).toBe(0)
+  })
+
+  it('scores the playable holes, not 1..length (back-nine rounds)', () => {
+    const back9: CourseSnapshot = { ...snapshot, holes: snapshot.holes.slice(9) }
+    const r = calculateWolf(players, hole(10, 4, 5, 5), back9,
+      cfg({ holeDecisions: { 10: { partnerId: 'p2' } } }), hcps)
+    expect(r.holeResults.map(h => h.holeNumber)).toEqual([10, 11, 12, 13, 14, 15, 16, 17, 18])
+    expect(r.netUnits).toEqual({ p1: 1, p2: 1, p3: -2 })
+  })
+
+  it('does not throw on an empty rotation, a partner no longer in the round, or a one-player roster', () => {
+    expect(() => calculateWolf(players, hole(1, 4, 5, 5), snapshot, cfg({ wolfOrder: [] }), hcps)).not.toThrow()
+    const ghostPartner = calculateWolf(players, hole(1, 4, 5, 5), snapshot,
+      cfg({ holeDecisions: { 1: { partnerId: 'ghost' } } }), hcps)
+    expect(ghostPartner.holeResults[0].wolfTeamWon).toBeNull()
+    expect(ghostPartner.netUnits).toEqual({ p1: 0, p2: 0, p3: 0 })
+    const ghostWolf = calculateWolf(players, hole(1, 4, 5, 5), snapshot, cfg({ wolfOrder: ['ghost'] }), hcps)
+    expect(ghostWolf.netUnits).toEqual({ p1: 0, p2: 0, p3: 0 })
+    const solo = calculateWolf([players[0]], [hs('p1', 1, 4)], snapshot,
+      cfg({ wolfOrder: ['p1'], holeDecisions: { 1: { partnerId: null } } }), hcps)
+    expect(solo.netUnits).toEqual({ p1: 0 })
+    // undefined config pieces
+    expect(() => calculateWolf(players, hole(1, 4, 5, 5), snapshot, { mode: 'gross' } as unknown as WolfConfig, hcps)).not.toThrow()
   })
 })
 

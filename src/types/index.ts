@@ -176,10 +176,26 @@ export interface NassauConfig {
   matchPresses?: NassauPress[]
 }
 
+/**
+ * The wolf's call on a hole. `partnerId: null` is alone — lone wolf (2×), or
+ * blind wolf (3×) when `blind` is set, meaning the wolf declared before anyone
+ * teed off. `recordedLate` marks a pick entered after scoring had started (the
+ * recovery path), so the audit trail shows it.
+ */
+export interface WolfHoleDecision {
+  partnerId: string | null
+  blind?: boolean
+  recordedLate?: boolean
+}
+
 export interface WolfConfig {
   mode: 'gross' | 'net'
   wolfOrder: string[]
-  holeDecisions?: Record<number, { partnerId: string | null }>
+  holeDecisions?: Record<number, WolfHoleDecision>
+  /** Absent ⇒ off. Offers "Blind Wolf" (declare alone before any tee shot) at 3×. */
+  blindWolf?: boolean
+  /** Absent ⇒ off (current behaviour). A halved hole's unit carries to the next decided hole. */
+  carryHalved?: boolean
   /**
    * Absent ⇒ 'pot', so every existing round settles exactly as before. Same
    * contract as SkinsConfig.payModel — there is real history in production for

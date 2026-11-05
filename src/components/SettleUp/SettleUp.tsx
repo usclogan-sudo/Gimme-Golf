@@ -1557,6 +1557,11 @@ export function SettleUp({ roundId, userId, eventId, onDone, onContinue }: Props
             </button>
             {expandedSections.has('wolf') && (
               <div className="px-4 pb-4 space-y-2">
+                {(wolfResult.unresolvedHoles?.length ?? 0) > 0 && (
+                  <p className="text-xs text-amber-700 dark:text-brass">
+                    Hole{wolfResult.unresolvedHoles.length === 1 ? '' : 's'} {wolfResult.unresolvedHoles.join(', ')} had scores but no pick recorded, so they did not settle for Wolf.
+                  </p>
+                )}
                 {players.slice().sort((a, b) => (wolfResult.netUnits[b.id] ?? 0) - (wolfResult.netUnits[a.id] ?? 0)).map(p => {
                   const units = wolfResult.netUnits[p.id] ?? 0
                   return (

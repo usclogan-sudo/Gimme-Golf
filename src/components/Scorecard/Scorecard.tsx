@@ -20,6 +20,9 @@ import { usePhotoImport } from './PhotoImportButton'
 import { PhotoImportConfirmGrid } from './PhotoImportConfirmGrid'
 import type { ExtractionResult } from '../../lib/photoImport'
 import { NumberPad } from './NumberPad'
+import { WolfHolePanel, WolfHoleOutcome, type WolfPick } from './WolfPanels'
+import { ScorecardHeaderMenu } from './ScorecardHeaderMenu'
+import { InlineErrorBoundary } from '../InlineErrorBoundary'
 import { BuyInBanner } from './BuyInBanner'
 import { LeaderboardTab } from './LeaderboardTab'
 import { BBBGrid } from './BBBGrid'
@@ -880,6 +883,47 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
     }
   }
 
+  // Clear a player's score on the current hole (Finding 4). Cancels any pending
+  // debounced write for the cell, drops it locally, then removes the row through
+  // clear_hole_score (organiser / scorekeeper / author may clear). If that RPC is
+  // not deployed yet, fall back to a direct delete, which RLS allows for rows this
+  // user inserted. Undo re-enters the previous score through the normal path.
+  const clearScore = async (playerId: string) => {
+    const holeNumber = currentHole
+    const key = `${playerId}-${holeNumber}`
+    const pending = pendingScoreWritesRef.current.get(key)
+    if (pending) { clearTimeout(pending.timer); pendingScoreWritesRef.current.delete(key) }
+    if (holeAdvanceTimerRef.current) { clearTimeout(holeAdvanceTimerRef.current); holeAdvanceTimerRef.current = null }
+
+    const existing = holeScores.find(s => s.playerId === playerId && s.holeNumber === holeNumber)
+    if (!existing) return
+    const previousScore = existing.grossScore
+    setHoleScores(prev => prev.filter(s => !(s.playerId === playerId && s.holeNumber === holeNumber)))
+
+    // A placeholder that never reached the server has nothing to delete.
+    if (String(existing.id).startsWith('temp-')) {
+      showScoreToast('Score cleared', 'success', { previousScore, playerId, holeNumber })
+      return
+    }
+    try {
+      const { error } = await supabase.rpc('clear_hole_score', {
+        p_round_id: roundId, p_player_id: playerId, p_hole_number: holeNumber,
+      })
+      if (error) {
+        const missingFn = /clear_hole_score|PGRST202|42883/.test(`${error.code ?? ''} ${error.message ?? ''}`)
+        if (!missingFn) throw error
+        const { error: delErr } = await supabase.from('hole_scores').delete().eq('id', existing.id)
+        if (delErr) throw delErr
+      }
+      showScoreToast('Score cleared', 'success', { previousScore, playerId, holeNumber })
+    } catch (err) {
+      // Put it back; the server still has it.
+      setHoleScores(prev => prev.some(s => s.playerId === playerId && s.holeNumber === holeNumber) ? prev : [...prev, existing])
+      reportSupabaseError(err, 'clear_score', { roundId, playerId, holeNumber })
+      showScoreToast("Couldn't clear that score — check your connection", 'error')
+    }
+  }
+
   // On unmount or roundId change, flush any pending debounced writes immediately
   // so we don't lose taps that landed within the last 250ms.
   useEffect(() => {
@@ -963,29 +1007,40 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
     }
   }
 
-  // Wolf decision handler
-  const updateWolfDecision = async (holeNumber: number, partnerId: string | null) => {
-    // Integrity lock (Authority Model §7): once ANY score is entered for the hole,
-    // the outcome starts to become known — freeze the pick so a late choice can't
-    // cherry-pick the winning team (a way to win money that should not exist). The
-    // picker is also hidden in the UI once locked; this is the backstop that also
-    // covers a second device racing the lock.
-    if (holeScores.some(s => s.holeNumber === holeNumber)) return
+  // Wolf decision handler (Finding 4).
+  //
+  // Authority Model §7 still holds in one direction: a pick that exists cannot be
+  // CHANGED once the hole has a score, because the outcome is becoming known. But
+  // a hole with scores and NO pick is not forfeited any more — it waits. The
+  // organiser or the acting scorekeeper records the pick late (flagged
+  // `recordedLate`) and the hole settles as normal. Blind Wolf is never accepted
+  // late: it has to be called before the tee.
+  const updateWolfDecision = async (holeNumber: number, pick: WolfPick) => {
+    const holeHasScores = holeScores.some(s => s.holeNumber === holeNumber)
+    const existing = (game?.config as WolfConfig | undefined)?.holeDecisions?.[holeNumber]
+    if (holeHasScores && existing) return
+    if (holeHasScores && !canRecordLatePick) return
+    if (holeHasScores && pick.blind) return
     await updateGameState(game => {
       if (game.type !== 'wolf') return game
       const wolfConfig = game.config as WolfConfig
-      const current = wolfConfig.holeDecisions?.[holeNumber]
-      const newPartnerId = current?.partnerId === partnerId ? undefined : partnerId
-      const updatedConfig: WolfConfig = {
-        ...wolfConfig,
-        holeDecisions: {
-          ...(wolfConfig.holeDecisions ?? {}),
-          ...(newPartnerId === undefined
-            ? (() => { const d = { ...(wolfConfig.holeDecisions ?? {}) }; delete d[holeNumber]; return d })()
-            : { [holeNumber]: { partnerId: newPartnerId } }),
-        },
+      // Build the map once, then add or remove — the old spread-then-delete merge
+      // re-added the key it had just deleted, so a pick could never be cleared.
+      const decisions = { ...(wolfConfig.holeDecisions ?? {}) }
+      const current = decisions[holeNumber]
+      const sameAsCurrent = current
+        && current.partnerId === pick.partnerId
+        && (current.blind === true) === (pick.blind === true)
+      if (sameAsCurrent && !holeHasScores) {
+        delete decisions[holeNumber]
+      } else {
+        decisions[holeNumber] = {
+          partnerId: pick.partnerId,
+          ...(pick.blind ? { blind: true } : {}),
+          ...(holeHasScores ? { recordedLate: true } : {}),
+        }
       }
-      return { ...game, config: updatedConfig }
+      return { ...game, config: { ...wolfConfig, holeDecisions: decisions } }
     })
   }
 
@@ -1608,8 +1663,10 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
 
   const junkConfig = round?.junkConfig
   const wolfConfig = game?.type === 'wolf' ? game.config as WolfConfig : null
-  const wolfId = wolfConfig ? wolfForHole(wolfConfig.wolfOrder, currentHole) : null
-  const wolfDecision = wolfConfig?.holeDecisions?.[currentHole]
+  const wolfId = wolfConfig ? wolfForHole(wolfConfig.wolfOrder ?? [], currentHole) : null
+  // Only the organiser or the acting scorekeeper may record a pick after scoring
+  // has started on a hole (Finding 4).
+  const canRecordLatePick = !readOnly && (isScoremasterRole || isScoreMaster || isGroupScorekeeper)
   const currentBBB = bbbPoints.find(p => p.holeNumber === currentHole)
 
   // Hammer interaction functions
@@ -1708,91 +1765,48 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
             >
               ⋮
             </button>
+            {/* The menu is a pure list of actions (see ScorecardHeaderMenu): it reads
+                no game state, and sits inside its own boundary. Add players + Share
+                link live in the visible invite strip below the header (§15); the
+                kebab keeps the niche invite options. Settle Up is open to everyone,
+                including read-only viewers: looking at results is not privileged. */}
             {showHeaderMenu && (
-              <div className="absolute right-0 top-full mt-1 bg-gray-800 rounded-xl shadow-2xl border border-gray-600 min-w-[180px] z-50 py-1 overflow-hidden">
-                {/* Add players + Share link are surfaced in the visible invite strip
-                    below the header (§15); the kebab keeps the niche invite options. */}
-                {isScoremasterRole && (
-                  <button
-                    onClick={async () => {
-                      setShowHeaderMenu(false)
-                      await ensureInviteCode()
-                      setShowQRModal(true)
-                    }}
-                    className="w-full px-4 py-3 text-left text-sm font-medium text-cyan-300 hover:bg-gray-700 active:bg-gray-700"
-                  >
-                    📷 QR code
-                  </button>
-                )}
-                {!readOnly && (
-                  <button
-                    onClick={async () => {
-                      setShowHeaderMenu(false)
-                      let code = (event?.inviteCode) ?? round.inviteCode
-                      if (!code) {
-                        code = generateInviteCode()
-                        const { error } = await supabase.from('rounds').update({ invite_code: code }).eq('id', roundId)
-                        if (error) {
-                          const { data } = await supabase.from('rounds').select('invite_code').eq('id', roundId).single()
-                          code = data?.invite_code ?? code
-                        }
-                        setRound(prev => prev ? { ...prev, inviteCode: code! } : prev)
-                      }
-                      const url = `${window.location.origin}${window.location.pathname}?spectate=${code}`
-                      const title = 'Watch live leaderboard!'
-                      const text = `Follow the round live on Gimme Golf!\n${url}`
-                      if (navigator.share) {
-                        try { await navigator.share({ title, text, url }) } catch {}
-                      } else {
-                        await navigator.clipboard.writeText(url)
-                      }
-                      setInviteToast('Spectator link copied!')
-                      setTimeout(() => setInviteToast(null), 3000)
-                    }}
-                    className="w-full px-4 py-3 text-left text-sm font-medium text-green-300 hover:bg-gray-700 active:bg-gray-700"
-                  >
-                    📡 Live Spectator Link
-                  </button>
-                )}
-                {!readOnly && snapshot && players.length > 0 && (
-                  <button
-                    onClick={() => { setShowHeaderMenu(false); photoImport.open() }}
-                    className="w-full px-4 py-3 text-left text-sm font-medium text-amber-300 hover:bg-gray-700 active:bg-gray-700"
-                  >
-                    📸 Import scores from photo
-                  </button>
-                )}
-                {game && (
-                  <button
-                    onClick={() => { setShowHeaderMenu(false); setShowRulesModal(true) }}
-                    className="w-full px-4 py-3 text-left text-sm font-medium text-cyan-300 hover:bg-gray-700 active:bg-gray-700"
-                  >
-                    Rules
-                  </button>
-                )}
-                {/* An already-finished round needs a way back to its results. The
-                    only routes to Settle Up were "End Round" and the last-hole
-                    button, both of which ask to end a round that has already ended —
-                    so anyone who came back to look at the card was stuck. Open to
-                    everyone, including read-only viewers: looking at results is not
-                    a privileged action. */}
-                {round.status === 'complete' && (
-                  <button
-                    onClick={() => { setShowHeaderMenu(false); onEndRound() }}
-                    className="w-full px-4 py-3 text-left text-sm font-medium text-yellow-300 hover:bg-gray-700 active:bg-gray-700"
-                  >
-                    Settle Up
-                  </button>
-                )}
-                {round.status !== 'complete' && !readOnly && (isEventRound ? isScoreMaster : !selfEntryOnly) && (
-                  <button
-                    onClick={() => { setShowHeaderMenu(false); confirmEndRound() }}
-                    className="w-full px-4 py-3 text-left text-sm font-medium text-yellow-300 hover:bg-gray-700 active:bg-gray-700"
-                  >
-                    End Round
-                  </button>
-                )}
-              </div>
+              <ScorecardHeaderMenu
+                showQR={isScoremasterRole}
+                onQR={async () => { setShowHeaderMenu(false); await ensureInviteCode(); setShowQRModal(true) }}
+                showSpectatorLink={!readOnly}
+                onSpectatorLink={async () => {
+                  setShowHeaderMenu(false)
+                  let code = (event?.inviteCode) ?? round.inviteCode
+                  if (!code) {
+                    code = generateInviteCode()
+                    const { error } = await supabase.from('rounds').update({ invite_code: code }).eq('id', roundId)
+                    if (error) {
+                      const { data } = await supabase.from('rounds').select('invite_code').eq('id', roundId).single()
+                      code = data?.invite_code ?? code
+                    }
+                    setRound(prev => prev ? { ...prev, inviteCode: code! } : prev)
+                  }
+                  const url = `${window.location.origin}${window.location.pathname}?spectate=${code}`
+                  const title = 'Watch live leaderboard!'
+                  const text = `Follow the round live on Gimme Golf!\n${url}`
+                  if (navigator.share) {
+                    try { await navigator.share({ title, text, url }) } catch {}
+                  } else {
+                    try { await navigator.clipboard.writeText(url) } catch {}
+                  }
+                  setInviteToast('Spectator link copied!')
+                  setTimeout(() => setInviteToast(null), 3000)
+                }}
+                showPhotoImport={!readOnly && !!snapshot && players.length > 0}
+                onPhotoImport={() => { setShowHeaderMenu(false); photoImport.open() }}
+                showRules={!!game}
+                onRules={() => { setShowHeaderMenu(false); setShowRulesModal(true) }}
+                showSettleUp={round.status === 'complete'}
+                onSettleUp={() => { setShowHeaderMenu(false); onEndRound() }}
+                showEndRound={round.status !== 'complete' && !readOnly && (isEventRound ? isScoreMaster : !selfEntryOnly)}
+                onEndRound={() => { setShowHeaderMenu(false); confirmEndRound() }}
+              />
             )}
           </div>
         </div>
@@ -2555,67 +2569,21 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
               )
             })()}
 
-            {/* Wolf panel */}
-            {showGameStatus && !readOnly && wolfConfig && wolfId && (() => {
-              const wolfPlayer = players.find(p => p.id === wolfId)
-              const nonWolfs = players.filter(p => p.id !== wolfId)
-              // Pick locks the moment the first score for this hole lands (§7).
-              const holeLocked = holeScores.some(s => s.holeNumber === currentHole)
-              const decisionSummary = wolfDecision && (
-                wolfDecision.partnerId === null
-                  ? `${wolfPlayer?.name} going LONE WOLF`
-                  : `${wolfPlayer?.name} + ${players.find(p => p.id === wolfDecision.partnerId)?.name}`
-              )
-              return (
-                <div className="bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl p-3 space-y-2">
-                  <p className="font-bold text-gray-800 dark:text-gray-100 text-sm">Wolf: {wolfPlayer?.name}</p>
-                  {holeLocked ? (
-                    <>
-                      <p className="text-xs text-gray-500 dark:text-gray-400">
-                        {wolfDecision
-                          ? 'Locked — scoring has started.'
-                          : 'Locked — scoring started before a partner was picked.'}
-                      </p>
-                      {decisionSummary && (
-                        <p className="text-xs font-semibold text-gray-700 dark:text-gray-200">{decisionSummary}</p>
-                      )}
-                    </>
-                  ) : (
-                    <>
-                      <p className="text-xs text-gray-500 dark:text-gray-400">Pick a partner after tee shots, or go Lone Wolf:</p>
-                      <div className="flex flex-wrap gap-2">
-                        {nonWolfs.map(p => (
-                          <button
-                            key={p.id}
-                            onClick={() => updateWolfDecision(currentHole, p.id)}
-                            className={`px-3 py-1.5 rounded-lg text-sm font-semibold transition-colors ${
-                              wolfDecision?.partnerId === p.id
-                                ? 'bg-navy text-cream dark:bg-brass dark:text-navy'
-                                : 'bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 text-gray-700 dark:text-gray-200'
-                            }`}
-                          >
-                            {p.name}
-                          </button>
-                        ))}
-                        <button
-                          onClick={() => updateWolfDecision(currentHole, null)}
-                          className={`px-3 py-1.5 rounded-lg text-sm font-semibold transition-colors ${
-                            wolfDecision !== undefined && wolfDecision.partnerId === null
-                              ? 'bg-brass text-navy'
-                              : 'bg-white dark:bg-gray-700 border border-brass/40 text-amber-700 dark:text-brass'
-                          }`}
-                        >
-                          Lone Wolf
-                        </button>
-                      </div>
-                      {decisionSummary && (
-                        <p className="text-xs text-gray-500 dark:text-gray-400">{decisionSummary}</p>
-                      )}
-                    </>
-                  )}
-                </div>
-              )
-            })()}
+            {/* Wolf panel — pure component, own boundary (Findings 3 and 4). Also
+                rendered for a previous hole the scorekeeper arrows back to, which
+                is how a missed pick gets recorded. */}
+            {showGameStatus && !readOnly && wolfConfig && (
+              <InlineErrorBoundary label="the Wolf panel">
+                <WolfHolePanel
+                  players={players}
+                  config={wolfConfig}
+                  holeScores={holeScores}
+                  holeNumber={currentHole}
+                  canRecordLatePick={canRecordLatePick}
+                  onPick={updateWolfDecision}
+                />
+              </InlineErrorBoundary>
+            )}
 
             {/* Hammer panel */}
             {showGameStatus && game?.type === 'hammer' && hammerConfig && players.length === 2 && (() => {
@@ -3235,43 +3203,18 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
         })()}
 
         {/* Wolf per-hole outcome — every completed hole states a result, including
-            the unresolved "needs a partner" case that used to show nothing (§5). */}
-        {!showBatchEntry && game?.type === 'wolf' && wolfResult && (() => {
-          const hr = wolfResult.holeResults.find(h => h.holeNumber === currentHole)
-          const allScored = players.length > 0 && players.every(p => holeScores.some(s => s.playerId === p.id && s.holeNumber === currentHole))
-          const decisions = (game.config as { holeDecisions?: Record<number, { partnerId: string | null }> }).holeDecisions
-          const partnerDecided = decisions?.[currentHole] !== undefined
-          const wolfName = hr ? players.find(p => p.id === hr.wolfId)?.name : null
-
-          // Scored with no partner picked. The pick locks on the first score (§7),
-          // so this hole can no longer be resolved — state that plainly rather than
-          // telling them to pick something they can't.
-          if (allScored && !partnerDecided) {
-            return (
-              <div key={`wolf-np-${currentHole}`} className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-2xl px-4 py-3 text-center shadow-sm">
-                <p className="font-semibold text-amber-800 dark:text-amber-300">
-                  No partner was picked before scoring — hole {currentHole} won't settle for Wolf.
-                </p>
-              </div>
-            )
-          }
-          if (!hr) return null
-          if (hr.tied) {
-            return (
-              <div key={`wolf-tie-${currentHole}`} className="bg-navy dark:bg-gray-800 border border-brass/40 rounded-2xl px-4 py-3 text-center shadow-sm motion-safe:animate-[brass-flash_0.45s_ease-out]">
-                <p className="font-bold text-cream dark:text-gray-200">Hole halved — no units change hands</p>
-              </div>
-            )
-          }
-          if (hr.wolfTeamWon === null) return null // still waiting on scores
-          const partnerName = hr.partnerId ? players.find(p => p.id === hr.partnerId)?.name : null
-          const team = hr.loneWolf ? `${wolfName} (lone wolf)` : `${wolfName} + ${partnerName}`
-          return (
-            <div key={`wolf-${currentHole}`} className="bg-navy dark:bg-gray-800 border border-brass/40 rounded-2xl px-4 py-3 text-center shadow-sm motion-safe:animate-[brass-flash_0.45s_ease-out]">
-              <p className="font-bold text-brass">{team} {hr.wolfTeamWon ? 'win the hole' : 'lose the hole'}</p>
-            </div>
-          )
-        })()}
+            the "waiting on a pick" case, which keeps its scores (§5, Finding 4). */}
+        {!showBatchEntry && game?.type === 'wolf' && wolfConfig && wolfResult && (
+          <InlineErrorBoundary label="the Wolf result">
+            <WolfHoleOutcome
+              players={players}
+              config={wolfConfig}
+              result={wolfResult}
+              holeScores={holeScores}
+              holeNumber={currentHole}
+            />
+          </InlineErrorBoundary>
+        )}
 
         {/* Next Hole / End Round — in scrollable content. BBB settles from points,
             so a missing-strokes nag would be noise there. */}
@@ -3343,24 +3286,33 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
         <CelebrationFullscreen config={celebration} playerName={celebration.playerName} onDismiss={() => setCelebration(null)} />
       )}
 
-      {/* Confirm modal */}
-      <ConfirmModal
-        open={!!confirmModal}
-        title={confirmModal?.title ?? ''}
-        message={confirmModal?.message ?? ''}
-        onConfirm={confirmModal?.onConfirm ?? (() => {})}
-        onCancel={() => setConfirmModal(null)}
-        destructive={confirmModal?.destructive}
-      />
+      {/* The header menu's children — End Round dialog, Rules, QR — each inside a
+          boundary so a thrown render shows a plain fallback, never a hang (Finding 3). */}
+      <InlineErrorBoundary label="the confirmation">
+        <ConfirmModal
+          open={!!confirmModal}
+          title={confirmModal?.title ?? ''}
+          message={confirmModal?.message ?? ''}
+          onConfirm={confirmModal?.onConfirm ?? (() => {})}
+          onCancel={() => setConfirmModal(null)}
+          destructive={confirmModal?.destructive}
+        />
+      </InlineErrorBoundary>
 
-      {/* Game rules modal */}
-      {showRulesModal && game && <GameRulesModal gameType={game.type} onClose={() => setShowRulesModal(false)} />}
+      {showRulesModal && game && (
+        <InlineErrorBoundary label="the rules">
+          <GameRulesModal gameType={game.type} onClose={() => setShowRulesModal(false)} />
+        </InlineErrorBoundary>
+      )}
 
-      {/* QR Code modal */}
       {showQRModal && (() => {
         const qrCode = (event?.inviteCode) ?? round.inviteCode ?? ''
         const qrUrl = `${window.location.origin}${window.location.pathname}?join=${qrCode}`
-        return <InviteQRModal url={qrUrl} code={qrCode} eventName={event?.name} onClose={() => setShowQRModal(false)} />
+        return (
+          <InlineErrorBoundary label="the QR code">
+            <InviteQRModal url={qrUrl} code={qrCode} eventName={event?.name} onClose={() => setShowQRModal(false)} />
+          </InlineErrorBoundary>
+        )
       })()}
 
       {showInviteModal && (
@@ -3411,7 +3363,9 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
           holeNumber={currentHole}
           par={par}
           currentValue={holeScores.find(s => s.playerId === numberPadTarget.playerId && s.holeNumber === currentHole)?.grossScore ?? par}
+          hasScore={holeScores.some(s => s.playerId === numberPadTarget.playerId && s.holeNumber === currentHole)}
           onSelect={v => setScore(numberPadTarget.playerId, v)}
+          onClear={() => { void clearScore(numberPadTarget.playerId) }}
           onClose={() => setNumberPadTarget(null)}
         />
       )}

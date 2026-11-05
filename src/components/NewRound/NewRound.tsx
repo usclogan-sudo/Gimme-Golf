@@ -1079,6 +1079,14 @@ export function GameSetup({
     })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [wolfPlayerKey])
+  // Wolf options. Blind Wolf defaults on (it only adds a choice the wolf can make);
+  // carry-over defaults off, matching how every round so far has settled.
+  const [wolfBlind, setWolfBlind] = useState<boolean>(
+    initialGame?.type === 'wolf' ? ((initialGame.config as any).blindWolf ?? true) : true,
+  )
+  const [wolfCarry, setWolfCarry] = useState<boolean>(
+    initialGame?.type === 'wolf' ? ((initialGame.config as any).carryHalved ?? false) : false,
+  )
 
   // Hammer
   const [hammerBaseValueDollars, setHammerBaseValueDollars] = useState(
@@ -1272,7 +1280,7 @@ export function GameSetup({
       return { id, type: 'nassau', buyInCents, stakesMode, config }
     }
     if (type === 'wolf') {
-      const config: WolfConfig = { mode: 'net', wolfOrder }
+      const config: WolfConfig = { mode: 'net', wolfOrder, blindWolf: wolfBlind, carryHalved: wolfCarry }
       return { id, type: 'wolf', buyInCents, stakesMode, config }
     }
     if (type === 'hammer') {
@@ -1873,11 +1881,39 @@ export function GameSetup({
                 })}
               </div>
             </div>
+            {/* Two house options, both recorded on the round so the engine and the
+                rules modal describe exactly what was agreed. */}
+            <div className="space-y-2">
+              {([
+                { key: 'blind', label: 'Blind Wolf', hint: 'Wolf can declare alone before any tee shot, for 3×.', on: wolfBlind, set: setWolfBlind },
+                { key: 'carry', label: 'Halved holes carry over', hint: 'A halved hole\'s unit carries to the next decided hole.', on: wolfCarry, set: setWolfCarry },
+              ] as const).map(opt => (
+                <button
+                  key={opt.key}
+                  role="switch"
+                  aria-checked={opt.on}
+                  onClick={() => opt.set(!opt.on)}
+                  className={`w-full flex items-center justify-between gap-3 p-3 rounded-2xl border-2 text-left transition-colors ${
+                    opt.on ? 'border-amber-500 bg-amber-50 dark:bg-amber-900/20' : 'border-gray-200 dark:border-gray-700'
+                  }`}
+                >
+                  <span>
+                    <span className="font-semibold block">{opt.label}</span>
+                    <span className="text-sm text-gray-500">{opt.hint}</span>
+                  </span>
+                  <span className={`text-xs font-bold px-2 py-1 rounded-lg ${opt.on ? 'bg-amber-500 text-white' : 'bg-gray-100 dark:bg-gray-700 text-gray-500'}`}>
+                    {opt.on ? 'On' : 'Off'}
+                  </span>
+                </button>
+              ))}
+            </div>
             <div className="bg-purple-50 rounded-xl p-3 text-sm text-purple-700 space-y-1">
               <p className="font-semibold">How it works:</p>
               <p>• Wolf picks a partner after each tee shot, or goes Lone Wolf</p>
               <p>• Lone Wolf wins: Wolf gets 2× from each opponent</p>
+              {wolfBlind && <p>• Blind Wolf (called before any tee shot) wins: Wolf gets 3× from each opponent</p>}
               <p>• Partner wins: Wolf and partner each get 1× from opponents</p>
+              <p>• {wolfCarry ? 'A halved hole carries its unit to the next decided hole' : 'A halved hole pushes — nothing changes hands'}</p>
             </div>
           </section>
         )}

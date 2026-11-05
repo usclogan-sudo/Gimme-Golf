@@ -83,6 +83,24 @@ describe('GameSetup — points formats settle controls', () => {
     expect(screen.getByText('Most you can lose: 50 tokens, 25 to each opponent.')).toBeDefined()
   })
 
+  it('Wolf offers Blind Wolf (default on) and halved-hole carry-over (default off)', () => {
+    renderSetup(players) // three players → Wolf allowed
+    fireEvent.click(screen.getByText('🐺 Wolf'))
+    const blind = screen.getByRole('switch', { name: /Blind Wolf/ })
+    const carry = screen.getByRole('switch', { name: /Halved holes carry over/ })
+    expect(blind.getAttribute('aria-checked')).toBe('true')
+    expect(carry.getAttribute('aria-checked')).toBe('false')
+    expect(screen.getByText(/Blind Wolf \(called before any tee shot\) wins/)).toBeDefined()
+    expect(screen.getByText(/A halved hole pushes/)).toBeDefined()
+
+    fireEvent.click(carry)
+    fireEvent.click(blind)
+    expect(carry.getAttribute('aria-checked')).toBe('true')
+    expect(blind.getAttribute('aria-checked')).toBe('false')
+    expect(screen.getByText(/carries its unit to the next decided hole/)).toBeDefined()
+    expect(screen.queryByText(/Blind Wolf \(called before any tee shot\) wins/)).toBeNull()
+  })
+
   it('per point is the default and says it settles with each other player', () => {
     renderSetup()
     fireEvent.click(screen.getByText(/More Games/))

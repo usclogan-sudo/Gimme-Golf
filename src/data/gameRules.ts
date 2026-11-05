@@ -81,20 +81,21 @@ export const GAME_RULES: Record<GameType, GameRuleEntry> = {
 
   wolf: {
     title: 'Wolf',
-    summary: 'A rotating-captain game where the "wolf" picks a partner (or goes alone) on each hole. Lone wolf doubles the value. Strategic and social.',
+    summary: 'A rotating-captain game where the "wolf" picks a partner (or goes alone) on each hole. Lone wolf doubles the value; Blind Wolf, if it is on, triples it. Strategic and social.',
     howToPlay: [
-      'Players rotate as the "wolf" each hole.',
+      'Players rotate as the "wolf" each hole, in the order set at the start.',
       'After seeing each player tee off, the wolf either picks a partner or goes lone wolf.',
-      'Wolf + partner vs. the other players: lower team score wins.',
-      'Lone wolf plays 1 vs. all — if the wolf wins, they collect double from each opponent.',
-      'If the wolf loses as lone wolf, they pay double to each opponent.',
+      'Blind Wolf (if turned on at setup): the wolf declares alone before anyone tees off, for triple the value.',
+      'Wolf + partner vs. the other players: lower team score wins, net.',
+      'Lone wolf plays 1 vs. all — if the wolf wins, they collect double from each opponent; if they lose, they pay double to each.',
+      'If scores go in before the pick is recorded, nothing is lost: the hole waits, the scores are kept, and the organiser or scorekeeper records the pick. The hole then settles as normal.',
     ],
     scoring: [
-      'Points (units) are tracked per hole based on wins/losses.',
-      'Normal hole: winning team gets 1 unit from each loser.',
-      'Lone wolf: the value is doubled (2 units per opponent).',
-      'At round end, net units determine how the total is split.',
-      'Ties push (no points exchanged).',
+      'Units are tracked per hole. A normal hole moves 1 unit from each loser to each winner.',
+      'Lone wolf: 2 units per opponent. Blind wolf: 3 units per opponent.',
+      'A halved hole pushes. With "halved holes carry over" turned on at setup, its unit carries to the next decided hole instead.',
+      'A pick cannot be changed once scoring on that hole has started.',
+      'At round end, net units settle head to head at the unit value.',
     ],
     tips: [
       'Going lone wolf is high risk, high reward — do it when you stripe one down the middle.',

@@ -5,6 +5,11 @@ interface NumberPadProps {
   currentValue: number
   onSelect: (value: number) => void
   onClose: () => void
+  /** Whether this player already has a score on the hole — shows "Clear score". */
+  hasScore?: boolean
+  /** Remove the player's score for this hole. A mistaken tap should be removable
+   *  on any game, not edited into a different wrong number (Finding 4). */
+  onClear?: () => void
 }
 
 function getScoreColor(score: number, par: number): string {
@@ -28,7 +33,7 @@ function getScoreLabel(score: number, par: number): string {
   return `+${diff}`
 }
 
-export function NumberPad({ playerName, holeNumber, par, currentValue, onSelect, onClose }: NumberPadProps) {
+export function NumberPad({ playerName, holeNumber, par, currentValue, onSelect, onClose, hasScore, onClear }: NumberPadProps) {
   return (
     <div className="fixed inset-0 z-50 flex flex-col justify-end">
       <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
@@ -73,6 +78,14 @@ export function NumberPad({ playerName, holeNumber, par, currentValue, onSelect,
               </button>
             ))}
           </div>
+          {hasScore && onClear && (
+            <button
+              onClick={() => { onClear(); onClose() }}
+              className="w-full min-h-[44px] rounded-2xl border border-gray-300 dark:border-gray-600 text-sm font-semibold text-gray-700 dark:text-gray-200 active:bg-gray-100 dark:active:bg-gray-700"
+            >
+              Clear score
+            </button>
+          )}
         </div>
       </div>
     </div>

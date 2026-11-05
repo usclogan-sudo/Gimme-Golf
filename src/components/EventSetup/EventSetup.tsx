@@ -219,7 +219,7 @@ export function EventSetup({ userId, onStart, onCancel, onAddCourse }: Props) {
     // New Nassau rounds are match play; a stored round without `scoring` stays
     // on the legacy stroke-play engine.
     else if (gameType === 'nassau') config = { mode: nassauMode, scoring: 'match' }
-    else if (gameType === 'wolf') config = { mode: wolfMode, wolfOrder: selectedPlayers.map(p => p.id) }
+    else if (gameType === 'wolf') config = { mode: wolfMode, wolfOrder: selectedPlayers.map(p => p.id), blindWolf: true, carryHalved: false }
     else if (gameType === 'hammer') config = { baseValueCents: 100 }
     else config = { mode: bbbMode }
 
