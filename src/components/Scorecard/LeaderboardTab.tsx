@@ -3,15 +3,17 @@ import { Tooltip } from '../ui/Tooltip'
 import { renderResultCardToBlob } from '../ResultCard'
 import type { ResultCardStanding } from '../ResultCard'
 import { shareCard } from '../../lib/share'
+import { gameStandings } from '../../lib/standings'
 import {
   strokesOnHole, fmtAmount,
   calculateSkinsPayouts, calculateSkinsPerSkinNet, calculateBestBallPayouts, calculateNassauPayouts,
   calculateBBBPayouts, calculateVegasPayouts,
   calculateStablefordPayouts, calculateQuotaPayouts,
   isUnitGame, unitGameNet, netFromPayouts, perPointNet,
+  nassauMatchNet, nassauMatchLegStatus,
 } from '../../lib/gameLogic'
 import type {
-  SkinsResult, BestBallResult, NassauResult, WolfResult, BBBResult,
+  SkinsResult, BestBallResult, NassauResult, NassauMatchResult, WolfResult, BBBResult,
   HammerResult, VegasResult, StablefordResult, BankerResult, QuotaResult,
   PlayerPayout,
 } from '../../lib/gameLogic'
@@ -27,6 +29,8 @@ interface Props {
   skinsResult: SkinsResult | null
   bestBallResult: BestBallResult | null
   nassauResult: NassauResult | null
+  /** Match-play Nassau (NassauConfig.scoring === 'match'); nassauResult is null then. */
+  nassauMatch?: NassauMatchResult | null
   wolfResult: WolfResult | null
   bbbResult: BBBResult | null
   hammerResult: HammerResult | null
@@ -54,7 +58,7 @@ const GAME_LABELS: Record<string, string> = {
 
 export function LeaderboardTab({
   snapshot, players, holeScores, courseHcps, game, round,
-  skinsResult, bestBallResult, nassauResult, wolfResult, bbbResult,
+  skinsResult, bestBallResult, nassauResult, nassauMatch = null, wolfResult, bbbResult,
   hammerResult, vegasResult, stablefordResult, bankerResult, quotaResult,
   primaryMode = 'net',
 }: Props) {
@@ -96,6 +100,9 @@ export function LeaderboardTab({
       })!).forEach(([pid, c]) => m.set(pid, (m.get(pid) ?? 0) + c))
     } else if (isUnitGame(game.type) && unitRaw) {
       Object.entries(unitGameNet(game.type, game.buyInCents, unitRaw)).forEach(([pid, c]) => m.set(pid, (m.get(pid) ?? 0) + c))
+    } else if (game.type === 'nassau' && nassauMatch) {
+      // Match-play Nassau settles directly from its signed net, like the unit games.
+      Object.entries(nassauMatchNet(nassauMatch, players)).forEach(([pid, c]) => m.set(pid, (m.get(pid) ?? 0) + c))
     } else {
       let payouts: PlayerPayout[] = []
       if (game.type === 'skins' && skinsResult) payouts = calculateSkinsPayouts(skinsResult, game, players.length)
@@ -127,17 +134,23 @@ export function LeaderboardTab({
     }, 0)
     return { player: p, gross, net: gross - netStrokes, vsPar: gross - scoredPar, thru: pScores.length }
   }).sort((a, b) =>
-    // Rank by game result once there is one; before that, by stroke net.
-    hasGameResult
-      ? (gameNetByPlayer.get(b.player.id) ?? 0) - (gameNetByPlayer.get(a.player.id) ?? 0)
-      : a.net - b.net
+    // The golf-scores table is a reference, so it ranks by net strokes to par —
+    // never by the game result, which has its own table above it (Finding 9).
+    (a.net - a.gross + a.vsPar) - (b.net - b.gross + b.vsPar)
   )
 
-  const rankKey = (e: (typeof board)[number]) => hasGameResult ? (gameNetByPlayer.get(e.player.id) ?? 0) : e.net
+  const rankKey = (e: (typeof board)[number]) => e.net - e.gross + e.vsPar // net to par
   const positions: number[] = []
   board.forEach((entry, idx) => {
     positions.push(idx === 0 ? 1 : rankKey(entry) === rankKey(board[idx - 1]) ? positions[idx - 1] : idx + 1)
   })
+
+  // The side game's own standings — the same helper the in-round bar uses.
+  const standings = gameStandings(game, players, {
+    skins: skinsResult, bestBall: bestBallResult, nassau: nassauResult, nassauMatch,
+    wolf: wolfResult, bbb: bbbResult, hammer: hammerResult, vegas: vegasResult,
+    stableford: stablefordResult, banker: bankerResult, quota: quotaResult,
+  }, { stakesMode: game?.stakesMode })
 
   // Points-only, like fmtAmount: points mode stores the point count; money mode cents.
   const toPoints = (cents: number) => (game?.stakesMode === 'points' ? cents : Math.round(cents / 100))
@@ -188,82 +201,31 @@ export function LeaderboardTab({
 
   return (
     <div className="px-4 py-4 max-w-2xl mx-auto">
-      {/* Points/net games lead with their own standings; strokes are secondary. */}
-      {game && ['bingo_bango_bongo', 'stableford', 'quota', 'banker'].includes(game.type) && (() => {
-        const gt = game.type
-        const result = gt === 'bingo_bango_bongo' ? bbbResult : gt === 'stableford' ? stablefordResult : gt === 'quota' ? quotaResult : bankerResult
-        if (!result) return null
-        const valueOf = (id: string) =>
-          gt === 'bingo_bango_bongo' ? (bbbResult?.pointsWon[id] ?? 0)
-          : gt === 'stableford' ? (stablefordResult?.points[id] ?? 0)
-          : gt === 'quota' ? (quotaResult?.netPoints[id] ?? 0)
-          : (bankerResult?.netCents[id] ?? 0)
-        const fmtVal = (v: number) =>
-          gt === 'quota' ? `${v > 0 ? '+' : ''}${v}`
-          : gt === 'banker' ? `${v > 0 ? '+' : ''}${v} unit${Math.abs(v) !== 1 ? 's' : ''}`
-          : `${v} pt${v !== 1 ? 's' : ''}`
-        const title =
-          gt === 'bingo_bango_bongo' ? 'Bingo Bango Bongo · Points'
-          : gt === 'stableford' ? 'Stableford · Points'
-          : gt === 'quota' ? 'Quota · vs Target'
-          : 'Banker · Units'
-        const ranked = players.slice().sort((a, b) => valueOf(b.id) - valueOf(a.id))
-        const pos: number[] = []
-        ranked.forEach((p, i) => {
-          pos.push(i > 0 && valueOf(p.id) === valueOf(ranked[i - 1].id) ? pos[i - 1] : i + 1)
-        })
-        return (
-          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm p-4 mb-3">
-            <p className="text-xs font-semibold text-gray-500 uppercase mb-2">{title}</p>
-            <table className="w-full text-sm">
-              <tbody>
-                {ranked.map((p, i) => {
-                  const v = valueOf(p.id)
-                  return (
-                    <tr key={p.id} className={`border-b border-gray-50 ${pos[i] === 1 ? 'bg-amber-50' : ''}`}>
-                      <td className={`py-2.5 px-1 font-bold w-8 ${pos[i] === 1 ? 'text-amber-600' : 'text-gray-500'}`}>{pos[i]}</td>
-                      <td className="py-2.5 px-1 font-semibold text-gray-800 dark:text-gray-100">{p.name}</td>
-                      <td className={`py-2.5 px-1 text-right font-bold text-lg ${v < 0 ? 'text-gray-500 dark:text-gray-400' : 'text-amber-600 dark:text-brass'}`}>{fmtVal(v)}</td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-          </div>
-        )
-      })()}
-      <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm p-4">
-        {game && ['bingo_bango_bongo', 'stableford', 'quota', 'banker'].includes(game.type) && (
-          <p className="text-xs font-medium text-gray-400 uppercase mb-2">Golf scores (reference)</p>
-        )}
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="text-xs text-gray-400 uppercase border-b border-gray-200">
-              <th className="text-left py-2 px-1 font-medium w-8">Pos</th>
-              <th className="text-left py-2 px-1 font-medium">Player</th>
-              <th className="text-center py-2 px-1 font-medium">Thru</th>
-              <th className="text-center py-2 px-1 font-medium"><Tooltip term="Gross">Gross</Tooltip></th>
-              <th className="text-center py-2 px-1 font-medium"><Tooltip term="Net">Net</Tooltip></th>
-              <th className="text-center py-2 px-1 font-medium">vs Par</th>
-            </tr>
-          </thead>
-          <tbody>
-            {board.map((entry, idx) => (
-              <tr key={entry.player.id} className={`border-b border-gray-50 ${positions[idx] === 1 ? 'bg-amber-50' : ''}`}>
-                <td className={`py-2.5 px-1 font-bold ${positions[idx] === 1 ? 'text-amber-600' : 'text-gray-500'}`}>{positions[idx]}</td>
-                <td className="py-2.5 px-1 font-semibold text-gray-800 dark:text-gray-100">{entry.player.name}</td>
-                <td className="py-2.5 px-1 text-center text-gray-500">{entry.thru}</td>
-                <td className="py-2.5 px-1 text-center font-semibold text-gray-700">{entry.gross || '—'}</td>
-                <td className="py-2.5 px-1 text-center font-semibold text-gray-700">{entry.net || '—'}</td>
-                <td className={`py-2.5 px-1 text-center font-semibold ${entry.vsPar > 0 ? 'text-gray-500 dark:text-gray-400' : entry.vsPar < 0 ? 'text-amber-600 dark:text-brass' : 'text-gray-400'}`}>
-                  {entry.thru > 0 ? `${entry.vsPar > 0 ? '+' : ''}${entry.vsPar}` : '—'}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+      {/* Every game leads with its own standings — the layout Stableford always
+          had — and the stroke scorecard follows as reference (Finding 9). */}
+      {game && (
+        <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm p-4 mb-3">
+          <p className="text-xs font-semibold text-gray-500 uppercase mb-2">
+            {gameLabel}{standings.metric ? ` · ${standings.metric}` : ''}
+          </p>
+          <table className="w-full text-sm">
+            <tbody>
+              {standings.entries.map(e => (
+                <tr key={e.player.id} className={`border-b border-gray-50 ${e.position === 1 ? 'bg-amber-50' : ''}`}>
+                  <td className={`py-2.5 px-1 font-bold w-8 ${e.position === 1 ? 'text-amber-600' : 'text-gray-500'}`}>{e.position || '—'}</td>
+                  <td className="py-2.5 px-1 font-semibold text-gray-800 dark:text-gray-100">{e.player.name}</td>
+                  <td className={`py-2.5 px-1 text-right font-bold text-lg ${
+                    e.value === null ? 'text-gray-400' : e.value < 0 ? 'text-gray-500 dark:text-gray-400' : 'text-amber-600 dark:text-brass'
+                  }`}>{e.label}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {!standings.hasResult && (
+            <p className="text-xs text-gray-400 mt-2">No result yet — standings appear once the game produces one.</p>
+          )}
 
-        {/* Game-specific running totals */}
+        {/* Game-specific running detail, under the standings it explains */}
 
         {/* Skins */}
         {skinsResult && (
@@ -300,7 +262,37 @@ export function LeaderboardTab({
           )
         })()}
 
-        {/* Nassau */}
+        {/* Nassau — match play */}
+        {nassauMatch && (() => {
+          const nameOf = (id: string) => (players.find(p => p.id === id)?.name ?? '?').split(' ')[0]
+          const legs = [
+            { label: 'Front', leg: nassauMatch.front },
+            { label: 'Back', leg: nassauMatch.back },
+            { label: 'Total', leg: nassauMatch.total },
+            ...nassauMatch.presses.map(p => ({
+              label: `Press ${p.holeRange} (${nameOf(p.press.playerId)})`, leg: p,
+            })),
+          ]
+          return (
+            <div className="mt-3 pt-3 border-t border-gray-100">
+              <p className="text-xs font-semibold text-gray-500 uppercase mb-2">Nassau · match play (net)</p>
+              <div className="space-y-1">
+                {legs.map(({ label, leg }) => (
+                  <p key={label} className="text-sm text-gray-700">
+                    <span className="font-semibold">{label}:</span>{' '}
+                    {!leg.started
+                      ? <span className="text-gray-400">Not started</span>
+                      : <span className={leg.complete ? 'text-amber-600 dark:text-brass font-semibold' : ''}>
+                          {nassauMatchLegStatus(leg, nameOf)}{leg.complete ? '' : ` · thru ${Math.max(...leg.matches.map(m => m.holesPlayed))}`}
+                        </span>}
+                  </p>
+                ))}
+              </div>
+            </div>
+          )
+        })()}
+
+        {/* Nassau — stroke play (legacy rounds) */}
         {nassauResult && (
           <div className="mt-3 pt-3 border-t border-gray-100">
             <p className="text-xs font-semibold text-gray-500 uppercase mb-2">Nassau ({primaryLabel})</p>
@@ -327,6 +319,11 @@ export function LeaderboardTab({
         {wolfResult && (
           <div className="mt-3 pt-3 border-t border-gray-100">
             <p className="text-xs font-semibold text-gray-500 uppercase mb-2">Wolf ({primaryLabel}) — Units</p>
+            {(wolfResult.unresolvedHoles?.length ?? 0) > 0 && (
+              <p className="text-xs text-amber-700 dark:text-brass mb-2">
+                Waiting on a pick: hole{wolfResult.unresolvedHoles.length === 1 ? '' : 's'} {wolfResult.unresolvedHoles.join(', ')} — scores are in, the wolf&apos;s pick isn&apos;t recorded yet.
+              </p>
+            )}
             <div className="flex flex-wrap gap-2">
               {players.slice().sort((a, b) => (wolfResult.netUnits[b.id] ?? 0) - (wolfResult.netUnits[a.id] ?? 0)).map(p => {
                 const u = wolfResult.netUnits[p.id] ?? 0
@@ -370,54 +367,41 @@ export function LeaderboardTab({
           </div>
         )}
 
-        {/* Stableford */}
-        {stablefordResult && (
-          <div className="mt-3 pt-3 border-t border-gray-100">
-            <p className="text-xs font-semibold text-gray-500 uppercase mb-2">Stableford ({primaryLabel})</p>
-            <div className="flex flex-wrap gap-2">
-              {players.slice().sort((a, b) => (stablefordResult.points[b.id] ?? 0) - (stablefordResult.points[a.id] ?? 0)).map(p => (
-                <span key={p.id} className="text-xs font-semibold px-2 py-1 rounded-lg bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-brass">
-                  {p.name}: {stablefordResult.points[p.id] ?? 0} pts
-                </span>
-              ))}
-            </div>
-          </div>
-        )}
+        {/* Stableford, Banker and Quota chips were the headline table; the
+            standings table above is now that for every game. Hammer and Wolf
+            keep their rows because they carry detail the table does not. */}
+        </div>
+      )}
 
-        {/* Banker */}
-        {bankerResult && (
-          <div className="mt-3 pt-3 border-t border-gray-100">
-            <p className="text-xs font-semibold text-gray-500 uppercase mb-2">Banker ({primaryLabel})</p>
-            <div className="flex flex-wrap gap-2">
-              {players.slice().sort((a, b) => (bankerResult.netCents[b.id] ?? 0) - (bankerResult.netCents[a.id] ?? 0)).map(p => {
-                const net = bankerResult.netCents[p.id] ?? 0
-                return (
-                  <span key={p.id} className={`text-xs font-semibold px-2 py-1 rounded-lg ${net > 0 ? 'bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-brass' : net < 0 ? 'bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400' : 'bg-gray-50 dark:bg-gray-700/50 text-gray-500'}`}>
-                    {p.name}: {net > 0 ? '+' : ''}{fmtAmount(Math.abs(net), game?.stakesMode)}
-                  </span>
-                )
-              })}
-            </div>
-          </div>
-        )}
-
-        {/* Quota — always scored gross (handicap is baked into the target), so there
-            is no net/gross distinction to show. */}
-        {quotaResult && (
-          <div className="mt-3 pt-3 border-t border-gray-100">
-            <p className="text-xs font-semibold text-gray-500 uppercase mb-2">Quota</p>
-            <div className="flex flex-wrap gap-2">
-              {players.slice().sort((a, b) => (quotaResult.netPoints[b.id] ?? 0) - (quotaResult.netPoints[a.id] ?? 0)).map(p => {
-                const net = quotaResult.netPoints[p.id] ?? 0
-                return (
-                  <span key={p.id} className={`text-xs font-semibold px-2 py-1 rounded-lg ${net > 0 ? 'bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-brass' : net < 0 ? 'bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400' : 'bg-gray-50 dark:bg-gray-700/50 text-gray-500'}`}>
-                    {p.name}: {net > 0 ? '+' : ''}{net}
-                  </span>
-                )
-              })}
-            </div>
-          </div>
-        )}
+      {/* Golf scores — the reference card, ranked by net to par. */}
+      <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm p-4">
+        <p className="text-xs font-medium text-gray-400 uppercase mb-2">Golf scores (reference)</p>
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="text-xs text-gray-400 uppercase border-b border-gray-200">
+              <th className="text-left py-2 px-1 font-medium w-8">Pos</th>
+              <th className="text-left py-2 px-1 font-medium">Player</th>
+              <th className="text-center py-2 px-1 font-medium">Thru</th>
+              <th className="text-center py-2 px-1 font-medium"><Tooltip term="Gross">Gross</Tooltip></th>
+              <th className="text-center py-2 px-1 font-medium"><Tooltip term="Net">Net</Tooltip></th>
+              <th className="text-center py-2 px-1 font-medium">vs Par</th>
+            </tr>
+          </thead>
+          <tbody>
+            {board.map((entry, idx) => (
+              <tr key={entry.player.id} className={`border-b border-gray-50 ${positions[idx] === 1 ? 'bg-amber-50' : ''}`}>
+                <td className={`py-2.5 px-1 font-bold ${positions[idx] === 1 ? 'text-amber-600' : 'text-gray-500'}`}>{positions[idx]}</td>
+                <td className="py-2.5 px-1 font-semibold text-gray-800 dark:text-gray-100">{entry.player.name}</td>
+                <td className="py-2.5 px-1 text-center text-gray-500">{entry.thru}</td>
+                <td className="py-2.5 px-1 text-center font-semibold text-gray-700">{entry.gross || '—'}</td>
+                <td className="py-2.5 px-1 text-center font-semibold text-gray-700">{entry.net || '—'}</td>
+                <td className={`py-2.5 px-1 text-center font-semibold ${entry.vsPar > 0 ? 'text-gray-500 dark:text-gray-400' : entry.vsPar < 0 ? 'text-amber-600 dark:text-brass' : 'text-gray-400'}`}>
+                  {entry.thru > 0 ? `${entry.vsPar > 0 ? '+' : ''}${entry.vsPar}` : '—'}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
 
       {/* Share the standings — an in-progress ResultCard image (§22). Hidden until

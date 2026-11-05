@@ -393,6 +393,9 @@ export function rowToSettlementRecord(row: any): SettlementRecord {
     paidAt: row.paid_at ? new Date(row.paid_at) : undefined,
     playerReportedAt: row.player_reported_at ? new Date(row.player_reported_at) : undefined,
     reportedMethod: row.reported_method ?? undefined,
+    reportedBy: row.reported_by ?? undefined,
+    confirmedBy: row.confirmed_by ?? undefined,
+    confirmedForGuest: row.confirmed_for_guest === true,
   }
 }
 

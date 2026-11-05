@@ -557,7 +557,7 @@ function GamePresetsTab({ userId }: { userId: string }) {
             />
           </div>
           <div>
-            <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Stakes</label>
+            <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Entry</label>
             <div className="grid grid-cols-2 gap-1">
               <button
                 onClick={() => setStakesMode('standard')}

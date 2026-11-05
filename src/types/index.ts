@@ -90,10 +90,38 @@ export interface CourseSnapshot {
 export type GameType = 'skins' | 'best_ball' | 'nassau' | 'wolf' | 'bingo_bango_bongo' | 'hammer' | 'vegas' | 'stableford' | 'dots' | 'banker' | 'quota'
 
 export type SkinsMode = 'gross' | 'net'
+/** Legacy press: Skins, and stroke-play Nassau rounds (NassauConfig.scoring absent). */
 export interface Press {
   holeNumber: number
   playerId: string
 }
+
+export type NassauLeg = 'front' | 'back' | 'total'
+
+/**
+ * A press in a match-play Nassau. Declared on `pressedAtHole`, it opens a new
+ * match from `startHole` (the next hole) to the end of `leg`, worth the same as
+ * that leg, between the presser and each opponent in the leg. Nothing automatic:
+ * every press is a tap by a named player.
+ */
+export interface NassauPress {
+  id: string
+  /** Round player id (NOT an auth user id) of the player who pressed. */
+  playerId: string
+  leg: 'front' | 'back'
+  startHole: number
+  pressedAtHole: number
+}
+
+/**
+ * How a per-point points format settles.
+ *  - 'vs_average'   — each player against the field mean at `value` per point.
+ *                     Legacy default; what every stored per-point round used.
+ *  - 'head_to_head' — each player settles with every other player at `value` ×
+ *                     the difference in their points. 6/4/3 at 1 per point is
+ *                     +5 / −1 / −4. What "per point" means from this pass on.
+ */
+export type PerPointBasis = 'vs_average' | 'head_to_head'
 
 /** How a won skin is paid for.
  *  - `pot`      — everyone antes an entry up front and winners split the collected
@@ -135,13 +163,39 @@ export interface BestBallConfig {
 
 export interface NassauConfig {
   mode: 'gross' | 'net'
+  /** Legacy stroke-play presses. Only read when `scoring` is absent/'stroke'. */
   presses?: Press[]
+  /**
+   * Absent ⇒ 'stroke': each leg is lowest total strokes, the way every round in
+   * history was scored and settled. 'match' ⇒ each leg is a match in holes up,
+   * pairwise between every two players, closing when a player is up by more holes
+   * than remain. New rounds get 'match'; history replays unchanged.
+   */
+  scoring?: 'stroke' | 'match'
+  /** Only read when scoring === 'match'. */
+  matchPresses?: NassauPress[]
+}
+
+/**
+ * The wolf's call on a hole. `partnerId: null` is alone — lone wolf (2×), or
+ * blind wolf (3×) when `blind` is set, meaning the wolf declared before anyone
+ * teed off. `recordedLate` marks a pick entered after scoring had started (the
+ * recovery path), so the audit trail shows it.
+ */
+export interface WolfHoleDecision {
+  partnerId: string | null
+  blind?: boolean
+  recordedLate?: boolean
 }
 
 export interface WolfConfig {
   mode: 'gross' | 'net'
   wolfOrder: string[]
-  holeDecisions?: Record<number, { partnerId: string | null }>
+  holeDecisions?: Record<number, WolfHoleDecision>
+  /** Absent ⇒ off. Offers "Blind Wolf" (declare alone before any tee shot) at 3×. */
+  blindWolf?: boolean
+  /** Absent ⇒ off (current behaviour). A halved hole's unit carries to the next decided hole. */
+  carryHalved?: boolean
   /**
    * Absent ⇒ 'pot', so every existing round settles exactly as before. Same
    * contract as SkinsConfig.payModel — there is real history in production for
@@ -162,6 +216,8 @@ export interface BBBConfig {
   payModel?: PointsPayModel
   /** Only read when payModel is 'per_point'. */
   valueCentsPerPoint?: number
+  /** Only read when payModel is 'per_point'. Absent ⇒ 'vs_average' (legacy). */
+  perPointBasis?: PerPointBasis
 }
 
 export interface HammerConfig {
@@ -203,6 +259,8 @@ export interface StablefordConfig {
   payModel?: PointsPayModel
   /** Only read when payModel is 'per_point'. */
   valueCentsPerPoint?: number
+  /** Only read when payModel is 'per_point'. Absent ⇒ 'vs_average' (legacy). */
+  perPointBasis?: PerPointBasis
 }
 
 export type DotType = JunkType | 'fairway_hit' | 'up_and_down' | 'one_putt' | 'longest_drive' | 'par_save'
@@ -236,6 +294,8 @@ export interface QuotaConfig {
   payModel?: PointsPayModel
   /** Only read when payModel is 'per_point'. */
   valueCentsPerPoint?: number
+  /** Only read when payModel is 'per_point'. Absent ⇒ 'vs_average' (legacy). */
+  perPointBasis?: PerPointBasis
 }
 
 // ─── Junks (side bets) ─────────────────────────────────────────────────────
@@ -429,6 +489,12 @@ export interface SettlementRecord {
   paidAt?: Date
   playerReportedAt?: Date
   reportedMethod?: string
+  /** Who tapped "Mark sent" (auth uid). */
+  reportedBy?: string
+  /** Who tapped "Confirm received" (auth uid). */
+  confirmedBy?: string
+  /** True when the organiser confirmed on a guest payee's behalf. */
+  confirmedForGuest?: boolean
 }
 
 // ─── Notifications ──────────────────────────────────────────────────────────

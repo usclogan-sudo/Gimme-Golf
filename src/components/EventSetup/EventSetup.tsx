@@ -6,6 +6,7 @@ import { reportSupabaseError } from '../../lib/sentry'
 // Events store buy-in in cents (money mode); fmtAmount with no stakesMode
 // converts cents -> points for display (1 pt = $1), so no $ surfaces.
 import { fmtAmount, fmtHandicap, computeCourseHandicap } from '../../lib/gameLogic'
+import { findPlayerByName } from '../../lib/players'
 import { autoAssignGroups, randomAssignGroups, fillMissingGroups, autoAssignShotgunStarts, MAX_PER_GROUP } from '../../lib/eventUtils'
 import type { GroupMode } from '../../lib/eventUtils'
 import { parseDollarsToCents } from '../../lib/money'
@@ -193,6 +194,14 @@ export function EventSetup({ userId, onStart, onCancel, onAddCourse }: Props) {
 
   const quickAddPlayer = () => {
     if (!quickAddName.trim()) return
+    // Same name as someone already on the list: select them rather than making a
+    // second one (Finding 2). The round wizard asks; here the list is right there.
+    const existing = findPlayerByName(quickAddName, availablePlayers)
+    if (existing) {
+      setSelectedPlayers(prev => prev.some(p => p.id === existing.id) ? prev : [...prev, existing])
+      setQuickAddName('')
+      return
+    }
     const newPlayer: Player = {
       id: uuidv4(),
       name: quickAddName.trim(),
@@ -216,8 +225,10 @@ export function EventSetup({ userId, onStart, onCancel, onAddCourse }: Props) {
       selectedPlayers.forEach((p, i) => { teams[p.id] = i % 2 === 0 ? 'A' : 'B' })
       config = { scoring: bbScoring, mode: bbMode, teams }
     }
-    else if (gameType === 'nassau') config = { mode: nassauMode }
-    else if (gameType === 'wolf') config = { mode: wolfMode, wolfOrder: selectedPlayers.map(p => p.id) }
+    // New Nassau rounds are match play; a stored round without `scoring` stays
+    // on the legacy stroke-play engine.
+    else if (gameType === 'nassau') config = { mode: nassauMode, scoring: 'match' }
+    else if (gameType === 'wolf') config = { mode: wolfMode, wolfOrder: selectedPlayers.map(p => p.id), blindWolf: true, carryHalved: false }
     else if (gameType === 'hammer') config = { baseValueCents: 100 }
     else config = { mode: bbbMode }
 
@@ -888,7 +899,7 @@ export function EventSetup({ userId, onStart, onCancel, onAddCourse }: Props) {
         <header className="app-header text-white px-4 py-4 sticky top-0 z-10 shadow-xl flex items-center gap-3">
           <button onClick={() => setStep('groups')} className="min-w-[44px] min-h-[44px] flex items-center justify-center rounded-full hover:bg-black/20 text-xl">←</button>
           <div>
-            <h1 className="text-xl font-bold">Game & Stakes</h1>
+            <h1 className="text-xl font-bold">Game & Entry</h1>
             <p className="text-gray-300 text-xs">{eventName} · {selectedPlayers.length} players</p>
           </div>
         </header>

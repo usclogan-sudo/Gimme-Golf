@@ -20,6 +20,7 @@ import {
   calculateSkins, calculateSkinsPayouts, calculateSkinsNet, calculateSkinsPerSkinNet,
   calculateBestBall, calculateBestBallPayouts,
   calculateNassau, calculateNassauPayouts,
+  calculateNassauMatch, nassauMatchNet, isMatchNassau,
   calculateWolf,
   calculateBBB, calculateBBBPayouts,
   calculateHammer,
@@ -99,7 +100,13 @@ export function computeRoundPlayerNets(input: RoundNetInputs): RoundNetResult {
           break
         }
         case 'nassau': {
-          const result = calculateNassau(players, roundScores, pSnap, cfg as NassauConfig, chm)
+          const nassauCfg = cfg as NassauConfig
+          if (isMatchNassau(nassauCfg)) {
+            // Match play settles directly from a signed net; no pot was collected.
+            gameNet = nassauMatchNet(calculateNassauMatch(players, roundScores, pSnap, nassauCfg, chm, buyIn), players)
+            break
+          }
+          const result = calculateNassau(players, roundScores, pSnap, nassauCfg, chm)
           gameNet = netFromPayouts(calculateNassauPayouts(result, game, players, roundScores, pSnap, chm), players, buyIn)
           break
         }

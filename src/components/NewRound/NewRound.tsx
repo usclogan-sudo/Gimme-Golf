@@ -5,6 +5,7 @@ import { safeWrite } from '../../lib/safeWrite'
 import { reportSupabaseError } from '../../lib/sentry'
 import { SHOW_HOLE_BETS, SHOW_EXTRA_GAMES, SHOW_DOTS, SHOW_BEST_BALL_STROKE_PLAY } from '../../lib/featureFlags'
 import { fmtMoney, fmtAmount, fmtHandicap, JUNK_LABELS, DOT_LABELS, computeCourseHandicap } from '../../lib/gameLogic'
+import { findPlayerByName } from '../../lib/players'
 import { parseDollarsToCents, parsePointsValue } from '../../lib/money'
 import { venturaCourses } from '../../data/venturaCourses'
 import { NearMeCourses } from '../NearMeCourses/NearMeCourses'
@@ -371,7 +372,7 @@ function CoursePicker({
 
 // ─── Step 2: Player Picker ────────────────────────────────────────────────────
 
-function PlayerPicker({
+export function PlayerPicker({
   userId,
   course,
   onNext,
@@ -404,6 +405,9 @@ function PlayerPicker({
   const [newTee, setNewTee] = useState(course.tees[0]?.name ?? 'White')
   const [addError, setAddError] = useState('')
   const [saving, setSaving] = useState(false)
+  // A player already on the list with the same name as the guest being added.
+  // Surfaced as a soft check: select them instead, or add anyway (Finding 2).
+  const [dupMatch, setDupMatch] = useState<Player | null>(null)
   // "Invite to join" chooser sheet — explains the self-scoring path and directs to
   // the in-round invite (the live share link/QR need the round to exist; that's a
   // documented follow-up requiring the invite code to thread into round creation).
@@ -510,10 +514,19 @@ function PlayerPicker({
     ? allPlayers.filter(p => p.name.toLowerCase().includes(query.toLowerCase())).sort(byName)
     : allPlayers
 
-  // Tier the players for non-search display; sort within each tier so 16+ rosters scan cleanly.
+  // Tier the players for non-search display; sort within each tier so 16+ rosters
+  // scan cleanly. Selected players are pinned at the top, whatever tier they came
+  // from — a guest added a second ago must not vanish into the collapsed "all
+  // players" list the moment it is created (Finding 2). You come first.
   const me = allPlayers.find(p => p.id === userId)
-  const friends = allPlayers.filter(p => p.id !== userId && recentFriendIds.has(p.id)).sort(byName).slice(0, 10)
-  const others = allPlayers.filter(p => p.id !== userId && !recentFriendIds.has(p.id)).sort(byName)
+  const selectedPlayers = allPlayers
+    .filter(p => selectedIds.has(p.id))
+    .sort((a, b) => (a.id === userId ? -1 : b.id === userId ? 1 : byName(a, b)))
+  const unselected = (p: Player) => p.id !== userId && !selectedIds.has(p.id)
+  const friends = allPlayers.filter(p => unselected(p) && recentFriendIds.has(p.id)).sort(byName).slice(0, 10)
+  const friendIdsShown = new Set(friends.map(p => p.id))
+  // Everyone else — including friends past the tenth, who used to render nowhere.
+  const others = allPlayers.filter(p => unselected(p) && !friendIdsShown.has(p.id)).sort(byName)
 
   const toggle = (id: string) => {
     setSelectedIds(prev => {
@@ -532,10 +545,16 @@ function PlayerPicker({
     })
   }
 
-  const handleAddPlayer = async () => {
+  const handleAddPlayer = async (opts: { force?: boolean } = {}) => {
     if (!newName.trim()) { setAddError('Name is required'); return }
     const hcp = newHcp.trim() === '' ? 0 : parseFloat(newHcp)
     if (isNaN(hcp) || hcp < -10 || hcp > 54) { setAddError('Handicap must be between -10 and 54'); return }
+    // Same name as someone already here? Ask before making a second one.
+    if (!opts.force) {
+      const match = findPlayerByName(newName, allPlayers)
+      if (match) { setDupMatch(match); setAddError(''); return }
+    }
+    setDupMatch(null)
     setSaving(true)
     try {
       const newPlayer: Player = { id: uuidv4(), name: newName.trim(), handicapIndex: hcp, tee: newTee, ghinNumber: '', createdAt: new Date() }
@@ -601,16 +620,46 @@ function PlayerPicker({
               ))}
             </select>
             {addError && <p className="text-red-500 text-sm">{addError}</p>}
+            {dupMatch && (() => {
+              // The name as typed, in both places — never a lowercased or
+              // normalised version of it.
+              const typed = newName.trim()
+              return (
+              <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl px-3 py-2.5 space-y-2">
+                <p className="text-sm text-amber-900 dark:text-amber-200">
+                  A player named <span className="font-semibold">{typed}</span> is already here. Select them, or add a new {typed} anyway.
+                </p>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => {
+                      if (!selectedIds.has(dupMatch.id)) toggle(dupMatch.id)
+                      setDupMatch(null); setShowAddForm(false); setNewName(''); setNewHcp(''); setAddError('')
+                    }}
+                    className="flex-1 h-10 bg-gray-800 text-white dark:bg-brass dark:text-navy rounded-xl text-sm font-semibold"
+                  >
+                    Select {typed}
+                  </button>
+                  <button
+                    onClick={() => { void handleAddPlayer({ force: true }) }}
+                    disabled={saving}
+                    className="flex-1 h-10 border border-gray-300 dark:border-gray-600 rounded-xl text-sm font-semibold text-gray-700 dark:text-gray-200 disabled:opacity-60"
+                  >
+                    Add anyway
+                  </button>
+                </div>
+              </div>
+              )
+            })()}
             <div className="flex gap-2">
               <button
-                onClick={() => { setShowAddForm(false); setNewName(''); setNewHcp(''); setAddError('') }}
+                onClick={() => { setShowAddForm(false); setNewName(''); setNewHcp(''); setAddError(''); setDupMatch(null) }}
                 className="flex-1 h-11 border border-gray-300 rounded-xl text-gray-600 font-semibold"
               >
                 Cancel
               </button>
               <button
-                onClick={handleAddPlayer}
-                disabled={saving}
+                onClick={() => { void handleAddPlayer() }}
+                disabled={saving || !!dupMatch}
                 className="flex-1 h-11 bg-gray-800 text-white dark:bg-brass dark:text-navy rounded-xl font-semibold disabled:opacity-60"
               >
                 {saving ? 'Saving…' : 'Add'}
@@ -621,7 +670,15 @@ function PlayerPicker({
           <div className="grid grid-cols-2 gap-2">
             {/* Two explicit intents for adding a new person (the core reframe). */}
             <button
-              onClick={() => setShowAddForm(true)}
+              onClick={() => {
+                // A guest plays from the organiser's tee by default — the tee you are
+                // on, not the first one on the card. Falls back to the first tee only
+                // if yours is not on this course.
+                const mine = playerTees[userId] ?? me?.tee
+                const onCourse = mine && course.tees.some(t => t.name === mine) ? mine : course.tees[0]?.name ?? 'White'
+                setNewTee(onCourse)
+                setShowAddForm(true)
+              }}
               disabled={selectedIds.size >= MAX_PLAYERS}
               className="py-3 px-3 border-2 border-dashed border-amber-300 text-left rounded-2xl active:bg-amber-50 disabled:opacity-40"
             >
@@ -741,19 +798,38 @@ function PlayerPicker({
           }
 
           if (isSearching) {
-            // Flat search results
-            return filtered.length > 0 ? (
-              <div className="space-y-2">{filtered.map(p => renderPlayerCard(p))}</div>
-            ) : (
-              <p className="text-center text-gray-400 py-8">No players match "{query}"</p>
+            // Search never hides a selected row: the pinned tier stays, and the
+            // results below it are only the players not yet in the round.
+            const results = filtered.filter(p => !selectedIds.has(p.id))
+            return (
+              <div className="space-y-4">
+                {selectedPlayers.length > 0 && (
+                  <div className="space-y-2">
+                    <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide px-1">In this round</p>
+                    {selectedPlayers.map(p => renderPlayerCard(p, p.id === userId ? 'You' : undefined))}
+                  </div>
+                )}
+                {results.length > 0 ? (
+                  <div className="space-y-2">{results.map(p => renderPlayerCard(p))}</div>
+                ) : (
+                  <p className="text-center text-gray-400 py-8">No players match "{query}"</p>
+                )}
+              </div>
             )
           }
 
           // Tiered display
           return (
             <div className="space-y-4">
-              {/* Tier 1: You */}
-              {me && (
+              {/* Tier 1: everyone in this round, pinned — you first. */}
+              {selectedPlayers.length > 0 && (
+                <div className="space-y-2">
+                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide px-1">In this round</p>
+                  {selectedPlayers.map(p => renderPlayerCard(p, p.id === userId ? 'You' : undefined))}
+                </div>
+              )}
+              {/* You, when not selected, still sit above everyone else. */}
+              {me && !selectedIds.has(me.id) && (
                 <div className="space-y-2">
                   {renderPlayerCard(me, 'You')}
                 </div>
@@ -984,16 +1060,16 @@ const POINTS_FORMATS: GameType[] = ['bingo_bango_bongo', 'stableford', 'vegas', 
  */
 const POINTS_RANGE_HINT: Partial<Record<GameType, string>> = {
   bingo_bango_bongo:
-    '54 points in a full round — about 13 each in a foursome. At 1 per point, expect to finish within about ±5.',
+    '54 points in a full round — about 13 each in a foursome. At 1 per point you settle with each of the others, so a 5-point lead over the field is about +15 in a foursome.',
   stableford:
-    'Stableford rounds usually spread 6–10 points between first and last. At 1 per point, expect ±3 to ±6.',
+    'Stableford rounds usually spread 6–10 points between first and last. At 1 per point you settle with each other player, so in a foursome expect roughly ±10 to ±20.',
   vegas:
     'Vegas totals run high — 50 to 200 points is common, and one blow-up hole can add 30. Most groups use 0.1 to 0.25 a point.',
   quota:
-    'Quota nets usually land within ±8 of target. At 1 per point, expect ±3 to ±8.',
+    'Quota nets usually land within ±8 of target. At 1 per point you settle with each other player, so in a foursome expect roughly ±10 to ±20.',
 }
 
-function GameSetup({
+export function GameSetup({
   players,
   initialStakesMode,
   scorerId,
@@ -1079,6 +1155,14 @@ function GameSetup({
     })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [wolfPlayerKey])
+  // Wolf options. Blind Wolf defaults on (it only adds a choice the wolf can make);
+  // carry-over defaults off, matching how every round so far has settled.
+  const [wolfBlind, setWolfBlind] = useState<boolean>(
+    initialGame?.type === 'wolf' ? ((initialGame.config as any).blindWolf ?? true) : true,
+  )
+  const [wolfCarry, setWolfCarry] = useState<boolean>(
+    initialGame?.type === 'wolf' ? ((initialGame.config as any).carryHalved ?? false) : false,
+  )
 
   // Hammer
   const [hammerBaseValueDollars, setHammerBaseValueDollars] = useState(
@@ -1249,6 +1333,10 @@ function GameSetup({
     valueCentsPerPoint: stakesMode === 'points'
       ? Math.max(1, parsePointsValue(pointsValue))
       : Math.max(1, parseDollarsToCents(pointsValue)),
+    // Per point means pairwise: each player settles with every other player at the
+    // value × the difference in points. A stored round without this field keeps
+    // settling against the field average, as it did (Finding 7).
+    perPointBasis: 'head_to_head' as const,
   }
 
   const makeGame = (): Game => {
@@ -1262,11 +1350,13 @@ function GameSetup({
       return { id, type: 'best_ball', buyInCents, stakesMode, config }
     }
     if (type === 'nassau') {
-      const config: NassauConfig = { mode: 'net' }
+      // New rounds are match play (holes up); a stored round without `scoring`
+      // stays on the legacy lowest-total-strokes engine so history does not move.
+      const config: NassauConfig = { mode: 'net', scoring: 'match' }
       return { id, type: 'nassau', buyInCents, stakesMode, config }
     }
     if (type === 'wolf') {
-      const config: WolfConfig = { mode: 'net', wolfOrder }
+      const config: WolfConfig = { mode: 'net', wolfOrder, blindWolf: wolfBlind, carryHalved: wolfCarry }
       return { id, type: 'wolf', buyInCents, stakesMode, config }
     }
     if (type === 'hammer') {
@@ -1408,7 +1498,7 @@ function GameSetup({
             isn't useful. Flip the flag to bring back. */}
         {SHOW_ALT_STAKES_MODES && (
           <section className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm p-4 space-y-3">
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Stakes</p>
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Entry</p>
             <div className="grid grid-cols-3 gap-2">
               <button
                 onClick={() => handleStakesChange('standard')}
@@ -1498,7 +1588,7 @@ function GameSetup({
                   <span className="ml-2 text-amber-600 font-normal">({junkTypes.size} active)</span>
                 )}
               </p>
-              <p className="text-xs text-gray-400 mt-0.5">Optional peer-to-peer bets tracked per hole</p>
+              <p className="text-xs text-gray-400 mt-0.5">Optional peer-to-peer side games tracked per hole</p>
             </div>
             <div
               role="switch"
@@ -1587,10 +1677,10 @@ function GameSetup({
                 the entry; per-skin has no ceiling, which is how most groups actually
                 play "20 a skin". */}
             <div>
-              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Paying for skins</p>
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">How skins settle</p>
               <div className="flex rounded-xl overflow-hidden border-2 border-gray-200 dark:border-gray-600">
                 {([
-                  { v: 'pot' as SkinsPayModel, label: 'Shared pot' },
+                  { v: 'pot' as SkinsPayModel, label: 'Split the total' },
                   { v: 'per_skin' as SkinsPayModel, label: 'Per skin' },
                 ]).map(opt => (
                   <button
@@ -1614,7 +1704,7 @@ function GameSetup({
               {skinsPayModel === 'per_skin'
                 ? ` Every other player pays the winner ${fmtAmount(buyInCents, stakesMode)} per skin.${
                     carryovers
-                      ? ` A hole carrying three skins costs each of them ${fmtAmount(buyInCents * 3, stakesMode)} — carries multiply real money here, they don't reshuffle a fixed pot.`
+                      ? ` A hole carrying three skins costs each of them ${fmtAmount(buyInCents * 3, stakesMode)} — carries multiply real money here, they don't reshuffle a fixed total.`
                       : ''
                   } Nothing is collected up front and there's no ceiling.`
                 : ` Everyone puts in ${fmtAmount(buyInCents, stakesMode)} up front and the winners split it in proportion to skins won. That entry is the most anyone can lose${carryovers ? ', carries or not' : ''}.`}
@@ -1665,8 +1755,8 @@ function GameSetup({
                 <div className="space-y-2">
                   {([
                     { v: 'per_point' as PointsPayModel, label: 'Per point',
-                      hint: 'Standard. Swings match the play.' },
-                    { v: 'pot' as PointsPayModel, label: 'Split a pot',
+                      hint: 'Standard. You settle with each other player: the difference in your points, times the value.' },
+                    { v: 'pot' as PointsPayModel, label: 'Split the total',
                       hint: `Everyone puts in ${fmtAmount(buyInCents, stakesMode)}. Nobody can lose more than that.` },
                   ]).map(opt => (
                     <button
@@ -1735,7 +1825,7 @@ function GameSetup({
             </div>
           ) : perPointSelected ? null : (
             <div className="bg-amber-50 rounded-xl px-4 py-3 flex items-center justify-between">
-              <span className="text-sm text-gray-600">{stakesMode === 'points' ? 'Total points' : 'Total pot'}</span>
+              <span className="text-sm text-gray-600">{stakesMode === 'points' ? 'Total points' : 'Total in play'}</span>
               <span className="font-bold text-gray-800 dark:text-gray-100 text-lg">
                 {stakesMode === 'points' ? fmtAmount(buyInCents * players.length, 'points') : fmtMoney(buyInCents * players.length)}
               </span>
@@ -1744,9 +1834,23 @@ function GameSetup({
 
           {type === 'nassau' && stakesMode !== 'points' && (
             <p className="text-xs text-gray-500">
-              = {fmtMoney(Math.floor(buyInCents / 3))} per leg × 3 legs (Front 9, Back 9, Total)
+              = {fmtMoney(Math.floor(buyInCents / 3))} a leg × 3 legs (front, back, full round), settled with each other player
             </p>
           )}
+          {/* Exposure, stated plainly. A match-play Nassau is settled with each
+              opponent, so in a group the worst case is the entry once per opponent —
+              the figure to know before the first tee, not after. */}
+          {type === 'nassau' && (() => {
+            const opponents = Math.max(players.length - 1, 1)
+            const unit = stakesMode === 'points' ? buyInCents : Math.round(buyInCents / 100)
+            return (
+              <p className="text-sm text-gray-600 dark:text-gray-300">
+                {opponents <= 1
+                  ? `Most you can lose: ${fmtAmount(buyInCents, stakesMode)}.`
+                  : `Most you can lose: ${fmtAmount(buyInCents * opponents, stakesMode)}, ${unit} to each opponent.`}
+              </p>
+            )
+          })()}
         </section>
 
         {/* Best Ball Options */}
@@ -1807,10 +1911,11 @@ function GameSetup({
           <section className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm p-4 space-y-3">
             <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Nassau Options</p>
             <div className="bg-teal-50 rounded-xl p-3 text-sm text-teal-700 space-y-1">
-              <p className="font-semibold">3 separate legs:</p>
-              <p>• Front 9 — lowest total strokes wins</p>
-              <p>• Back 9 — lowest total strokes wins</p>
-              <p>• Full round — lowest total strokes wins</p>
+              <p className="font-semibold">Three matches, scored in holes up:</p>
+              <p>• Front nine · Back nine · Full round — each its own match, net</p>
+              <p>• A match closes when a player is up by more holes than remain (3&2). Level at the end halves it.</p>
+              <p>• Each leg is worth a third of the entry, settled between the two players in the match{players.length > 2 ? ' — with more than two of you, everyone plays everyone' : ''}.</p>
+              <p>• Press: when you're down, press to open a new match from the next hole to the end of that nine, at the same value. The app asks who's pressing.</p>
             </div>
           </section>
         )}
@@ -1852,11 +1957,39 @@ function GameSetup({
                 })}
               </div>
             </div>
+            {/* Two house options, both recorded on the round so the engine and the
+                rules modal describe exactly what was agreed. */}
+            <div className="space-y-2">
+              {([
+                { key: 'blind', label: 'Blind Wolf', hint: 'Wolf can declare alone before any tee shot, for 3×.', on: wolfBlind, set: setWolfBlind },
+                { key: 'carry', label: 'Halved holes carry over', hint: 'A halved hole\'s unit carries to the next decided hole.', on: wolfCarry, set: setWolfCarry },
+              ] as const).map(opt => (
+                <button
+                  key={opt.key}
+                  role="switch"
+                  aria-checked={opt.on}
+                  onClick={() => opt.set(!opt.on)}
+                  className={`w-full flex items-center justify-between gap-3 p-3 rounded-2xl border-2 text-left transition-colors ${
+                    opt.on ? 'border-amber-500 bg-amber-50 dark:bg-amber-900/20' : 'border-gray-200 dark:border-gray-700'
+                  }`}
+                >
+                  <span>
+                    <span className="font-semibold block">{opt.label}</span>
+                    <span className="text-sm text-gray-500">{opt.hint}</span>
+                  </span>
+                  <span className={`text-xs font-bold px-2 py-1 rounded-lg ${opt.on ? 'bg-amber-500 text-white' : 'bg-gray-100 dark:bg-gray-700 text-gray-500'}`}>
+                    {opt.on ? 'On' : 'Off'}
+                  </span>
+                </button>
+              ))}
+            </div>
             <div className="bg-purple-50 rounded-xl p-3 text-sm text-purple-700 space-y-1">
               <p className="font-semibold">How it works:</p>
               <p>• Wolf picks a partner after each tee shot, or goes Lone Wolf</p>
               <p>• Lone Wolf wins: Wolf gets 2× from each opponent</p>
+              {wolfBlind && <p>• Blind Wolf (called before any tee shot) wins: Wolf gets 3× from each opponent</p>}
               <p>• Partner wins: Wolf and partner each get 1× from opponents</p>
+              <p>• {wolfCarry ? 'A halved hole carries its unit to the next decided hole' : 'A halved hole pushes — nothing changes hands'}</p>
             </div>
           </section>
         )}
@@ -1916,7 +2049,7 @@ function GameSetup({
               <p>• Each hole starts at {stakesMode === 'points'
                 ? (() => { const n = Math.max(1, parsePointsValue(hammerBaseValueDollars)); return `${n} pt${n !== 1 ? 's' : ''}` })()
                 : fmtMoney(Math.max(1, parseDollarsToCents(hammerBaseValueDollars)))}</p>
-              <p>• The hammer holder can "throw" the hammer to double the stakes</p>
+              <p>• The hammer holder can "throw" the hammer to double the value</p>
               <p>• Opponent must accept (value doubles) or decline (lose current value)</p>
               <p>• After accepting, the hammer passes to the accepter</p>
             </div>
@@ -1971,7 +2104,7 @@ function GameSetup({
               <p className="font-semibold">Point values per hole:</p>
               <p>• Double bogey+ = 0 pts, Bogey = 1, Par = 2</p>
               <p>• Birdie = 3, Eagle = 4, Albatross = 5</p>
-              <p>• Highest total points wins the pot</p>
+              <p>• Highest total points wins</p>
             </div>
           </section>
         )}
@@ -2346,7 +2479,7 @@ function TreasurerAndBuyIns({
         <section className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm p-4 space-y-3">
           <div>
             <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Treasurer</p>
-            <p className="text-sm text-gray-500 mt-1">Who is holding the pot?</p>
+            <p className="text-sm text-gray-500 mt-1">Who is holding the total?</p>
           </div>
           <div className="space-y-2">
             {players.map(p => (

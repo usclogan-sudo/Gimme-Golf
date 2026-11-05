@@ -15,6 +15,9 @@ import type {
   GameType,
   RoundPlayer,
   Press,
+  NassauPress,
+  NassauLeg,
+  PerPointBasis,
   SideBet,
   HammerConfig,
   HammerHoleState,
@@ -419,16 +422,21 @@ export function isPerSkin(config: SkinsConfig): boolean {
  * metric produced during play: four unassigned BBB points raise the value of every
  * other point by 8%.
  *
- * HEAD-TO-HEAD (the alternative, retained and labelled)
+ * HEAD-TO-HEAD — what "per point" means from this pass on (usability Finding 7)
  *
- * `pointsHeadToHeadNet` settles each player against every other at `value` per point
- * of difference:
+ * `pointsHeadToHeadNet` settles each player with every other player at `value` ×
+ * the difference in their points:
  *
  *   net[i] = value × Σ_{j≠i} (pts[i] − pts[j])  =  value × (N·pts[i] − total)
  *
- * That is integer-exact and zero-sum with no rounding, but the effective stake is
- * N times what the group said, so it is only honest when labelled "per point, per
- * opponent". `pointsVsAverageNet` is the default for that reason.
+ * 6 / 4 / 3 at 1 per point is +5 / −1 / −4: the 6 collects 2 from the 4 and 3 from
+ * the 3; the 4 collects 1 from the 3. That is the agreement a group actually makes
+ * on the first tee. The effective swing is (N−1) × value per point of difference,
+ * and the setup copy says so.
+ *
+ * `pointsVsAverageNet` (each player against the field mean) is retained as the
+ * legacy basis: every per-point round stored before `perPointBasis` existed
+ * replays through it, so history does not move.
  */
 export function pointsHeadToHeadNet(
   points: Record<string, number>,
@@ -443,7 +451,19 @@ export function pointsHeadToHeadNet(
   // Only players still on the roster count, so a removed player cannot skew the
   // total and quietly break zero-sum for everyone else.
   const total = ids.reduce((sum, id) => sum + (points[id] ?? 0), 0)
-  for (const id of ids) net[id] = valueCents * (n * (points[id] ?? 0) - total)
+  const exact = ids.map(id => valueCents * (n * (points[id] ?? 0) - total))
+
+  // Whole units only. With an integer value (cents, or whole tokens in points
+  // mode) every term is already integral and this is a no-op; with a fractional
+  // value the floors can leave a remainder, which goes to the lowest-placed
+  // player so the round still sums to zero.
+  const floored = exact.map(v => Math.floor(v))
+  ids.forEach((id, i) => { net[id] = floored[i] })
+  const remainder = -floored.reduce((s, v) => s + v, 0)
+  if (remainder > 0) {
+    const lowest = ids.reduce((lo, id) => (points[id] ?? 0) < (points[lo] ?? 0) ? id : lo, ids[0])
+    net[lowest] += remainder
+  }
   return net
 }
 
@@ -654,22 +674,28 @@ export function perPointNet(
     quota?: QuotaResult | null
   },
 ): Record<string, number> | null {
-  const cfg = game.config as { payModel?: PointsPayModel; valueCentsPerPoint?: number } | undefined
+  const cfg = game.config as {
+    payModel?: PointsPayModel; valueCentsPerPoint?: number; perPointBasis?: PerPointBasis
+  } | undefined
   if (!isPerPoint(cfg)) return null
   // Falling back to buyInCents keeps a half-configured round settling at a sane
   // rate rather than at zero, which would read as "nobody owes anything".
   const value = cfg?.valueCentsPerPoint ?? game.buyInCents
   if (!value) return null
 
+  // Legacy gate: a stored round with no basis replays against the field average,
+  // exactly as it settled. Only rounds created with 'head_to_head' settle pairwise.
+  const settle = cfg?.perPointBasis === 'head_to_head' ? pointsHeadToHeadNet : pointsVsAverageNet
+
   switch (game.type) {
     case 'bingo_bango_bongo':
-      return results.bbb ? pointsVsAverageNet(results.bbb.pointsWon, players, value) : null
+      return results.bbb ? settle(results.bbb.pointsWon, players, value) : null
     case 'stableford':
-      return results.stableford ? pointsVsAverageNet(results.stableford.points, players, value) : null
+      return results.stableford ? settle(results.stableford.points, players, value) : null
     case 'quota':
       // netPoints is already zero-based (stableford − quota), so pairwise on it
       // rewards beating your own target rather than raw scoring ability.
-      return results.quota ? pointsVsAverageNet(results.quota.netPoints, players, value) : null
+      return results.quota ? settle(results.quota.netPoints, players, value) : null
     case 'vegas':
       return results.vegas
         ? vegasPerPointNet(results.vegas, game.config as VegasConfig, players, value)
@@ -1013,6 +1039,248 @@ export function calculateNassauPayouts(
     }))
 }
 
+// ─── Nassau as match play (usability Finding 6) ──────────────────────────────
+//
+// Each leg (front, back, total) is a match in holes up, played net using the
+// strokes already allocated to the round. Matches are pairwise: with two players
+// that is one match per leg; with more, everyone plays everyone. A match closes
+// the moment a player is up by more holes than remain; whatever happens on the
+// holes after that does not touch it. A match that reaches the last hole level
+// is halved and nothing changes hands.
+//
+// Legacy gate: `NassauConfig.scoring` absent means the old lowest-total-strokes
+// engine above, so every stored Nassau round replays exactly as it settled.
+//
+// Money: each leg is worth a third of the entry per opponent — front and back get
+// floor(entry/3), the total leg takes the remainder so the three legs sum to the
+// entry. A press opens a new match worth the same as the leg it was pressed in.
+// With two players this is the same money the pot model moved; with more, each
+// player is exposed to the entry once per opponent, which is what "a $10 Nassau"
+// means in a group. Nets are signed and zero-sum, so this settles directly
+// (buildDirectSettlements), never through a treasurer pot.
+
+export interface NassauMatch {
+  a: string
+  b: string
+  /** Holes up from a's side: positive a leads, negative b leads. */
+  holesUp: number
+  /** Holes both players have scored, in order, up to the first gap. */
+  holesPlayed: number
+  /** Holes in the leg after the last one counted. */
+  holesRemaining: number
+  closed: boolean
+  closedAtHole: number | null
+  /** null while the match is still open. */
+  result: 'a' | 'b' | 'halved' | null
+  /** "2 UP", "3&2", "AS" — from the leader's side, or "AS". */
+  label: string
+}
+
+export interface NassauMatchLeg {
+  key: NassauLeg
+  holeRange: string
+  holeNums: number[]
+  valueCents: number
+  matches: NassauMatch[]
+  /** Every match has a result. */
+  complete: boolean
+  /** Any match has at least one hole counted. */
+  started: boolean
+}
+
+export interface NassauMatchPressLeg extends NassauMatchLeg {
+  press: NassauPress
+}
+
+export interface NassauMatchResult {
+  front: NassauMatchLeg
+  back: NassauMatchLeg
+  total: NassauMatchLeg
+  presses: NassauMatchPressLeg[]
+}
+
+export function isMatchNassau(config: NassauConfig | undefined | null): boolean {
+  return config?.scoring === 'match'
+}
+
+/** Front and back take floor(entry/3); the total leg takes the remainder. */
+export function nassauMatchLegValues(buyInCents: number): Record<NassauLeg, number> {
+  const third = Math.floor(buyInCents / 3)
+  return { front: third, back: third, total: buyInCents - 2 * third }
+}
+
+export function nassauMatchLabel(holesUp: number, holesRemaining: number, closed: boolean): string {
+  const up = Math.abs(holesUp)
+  if (up === 0) return 'AS'
+  if (closed && holesRemaining > 0) return `${up}&${holesRemaining}`
+  return `${up} UP`
+}
+
+function nassauPairMatch(
+  a: Player,
+  b: Player,
+  holeScores: HoleScore[],
+  snapshot: CourseSnapshot,
+  config: NassauConfig,
+  courseHcps: Record<string, number>,
+  holeNums: number[],
+): NassauMatch {
+  const totalHoles = snapshot.holes.length
+  let holesUp = 0
+  let holesPlayed = 0
+  let closed = false
+  let closedAtHole: number | null = null
+
+  for (let i = 0; i < holeNums.length; i++) {
+    const holeNum = holeNums[i]
+    const hole = snapshot.holes.find(h => h.number === holeNum)
+    const sa = holeScores.find(s => s.playerId === a.id && s.holeNumber === holeNum)
+    const sb = holeScores.find(s => s.playerId === b.id && s.holeNumber === holeNum)
+    if (!hole || !sa || !sb) break
+    const netA = config.mode === 'net'
+      ? sa.grossScore - strokesOnHole(courseHcps[a.id] ?? 0, hole.strokeIndex, totalHoles)
+      : sa.grossScore
+    const netB = config.mode === 'net'
+      ? sb.grossScore - strokesOnHole(courseHcps[b.id] ?? 0, hole.strokeIndex, totalHoles)
+      : sb.grossScore
+    holesUp += netA < netB ? 1 : netB < netA ? -1 : 0
+    holesPlayed = i + 1
+    const remaining = holeNums.length - holesPlayed
+    if (Math.abs(holesUp) > remaining) {
+      closed = true
+      closedAtHole = holeNum
+      break
+    }
+  }
+
+  const holesRemaining = holeNums.length - holesPlayed
+  const result: NassauMatch['result'] =
+    closed ? (holesUp > 0 ? 'a' : 'b')
+    : holesRemaining === 0 ? (holesUp > 0 ? 'a' : holesUp < 0 ? 'b' : 'halved')
+    : null
+
+  return {
+    a: a.id, b: b.id, holesUp, holesPlayed, holesRemaining, closed, closedAtHole, result,
+    label: nassauMatchLabel(holesUp, holesRemaining, closed),
+  }
+}
+
+function nassauMatchLeg(
+  key: NassauLeg,
+  players: Player[],
+  holeScores: HoleScore[],
+  snapshot: CourseSnapshot,
+  config: NassauConfig,
+  courseHcps: Record<string, number>,
+  holeNums: number[],
+  valueCents: number,
+  only?: Player,
+): NassauMatchLeg {
+  const matches: NassauMatch[] = []
+  for (let i = 0; i < players.length; i++) {
+    for (let j = i + 1; j < players.length; j++) {
+      const a = players[i], b = players[j]
+      if (only && a.id !== only.id && b.id !== only.id) continue
+      matches.push(nassauPairMatch(a, b, holeScores, snapshot, config, courseHcps, holeNums))
+    }
+  }
+  const holeRange = holeNums.length
+    ? `${holeNums[0]}–${holeNums[holeNums.length - 1]}`
+    : '—'
+  return {
+    key, holeRange, holeNums, valueCents, matches,
+    complete: matches.length > 0 && matches.every(m => m.result !== null),
+    started: matches.some(m => m.holesPlayed > 0),
+  }
+}
+
+export function calculateNassauMatch(
+  players: Player[],
+  holeScores: HoleScore[],
+  snapshot: CourseSnapshot,
+  config: NassauConfig,
+  courseHcps: Record<string, number>,
+  buyInCents: number,
+): NassauMatchResult {
+  const allHoles = snapshot.holes.map(h => h.number)
+  const { frontHoles, backHoles } = getFrontBackSplit(snapshot.holes)
+  const values = nassauMatchLegValues(buyInCents)
+
+  const leg = (key: NassauLeg, holeNums: number[]) =>
+    nassauMatchLeg(key, players, holeScores, snapshot, config, courseHcps, holeNums, values[key])
+
+  const presses: NassauMatchPressLeg[] = []
+  for (const press of config.matchPresses ?? []) {
+    const presser = players.find(p => p.id === press.playerId)
+    if (!presser) continue
+    const legHoles = press.leg === 'front' ? frontHoles : backHoles
+    const start = legHoles.indexOf(press.startHole)
+    if (start < 0) continue
+    const pressHoles = legHoles.slice(start)
+    presses.push({
+      ...nassauMatchLeg(press.leg, players, holeScores, snapshot, config, courseHcps, pressHoles, values[press.leg], presser),
+      press,
+    })
+  }
+
+  return { front: leg('front', frontHoles), back: leg('back', backHoles), total: leg('total', allHoles), presses }
+}
+
+/**
+ * Signed per-player net for a match-play Nassau. Each decided match moves the
+ * leg's value from loser to winner; halved and open matches move nothing.
+ * Zero-sum by construction, so it settles directly like the unit games.
+ */
+export function nassauMatchNet(result: NassauMatchResult, players: Player[]): Record<string, number> {
+  const net: Record<string, number> = {}
+  players.forEach(p => (net[p.id] = 0))
+  const legs: NassauMatchLeg[] = [result.front, result.back, result.total, ...result.presses]
+  for (const leg of legs) {
+    for (const m of leg.matches) {
+      if (m.result === 'a') { net[m.a] += leg.valueCents; net[m.b] -= leg.valueCents }
+      else if (m.result === 'b') { net[m.b] += leg.valueCents; net[m.a] -= leg.valueCents }
+    }
+  }
+  return net
+}
+
+/**
+ * One line of status for a leg. Two players: "Sam 2 UP", "Sam 3&2", "AS". More:
+ * from `perspectiveId`'s side ("2 UP · AS · 1 DN"), or every match when there is
+ * no perspective ("Sam 2 UP v Pat · ..."). Never a stroke count.
+ */
+export function nassauMatchLegStatus(
+  leg: NassauMatchLeg,
+  nameOf: (id: string) => string,
+  perspectiveId?: string | null,
+): string {
+  if (!leg.started) return '—'
+  const fromSide = (m: NassauMatch, side: string): string => {
+    const up = m.a === side ? m.holesUp : -m.holesUp
+    if (up === 0) return 'AS'
+    const mag = Math.abs(up)
+    const tag = up > 0 ? 'UP' : 'DN'
+    return m.closed && m.holesRemaining > 0 ? `${mag}&${m.holesRemaining}${up > 0 ? '' : ' DN'}` : `${mag} ${tag}`
+  }
+  if (leg.matches.length === 1) {
+    const m = leg.matches[0]
+    if (m.holesUp === 0) return 'AS'
+    const leader = m.holesUp > 0 ? m.a : m.b
+    return `${nameOf(leader)} ${m.label}`
+  }
+  if (perspectiveId && leg.matches.some(m => m.a === perspectiveId || m.b === perspectiveId)) {
+    return leg.matches
+      .filter(m => m.a === perspectiveId || m.b === perspectiveId)
+      .map(m => fromSide(m, perspectiveId))
+      .join(' · ')
+  }
+  return leg.matches
+    .map(m => m.holesUp === 0
+      ? `${nameOf(m.a)} AS ${nameOf(m.b)}`
+      : `${nameOf(m.holesUp > 0 ? m.a : m.b)} ${m.label} v ${nameOf(m.holesUp > 0 ? m.b : m.a)}`)
+    .join(' · ')
+}
+
 // ─── Wolf ─────────────────────────────────────────────────────────────────────
 
 /** Which player is wolf on a given hole (1-based) */
@@ -1024,17 +1292,44 @@ export function wolfForHole(wolfOrder: string[], holeNumber: number): string {
 export interface WolfHoleResult {
   holeNumber: number
   wolfId: string
-  partnerId: string | null   // null = lone wolf
+  partnerId: string | null   // null = wolf alone (lone or blind)
   loneWolf: boolean
-  wolfTeamWon: boolean | null // null = tie or incomplete
+  /** Declared alone before any tee shot: 3× instead of 2×. */
+  blind: boolean
+  wolfTeamWon: boolean | null // null = tie, incomplete, or unresolved
   tied: boolean
+  /** Scores exist for this hole but no pick is recorded. Scores are kept; the
+   *  hole resolves normally once the pick is entered (Finding 4). */
+  unresolved: boolean
+  /** Units carried into this hole from halved holes (carryHalved on). */
+  carriedIn: number
+  /** Units at stake per opponent: (1 + carriedIn) × 1 / 2 (lone) / 3 (blind). */
+  units: number
 }
 
 export interface WolfResult {
   holeResults: WolfHoleResult[]
   netUnits: Record<string, number>  // playerId → net units (can be negative)
+  /** Holes with scores but no pick, in course order. */
+  unresolvedHoles: number[]
+  /** Units still carrying after the last decided hole (carryHalved on). */
+  carryPending: number
 }
 
+/**
+ * Wolf, hole by hole. Every branch here is defensive on purpose (Finding 3): a
+ * hole with scores but no pick, a pick naming a player no longer on the roster,
+ * an empty rotation, or a one-player roster must all produce a null result for
+ * that hole — never a throw, never a hang — because the same object feeds the
+ * scorecard header, the leaderboard, the rules modal's host and Settle Up.
+ *
+ * Holes come from the playable snapshot (so a back-nine round scores holes 10–18,
+ * not a phantom 1–9). Units: a decided, non-halved hole moves `units` from every
+ * loser to every winner, where units = (1 + carriedIn) × 1, × 2 for lone wolf,
+ * × 3 for blind wolf. With `carryHalved` on, a halved hole adds one unit to the
+ * next decided hole; off (the default and the legacy behaviour) a halved hole
+ * simply pushes.
+ */
 export function calculateWolf(
   players: Player[],
   holeScores: HoleScore[],
@@ -1044,23 +1339,49 @@ export function calculateWolf(
 ): WolfResult {
   const holeResults: WolfHoleResult[] = []
   const netUnits: Record<string, number> = {}
+  const unresolvedHoles: number[] = []
   players.forEach(p => (netUnits[p.id] = 0))
 
   const totalHoles = snapshot.holes.length
+  const rosterIds = new Set(players.map(p => p.id))
+  const wolfOrder = (config.wolfOrder ?? []).filter(id => rosterIds.has(id))
+  const carryHalved = config.carryHalved === true
+  let carry = 0
 
-  for (let holeNum = 1; holeNum <= totalHoles; holeNum++) {
-    const wolfId = wolfForHole(config.wolfOrder, holeNum)
+  const nullResult = (holeNumber: number, wolfId: string, partial: Partial<WolfHoleResult> = {}): WolfHoleResult => ({
+    holeNumber, wolfId, partnerId: null, loneWolf: false, blind: false,
+    wolfTeamWon: null, tied: false, unresolved: false, carriedIn: carry, units: 0, ...partial,
+  })
+
+  for (const hole of snapshot.holes) {
+    const holeNum = hole.number
+    const wolfId = wolfForHole(wolfOrder, holeNum)
     const decision = config.holeDecisions?.[holeNum]
+    const scored = holeScores.some(s => s.holeNumber === holeNum)
 
-    if (!decision) {
-      holeResults.push({ holeNumber: holeNum, wolfId, partnerId: null, loneWolf: false, wolfTeamWon: null, tied: false })
+    // No rotation (or nobody from it is still playing): nothing can resolve.
+    if (!wolfId || !rosterIds.has(wolfId)) {
+      holeResults.push(nullResult(holeNum, wolfId ?? ''))
       continue
     }
 
-    const { partnerId } = decision
-    const loneWolf = partnerId === null
-    const hole = snapshot.holes.find(h => h.number === holeNum)
-    if (!hole) continue
+    if (!decision) {
+      if (scored) unresolvedHoles.push(holeNum)
+      holeResults.push(nullResult(holeNum, wolfId, { unresolved: scored }))
+      continue
+    }
+
+    const partnerId = decision.partnerId ?? null
+    const alone = partnerId === null
+    const blind = alone && decision.blind === true
+    const others = players.filter(p => p.id !== wolfId)
+
+    // A one-player "round" has nobody to play against; a partner who left the
+    // roster leaves the wolf with no decidable team. Both are null holes.
+    if (others.length === 0 || (!alone && !rosterIds.has(partnerId!))) {
+      holeResults.push(nullResult(holeNum, wolfId, { partnerId, loneWolf: alone, blind }))
+      continue
+    }
 
     const getScore = (playerId: string): number | null => {
       const hs = holeScores.find(s => s.playerId === playerId && s.holeNumber === holeNum)
@@ -1070,58 +1391,40 @@ export function calculateWolf(
         : hs.grossScore
     }
 
-    const wolfScore = getScore(wolfId)
+    const wolfTeam = alone ? [wolfId] : [wolfId, partnerId!]
+    const otherTeam = others.filter(p => !wolfTeam.includes(p.id)).map(p => p.id)
+    const wolfTeamScores = wolfTeam.map(getScore)
+    const otherTeamScores = otherTeam.map(getScore)
+    const multiplier = blind ? 3 : alone ? 2 : 1
+    const units = (1 + carry) * multiplier
 
-    if (loneWolf) {
-      const others = players.filter(p => p.id !== wolfId)
-      const otherScores = others.map(p => getScore(p.id))
-      if (wolfScore === null || otherScores.some(s => s === null)) {
-        holeResults.push({ holeNumber: holeNum, wolfId, partnerId: null, loneWolf: true, wolfTeamWon: null, tied: false })
-        continue
-      }
-      const othersMin = Math.min(...(otherScores as number[]))
-      const wolfWon = wolfScore < othersMin
-      const tied = wolfScore === othersMin
-      holeResults.push({ holeNumber: holeNum, wolfId, partnerId: null, loneWolf: true, wolfTeamWon: tied ? null : wolfWon, tied })
-
-      if (!tied) {
-        const units = 2  // lone wolf = double value
-        if (wolfWon) {
-          netUnits[wolfId] += units * others.length
-          others.forEach(p => (netUnits[p.id] -= units))
-        } else {
-          netUnits[wolfId] -= units * others.length
-          others.forEach(p => (netUnits[p.id] += units))
-        }
-      }
-    } else {
-      const wolfTeam = [wolfId, partnerId]
-      const otherTeam = players.filter(p => !wolfTeam.includes(p.id)).map(p => p.id)
-      const wolfTeamScores = wolfTeam.map(getScore)
-      const otherTeamScores = otherTeam.map(getScore)
-
-      if (wolfTeamScores.some(s => s === null) || otherTeamScores.some(s => s === null)) {
-        holeResults.push({ holeNumber: holeNum, wolfId, partnerId, loneWolf: false, wolfTeamWon: null, tied: false })
-        continue
-      }
-
-      const wolfBest = Math.min(...(wolfTeamScores as number[]))
-      const otherBest = Math.min(...(otherTeamScores as number[]))
-      const wolfWon = wolfBest < otherBest
-      const tied = wolfBest === otherBest
-
-      holeResults.push({ holeNumber: holeNum, wolfId, partnerId, loneWolf: false, wolfTeamWon: tied ? null : wolfWon, tied })
-
-      if (!tied) {
-        const winners = wolfWon ? wolfTeam : otherTeam
-        const losers = wolfWon ? otherTeam : wolfTeam
-        winners.forEach(id => (netUnits[id] += losers.length))
-        losers.forEach(id => (netUnits[id] -= winners.length))
-      }
+    if (otherTeam.length === 0 || wolfTeamScores.some(s => s === null) || otherTeamScores.some(s => s === null)) {
+      holeResults.push(nullResult(holeNum, wolfId, { partnerId, loneWolf: alone, blind, units }))
+      continue
     }
+
+    const wolfBest = Math.min(...(wolfTeamScores as number[]))
+    const otherBest = Math.min(...(otherTeamScores as number[]))
+    const wolfWon = wolfBest < otherBest
+    const tied = wolfBest === otherBest
+
+    holeResults.push({
+      holeNumber: holeNum, wolfId, partnerId, loneWolf: alone, blind,
+      wolfTeamWon: tied ? null : wolfWon, tied, unresolved: false, carriedIn: carry, units,
+    })
+
+    if (tied) {
+      if (carryHalved) carry += 1
+      continue
+    }
+    const winners = wolfWon ? wolfTeam : otherTeam
+    const losers = wolfWon ? otherTeam : wolfTeam
+    winners.forEach(id => (netUnits[id] += units * losers.length))
+    losers.forEach(id => (netUnits[id] -= units * winners.length))
+    carry = 0
   }
 
-  return { holeResults, netUnits }
+  return { holeResults, netUnits, unresolvedHoles, carryPending: carry }
 }
 
 export function calculateWolfPayouts(
@@ -1593,7 +1896,7 @@ export function calculateDotsPayouts(
     .map(([playerId, net]) => ({
       playerId,
       amountCents: net,
-      reason: `Dots net winnings`,
+      reason: `Dots net result`,
     }))
 }
 
@@ -2064,7 +2367,7 @@ export function buildUnifiedSettlements(
     for (const [playerId, netCents] of Object.entries(junkResult.netCents)) {
       if (netCents > 0 && playerId !== treasurerId) {
         // Player won junk money → treasurer pays them
-        addFlow(treasurerId, playerId, netCents, 'Junk winnings', 'junk')
+        addFlow(treasurerId, playerId, netCents, 'Junk result', 'junk')
       } else if (netCents < 0 && playerId !== treasurerId) {
         // Player lost junk money → they owe treasurer
         addFlow(playerId, treasurerId, Math.abs(netCents), 'Junk losses', 'junk')
@@ -2075,7 +2378,7 @@ export function buildUnifiedSettlements(
 
   // Side bet settlements: direct player-to-player (not through treasurer)
   for (const sbs of sideBetSettlements) {
-    addFlow(sbs.fromId, sbs.toId, sbs.amountCents, `Side bet: ${sbs.description}`, 'side_bet')
+    addFlow(sbs.fromId, sbs.toId, sbs.amountCents, `Side game: ${sbs.description}`, 'side_bet')
   }
 
   // Prop settlements: direct player-to-player (like side bets)
@@ -2116,7 +2419,7 @@ export function buildUnifiedSettlements(
     const sourceCount = [hasGame, hasJunk, hasSideBet, hasProp].filter(Boolean).length
     if (sourceCount > 1) {
       const gameReasons = reasons.filter(r => r.source === 'game').map(r => r.reason).join(', ')
-      const parts = [gameReasons, hasJunk ? 'junk' : '', hasSideBet ? 'side bets' : '', hasProp ? 'props' : ''].filter(Boolean)
+      const parts = [gameReasons, hasJunk ? 'junk' : '', hasSideBet ? 'side games' : '', hasProp ? 'props' : ''].filter(Boolean)
       reason = `${parts.join(' + ')} (netted)`
     } else if (net !== forward && net !== -reverse) {
       // Partial netting happened
