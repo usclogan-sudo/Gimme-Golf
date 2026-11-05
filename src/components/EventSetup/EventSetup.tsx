@@ -6,6 +6,7 @@ import { reportSupabaseError } from '../../lib/sentry'
 // Events store buy-in in cents (money mode); fmtAmount with no stakesMode
 // converts cents -> points for display (1 pt = $1), so no $ surfaces.
 import { fmtAmount, fmtHandicap, computeCourseHandicap } from '../../lib/gameLogic'
+import { findPlayerByName } from '../../lib/players'
 import { autoAssignGroups, randomAssignGroups, fillMissingGroups, autoAssignShotgunStarts, MAX_PER_GROUP } from '../../lib/eventUtils'
 import type { GroupMode } from '../../lib/eventUtils'
 import { parseDollarsToCents } from '../../lib/money'
@@ -193,6 +194,14 @@ export function EventSetup({ userId, onStart, onCancel, onAddCourse }: Props) {
 
   const quickAddPlayer = () => {
     if (!quickAddName.trim()) return
+    // Same name as someone already on the list: select them rather than making a
+    // second one (Finding 2). The round wizard asks; here the list is right there.
+    const existing = findPlayerByName(quickAddName, availablePlayers)
+    if (existing) {
+      setSelectedPlayers(prev => prev.some(p => p.id === existing.id) ? prev : [...prev, existing])
+      setQuickAddName('')
+      return
+    }
     const newPlayer: Player = {
       id: uuidv4(),
       name: quickAddName.trim(),

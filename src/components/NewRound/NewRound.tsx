@@ -5,6 +5,7 @@ import { safeWrite } from '../../lib/safeWrite'
 import { reportSupabaseError } from '../../lib/sentry'
 import { SHOW_HOLE_BETS, SHOW_EXTRA_GAMES, SHOW_DOTS, SHOW_BEST_BALL_STROKE_PLAY } from '../../lib/featureFlags'
 import { fmtMoney, fmtAmount, fmtHandicap, JUNK_LABELS, DOT_LABELS, computeCourseHandicap } from '../../lib/gameLogic'
+import { findPlayerByName } from '../../lib/players'
 import { parseDollarsToCents, parsePointsValue } from '../../lib/money'
 import { venturaCourses } from '../../data/venturaCourses'
 import { NearMeCourses } from '../NearMeCourses/NearMeCourses'
@@ -371,7 +372,7 @@ function CoursePicker({
 
 // ─── Step 2: Player Picker ────────────────────────────────────────────────────
 
-function PlayerPicker({
+export function PlayerPicker({
   userId,
   course,
   onNext,
@@ -404,6 +405,9 @@ function PlayerPicker({
   const [newTee, setNewTee] = useState(course.tees[0]?.name ?? 'White')
   const [addError, setAddError] = useState('')
   const [saving, setSaving] = useState(false)
+  // A player already on the list with the same name as the guest being added.
+  // Surfaced as a soft check: select them instead, or add anyway (Finding 2).
+  const [dupMatch, setDupMatch] = useState<Player | null>(null)
   // "Invite to join" chooser sheet — explains the self-scoring path and directs to
   // the in-round invite (the live share link/QR need the round to exist; that's a
   // documented follow-up requiring the invite code to thread into round creation).
@@ -510,10 +514,19 @@ function PlayerPicker({
     ? allPlayers.filter(p => p.name.toLowerCase().includes(query.toLowerCase())).sort(byName)
     : allPlayers
 
-  // Tier the players for non-search display; sort within each tier so 16+ rosters scan cleanly.
+  // Tier the players for non-search display; sort within each tier so 16+ rosters
+  // scan cleanly. Selected players are pinned at the top, whatever tier they came
+  // from — a guest added a second ago must not vanish into the collapsed "all
+  // players" list the moment it is created (Finding 2). You come first.
   const me = allPlayers.find(p => p.id === userId)
-  const friends = allPlayers.filter(p => p.id !== userId && recentFriendIds.has(p.id)).sort(byName).slice(0, 10)
-  const others = allPlayers.filter(p => p.id !== userId && !recentFriendIds.has(p.id)).sort(byName)
+  const selectedPlayers = allPlayers
+    .filter(p => selectedIds.has(p.id))
+    .sort((a, b) => (a.id === userId ? -1 : b.id === userId ? 1 : byName(a, b)))
+  const unselected = (p: Player) => p.id !== userId && !selectedIds.has(p.id)
+  const friends = allPlayers.filter(p => unselected(p) && recentFriendIds.has(p.id)).sort(byName).slice(0, 10)
+  const friendIdsShown = new Set(friends.map(p => p.id))
+  // Everyone else — including friends past the tenth, who used to render nowhere.
+  const others = allPlayers.filter(p => unselected(p) && !friendIdsShown.has(p.id)).sort(byName)
 
   const toggle = (id: string) => {
     setSelectedIds(prev => {
@@ -532,10 +545,16 @@ function PlayerPicker({
     })
   }
 
-  const handleAddPlayer = async () => {
+  const handleAddPlayer = async (opts: { force?: boolean } = {}) => {
     if (!newName.trim()) { setAddError('Name is required'); return }
     const hcp = newHcp.trim() === '' ? 0 : parseFloat(newHcp)
     if (isNaN(hcp) || hcp < -10 || hcp > 54) { setAddError('Handicap must be between -10 and 54'); return }
+    // Same name as someone already here? Ask before making a second one.
+    if (!opts.force) {
+      const match = findPlayerByName(newName, allPlayers)
+      if (match) { setDupMatch(match); setAddError(''); return }
+    }
+    setDupMatch(null)
     setSaving(true)
     try {
       const newPlayer: Player = { id: uuidv4(), name: newName.trim(), handicapIndex: hcp, tee: newTee, ghinNumber: '', createdAt: new Date() }
@@ -601,16 +620,46 @@ function PlayerPicker({
               ))}
             </select>
             {addError && <p className="text-red-500 text-sm">{addError}</p>}
+            {dupMatch && (() => {
+              // The name as typed, in both places — never a lowercased or
+              // normalised version of it.
+              const typed = newName.trim()
+              return (
+              <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl px-3 py-2.5 space-y-2">
+                <p className="text-sm text-amber-900 dark:text-amber-200">
+                  A player named <span className="font-semibold">{typed}</span> is already here. Select them, or add a new {typed} anyway.
+                </p>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => {
+                      if (!selectedIds.has(dupMatch.id)) toggle(dupMatch.id)
+                      setDupMatch(null); setShowAddForm(false); setNewName(''); setNewHcp(''); setAddError('')
+                    }}
+                    className="flex-1 h-10 bg-gray-800 text-white dark:bg-brass dark:text-navy rounded-xl text-sm font-semibold"
+                  >
+                    Select {typed}
+                  </button>
+                  <button
+                    onClick={() => { void handleAddPlayer({ force: true }) }}
+                    disabled={saving}
+                    className="flex-1 h-10 border border-gray-300 dark:border-gray-600 rounded-xl text-sm font-semibold text-gray-700 dark:text-gray-200 disabled:opacity-60"
+                  >
+                    Add anyway
+                  </button>
+                </div>
+              </div>
+              )
+            })()}
             <div className="flex gap-2">
               <button
-                onClick={() => { setShowAddForm(false); setNewName(''); setNewHcp(''); setAddError('') }}
+                onClick={() => { setShowAddForm(false); setNewName(''); setNewHcp(''); setAddError(''); setDupMatch(null) }}
                 className="flex-1 h-11 border border-gray-300 rounded-xl text-gray-600 font-semibold"
               >
                 Cancel
               </button>
               <button
-                onClick={handleAddPlayer}
-                disabled={saving}
+                onClick={() => { void handleAddPlayer() }}
+                disabled={saving || !!dupMatch}
                 className="flex-1 h-11 bg-gray-800 text-white dark:bg-brass dark:text-navy rounded-xl font-semibold disabled:opacity-60"
               >
                 {saving ? 'Saving…' : 'Add'}
@@ -621,7 +670,15 @@ function PlayerPicker({
           <div className="grid grid-cols-2 gap-2">
             {/* Two explicit intents for adding a new person (the core reframe). */}
             <button
-              onClick={() => setShowAddForm(true)}
+              onClick={() => {
+                // A guest plays from the organiser's tee by default — the tee you are
+                // on, not the first one on the card. Falls back to the first tee only
+                // if yours is not on this course.
+                const mine = playerTees[userId] ?? me?.tee
+                const onCourse = mine && course.tees.some(t => t.name === mine) ? mine : course.tees[0]?.name ?? 'White'
+                setNewTee(onCourse)
+                setShowAddForm(true)
+              }}
               disabled={selectedIds.size >= MAX_PLAYERS}
               className="py-3 px-3 border-2 border-dashed border-amber-300 text-left rounded-2xl active:bg-amber-50 disabled:opacity-40"
             >
@@ -741,19 +798,38 @@ function PlayerPicker({
           }
 
           if (isSearching) {
-            // Flat search results
-            return filtered.length > 0 ? (
-              <div className="space-y-2">{filtered.map(p => renderPlayerCard(p))}</div>
-            ) : (
-              <p className="text-center text-gray-400 py-8">No players match "{query}"</p>
+            // Search never hides a selected row: the pinned tier stays, and the
+            // results below it are only the players not yet in the round.
+            const results = filtered.filter(p => !selectedIds.has(p.id))
+            return (
+              <div className="space-y-4">
+                {selectedPlayers.length > 0 && (
+                  <div className="space-y-2">
+                    <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide px-1">In this round</p>
+                    {selectedPlayers.map(p => renderPlayerCard(p, p.id === userId ? 'You' : undefined))}
+                  </div>
+                )}
+                {results.length > 0 ? (
+                  <div className="space-y-2">{results.map(p => renderPlayerCard(p))}</div>
+                ) : (
+                  <p className="text-center text-gray-400 py-8">No players match "{query}"</p>
+                )}
+              </div>
             )
           }
 
           // Tiered display
           return (
             <div className="space-y-4">
-              {/* Tier 1: You */}
-              {me && (
+              {/* Tier 1: everyone in this round, pinned — you first. */}
+              {selectedPlayers.length > 0 && (
+                <div className="space-y-2">
+                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide px-1">In this round</p>
+                  {selectedPlayers.map(p => renderPlayerCard(p, p.id === userId ? 'You' : undefined))}
+                </div>
+              )}
+              {/* You, when not selected, still sit above everyone else. */}
+              {me && !selectedIds.has(me.id) && (
                 <div className="space-y-2">
                   {renderPlayerCard(me, 'You')}
                 </div>
