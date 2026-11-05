@@ -4,6 +4,7 @@ import { supabase, rowToCourse, rowToRound, rowToHoleScore, fetchOrCreateProfile
 import { useNotifications } from './hooks/useNotifications'
 import { flush as flushOfflineQueue, getPending as getOfflinePending } from './lib/offlineQueue'
 import { safeWrite } from './lib/safeWrite'
+import { finalizeRound } from './lib/finalizeRound'
 import { setSentryUser, clearSentryUser } from './lib/sentry'
 import { checkAppVersion } from './lib/appVersion'
 import { SHOW_PROP_BETS } from './lib/featureFlags'
@@ -1328,12 +1329,10 @@ export default function App() {
   const handleEndRound = async (roundId: string) => {
     const [hsRes, roundRes] = await Promise.all([
       supabase.from('hole_scores').select('player_id, hole_number').eq('round_id', roundId),
-      supabase.from('rounds').select('players, course_snapshot, treasurer_player_id, game').eq('id', roundId).single(),
+      supabase.from('rounds').select('players, course_snapshot').eq('id', roundId).single(),
     ])
     const playerCount = (roundRes.data?.players as any[])?.length ?? 0
     const totalHoles = (roundRes.data?.course_snapshot as any)?.holes?.length ?? 18
-    const hasTreasurer = !!(roundRes.data?.treasurer_player_id)
-    const buyInCents = (roundRes.data?.game as any)?.buyInCents ?? 0
     const scores = hsRes.data ?? []
     const holesComplete = Array.from({ length: totalHoles }, (_, i) => i + 1)
       .filter(n => {
@@ -1341,26 +1340,25 @@ export default function App() {
         return scoredPlayers.size >= playerCount
       }).length
     const missing = totalHoles - holesComplete
-    const hasSettlements = hasTreasurer && buyInCents > 0
     const msg = missing > 0
-      ? `${holesComplete} of ${totalHoles} holes scored (${missing} incomplete).${hasSettlements ? ' You can view results in Settle Up.' : ''}`
-      : `All ${totalHoles} holes scored.${hasSettlements ? ' View results in Settle Up.' : ''}`
+      ? `${holesComplete} of ${totalHoles} holes scored (${missing} incomplete). You can still view results in Settle Up.`
+      : `All ${totalHoles} holes scored. View results in Settle Up.`
     setAppConfirmModal({
       title: 'End Round?',
       message: msg,
       onConfirm: async () => {
         setAppConfirmModal(null)
-        const { error } = await supabase.from('rounds').update({ status: 'complete' }).eq('id', roundId)
+        const { error } = await finalizeRound(roundId)
         if (error) {
           setAppConfirmModal({ title: 'Error', message: 'Failed to end round. Check your connection and try again.' , onConfirm: () => setAppConfirmModal(null) })
           return
         }
+        // Always land on SettleUp — same as the in-round End Round. Its mount is
+        // what writes the settlement rows that give the round a result in history;
+        // the old "only if treasurer && buy-in" gate skipped that for every points
+        // round and most per-unit rounds, and those rounds came out result-less.
         setActiveRoundId(roundId)
-        if (hasSettlements) {
-          setScreen('settle-up')
-        } else {
-          goHome()
-        }
+        setScreen('settle-up')
       },
     })
   }

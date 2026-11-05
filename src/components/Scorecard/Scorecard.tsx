@@ -5,6 +5,7 @@ import { useUnsavedChangesPrompt } from '../../hooks/useUnsavedChangesPrompt'
 import { enqueue, flush, getPending } from '../../lib/offlineQueue'
 import { supabase, rowToRound, rowToRoundPlayer, rowToHoleScore, rowToBuyIn, rowToBBBPoint, rowToJunkRecord, rowToSideBet, rowToRoundParticipant, rowToEvent, rowToEventParticipant, rowToUserProfile, holeScoreToRow, bbbPointToRow, junkRecordToRow, sideBetToRow, rowToPropBet, propBetToRow, rowToPropWager, propWagerToRow, generateInviteCode } from '../../lib/supabase'
 import { safeWrite } from '../../lib/safeWrite'
+import { finalizeRound } from '../../lib/finalizeRound'
 import { computeScorecardPermissions } from '../../lib/permissions'
 import { getScoringStance } from '../../lib/scoringStance'
 import { parseDollarsToCents } from '../../lib/money'
@@ -923,7 +924,7 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
       onConfirm: async () => {
         setConfirmModal(null)
         setRound(prev => prev ? { ...prev, status: 'complete' } : prev)
-        safeWrite(supabase.from('rounds').update({ status: 'complete' }).eq('id', roundId), 'end round')
+        safeWrite(finalizeRound(roundId), 'end round')
         onEndRound()
       },
     })

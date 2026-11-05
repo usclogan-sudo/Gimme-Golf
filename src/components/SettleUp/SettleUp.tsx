@@ -957,7 +957,7 @@ export function SettleUp({ roundId, userId, eventId, onDone, onContinue }: Props
       return `at ${fmtAmount(game.buyInCents, game.stakesMode)} per unit`
     }
     if (game.buyInCents > 0) {
-      return `pot of ${fmtAmount(game.buyInCents * players.length, game.stakesMode)}`
+      return `${fmtAmount(game.buyInCents * players.length, game.stakesMode)} in play`
     }
     return undefined
   })()
