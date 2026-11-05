@@ -1,4 +1,4 @@
-import type { Player, CourseSnapshot, HoleScore, SkinsConfig, StablefordConfig, JunkConfig, JunkRecord, SideBet, Game, RoundPlayer, VegasConfig, BBBConfig, QuotaConfig } from '../../types'
+import type { Player, CourseSnapshot, HoleScore, SkinsConfig, StablefordConfig, JunkConfig, JunkRecord, SideBet, Game, RoundPlayer, VegasConfig, BBBConfig, QuotaConfig, NassauConfig } from '../../types'
 
 import {
   calcCourseHandicap,
@@ -18,6 +18,12 @@ import {
   calculateNassau,
   calculateNassauPayouts,
   nassauLive,
+  calculateNassauMatch,
+  nassauMatchNet,
+  nassauMatchLegValues,
+  nassauMatchLabel,
+  nassauMatchLegStatus,
+  isMatchNassau,
   buildDirectSettlements,
   buildSettlements,
   buildUnifiedSettlements,
@@ -503,6 +509,170 @@ describe('nassauLive', () => {
     expect(live.front.leaderId).toBe('p1')
     expect(live.front.margin).toBe(2)
     expect(live.back.started).toBe(false) // no back holes yet
+  })
+})
+
+// ─── Nassau as match play (Finding 6) ───────────────────────────────────────
+
+describe('Nassau match play', () => {
+  const two = [players[0], players[1]] // Alice p1, Bob p2
+  const matchCfg: NassauConfig = { mode: 'gross', scoring: 'match' }
+  const hcps = { p1: 0, p2: 0, p3: 0 }
+  const BUY = 2500
+
+  /** Alice vs Bob: give Alice `aliceWins` as a map hole → strokes better (negative = worse). */
+  const holes = (diffs: Record<number, number>, through = 18): HoleScore[] => {
+    const out: HoleScore[] = []
+    for (let h = 1; h <= through; h++) {
+      const d = diffs[h] ?? 0
+      out.push(hs('p1', h, 4 - Math.max(d, 0)))
+      out.push(hs('p2', h, 4 - Math.max(-d, 0)))
+    }
+    return out
+  }
+
+  it('legacy gate: scoring absent is stroke play, scoring=match is match play', () => {
+    expect(isMatchNassau({ mode: 'gross' })).toBe(false)
+    expect(isMatchNassau({ mode: 'gross', scoring: 'stroke' })).toBe(false)
+    expect(isMatchNassau(matchCfg)).toBe(true)
+  })
+
+  it('leg values: front and back take a third, the total leg takes the remainder', () => {
+    expect(nassauMatchLegValues(2500)).toEqual({ front: 833, back: 833, total: 834 })
+    expect(nassauMatchLegValues(10)).toEqual({ front: 3, back: 3, total: 4 })
+    expect(nassauMatchLegValues(9)).toEqual({ front: 3, back: 3, total: 3 })
+  })
+
+  it('counts holes up, not strokes: wins by 1, 1 and 3 strokes read 3 UP (the bug was +5)', () => {
+    const r = calculateNassauMatch(two, holes({ 1: 1, 2: 1, 3: 3 }, 3), snapshot, matchCfg, hcps, BUY)
+    const m = r.front.matches[0]
+    expect(m.holesUp).toBe(3)
+    expect(m.holesPlayed).toBe(3)
+    expect(m.label).toBe('3 UP')
+    expect(m.result).toBeNull() // still open with 6 to play
+    expect(nassauMatchLegStatus(r.front, id => id === 'p1' ? 'Sam' : 'Pat')).toBe('Sam 3 UP')
+    expect(nassauMatchLegStatus(r.front, id => id === 'p1' ? 'Sam' : 'Pat')).not.toContain('+5')
+  })
+
+  it('a leg closes when a player is up by more holes than remain, and later holes do not touch it', () => {
+    // Alice wins 1–5 (5 up with 4 to play → closed 5&4), then Bob wins 6–9.
+    const r = calculateNassauMatch(
+      two, holes({ 1: 1, 2: 1, 3: 1, 4: 1, 5: 1, 6: -1, 7: -1, 8: -1, 9: -1 }, 9),
+      snapshot, matchCfg, hcps, BUY)
+    const m = r.front.matches[0]
+    expect(m.closed).toBe(true)
+    expect(m.closedAtHole).toBe(5)
+    expect(m.label).toBe('5&4')
+    expect(m.result).toBe('a')
+    expect(m.holesUp).toBe(5) // Bob's late run is not counted
+    expect(r.front.complete).toBe(true)
+  })
+
+  it('level after the last hole halves the leg and moves nothing', () => {
+    const r = calculateNassauMatch(two, holes({ 1: 1, 2: -1 }, 9), snapshot, matchCfg, hcps, BUY)
+    expect(r.front.matches[0].result).toBe('halved')
+    expect(r.front.matches[0].label).toBe('AS')
+    expect(nassauMatchNet(r, two)).toEqual({ p1: 0, p2: 0 })
+  })
+
+  it('a match won on the last hole reads N UP, not N&0', () => {
+    const r = calculateNassauMatch(two, holes({ 9: 1 }, 9), snapshot, matchCfg, hcps, BUY)
+    expect(r.front.matches[0].label).toBe('1 UP')
+    expect(r.front.matches[0].result).toBe('a')
+    expect(nassauMatchLabel(2, 0, false)).toBe('2 UP')
+    expect(nassauMatchLabel(3, 2, true)).toBe('3&2')
+    expect(nassauMatchLabel(0, 4, false)).toBe('AS')
+  })
+
+  it('settles each decided leg at its value, loser to winner, and is zero-sum', () => {
+    // Alice wins every hole: front, back and total all hers.
+    const all: Record<number, number> = {}
+    for (let h = 1; h <= 18; h++) all[h] = 1
+    const r = calculateNassauMatch(two, holes(all), snapshot, matchCfg, hcps, BUY)
+    const net = nassauMatchNet(r, two)
+    expect(net.p1).toBe(2500)
+    expect(net.p2).toBe(-2500)
+    expect(net.p1 + net.p2).toBe(0)
+  })
+
+  it('an open leg (round ended early) settles as nothing', () => {
+    const r = calculateNassauMatch(two, holes({ 1: 1, 2: 1 }, 4), snapshot, matchCfg, hcps, BUY)
+    expect(r.front.started).toBe(true)
+    expect(r.front.complete).toBe(false)
+    expect(r.back.started).toBe(false)
+    expect(nassauMatchNet(r, two)).toEqual({ p1: 0, p2: 0 })
+  })
+
+  it('scores net using the strokes already allocated to the round', () => {
+    // Bob gets a stroke on SI 1 (hole 1). Gross tie there is a net win for Bob.
+    const netCfg: NassauConfig = { mode: 'net', scoring: 'match' }
+    const r = calculateNassauMatch(two, holes({}, 1), snapshot, netCfg, { p1: 0, p2: 1 }, BUY)
+    expect(r.front.matches[0].holesUp).toBe(-1)
+    expect(nassauMatchLegStatus(r.front, id => id === 'p1' ? 'Alice' : 'Bob')).toBe('Bob 1 UP')
+  })
+
+  it('with three players, everyone plays everyone and the net is zero-sum', () => {
+    const scores: HoleScore[] = []
+    for (let h = 1; h <= 18; h++) {
+      scores.push(hs('p1', h, 3)); scores.push(hs('p2', h, 4)); scores.push(hs('p3', h, 5))
+    }
+    const r = calculateNassauMatch(players, scores, snapshot, matchCfg, hcps, BUY)
+    expect(r.front.matches).toHaveLength(3)
+    const net = nassauMatchNet(r, players)
+    expect(net.p1).toBe(2 * 2500)   // beat both on all three legs
+    expect(net.p2).toBe(0)          // lost to Alice, beat Carol
+    expect(net.p3).toBe(-2 * 2500)
+    expect(net.p1 + net.p2 + net.p3).toBe(0)
+    // From Bob's side: down to Alice, up on Carol.
+    expect(nassauMatchLegStatus(r.front, id => id, 'p2')).toBe('5&4 DN · 5&4')
+  })
+
+  it('a press opens a new match from the start hole to the end of that nine, at the leg value, and records who pressed', () => {
+    // Bob wins 1–3; Alice presses on 3 (match starts on 4); Alice wins 4–9.
+    const cfg: NassauConfig = {
+      mode: 'gross', scoring: 'match',
+      matchPresses: [{ id: 'pr1', playerId: 'p1', leg: 'front', startHole: 4, pressedAtHole: 3 }],
+    }
+    const r = calculateNassauMatch(
+      two, holes({ 1: -1, 2: -1, 3: -1, 4: 1, 5: 1, 6: 1, 7: 1, 8: 1, 9: 1 }, 9),
+      snapshot, cfg, hcps, BUY)
+    expect(r.presses).toHaveLength(1)
+    const press = r.presses[0]
+    expect(press.press.playerId).toBe('p1')
+    expect(press.press.leg).toBe('front')
+    expect(press.press.startHole).toBe(4)
+    expect(press.holeRange).toBe('4–9')
+    expect(press.valueCents).toBe(833)
+    // Press match: Alice 4 up after 7 with 2 to play → 4&2.
+    expect(press.matches[0].label).toBe('4&2')
+    expect(press.matches[0].result).toBe('a')
+    // Front leg itself: Bob 3 up after 3; Alice wins 4–7 to go 1 up, 8 to go 2 up
+    // with one to play → closed 2&1 on the 8th. The 9th does not count.
+    expect(r.front.matches[0].label).toBe('2&1')
+    expect(r.front.matches[0].closedAtHole).toBe(8)
+    expect(r.front.matches[0].result).toBe('a')
+    const net = nassauMatchNet(r, two)
+    expect(net.p1).toBe(833 + 833)
+    expect(net.p2).toBe(-(833 + 833))
+  })
+
+  it('ignores a press from a player not on the roster or starting outside its nine', () => {
+    const cfg: NassauConfig = {
+      mode: 'gross', scoring: 'match',
+      matchPresses: [
+        { id: 'x', playerId: 'ghost', leg: 'front', startHole: 4, pressedAtHole: 3 },
+        { id: 'y', playerId: 'p1', leg: 'front', startHole: 12, pressedAtHole: 11 },
+      ],
+    }
+    const r = calculateNassauMatch(two, holes({ 1: 1 }, 9), snapshot, cfg, hcps, BUY)
+    expect(r.presses).toHaveLength(0)
+  })
+
+  it('legacy rounds still score lowest total strokes', () => {
+    // Same scores that read 3 UP in match play read +5 strokes on the old engine.
+    const legacy: NassauConfig = { mode: 'gross' }
+    const live = nassauLive(two, holes({ 1: 1, 2: 1, 3: 3 }, 3), snapshot, legacy, hcps)
+    expect(live.front.margin).toBe(5)
   })
 })
 
@@ -1174,18 +1344,89 @@ describe('pointsVsAverageNet — the default', () => {
   })
 })
 
-describe('pointsHeadToHeadNet — the labelled alternative', () => {
+describe('pointsHeadToHeadNet — pairwise, what "per point" means (Finding 7)', () => {
   it('is zero-sum and integer-exact', () => {
     const net = pointsHeadToHeadNet({ p1: 38, p2: 36, p3: 34, p4: 30 }, four, 100)
     expect(sum(net)).toBe(0)
     expect(net.p1).toBe(100 * (4 * 38 - 138))
   })
 
-  it('is N times the vs-average stake, which is why it needs its own label', () => {
-    const pts = { p1: 18, p2: 12, p3: 11, p4: 9 }
-    const avg = pointsVsAverageNet(pts, four, 100)
-    const h2h = pointsHeadToHeadNet(pts, four, 100)
-    expect(h2h.p1).toBe(avg.p1 * 4)
+  it('6 / 4 / 3 at one token a point is +5 / −1 / −4', () => {
+    const net = pointsHeadToHeadNet({ p1: 6, p2: 4, p3: 3 }, players, 1)
+    expect(net).toEqual({ p1: 5, p2: -1, p3: -4 })
+    expect(sum(net)).toBe(0)
+  })
+
+  it('is N times the vs-average figure (the old basis paid +2 / E / −2 for the same round)', () => {
+    const pts = { p1: 6, p2: 4, p3: 3 }
+    const avg = pointsVsAverageNet(pts, players, 1)
+    const h2h = pointsHeadToHeadNet(pts, players, 1)
+    expect(avg).toEqual({ p1: 2, p2: 0, p3: -2 })
+    expect(h2h.p1).toBe(5)
+  })
+
+  it('whole tokens only: a fractional value floors each net and hands the remainder to the lowest-placed player', () => {
+    // exact: 2.5 / −0.5 / −2 → floors 2 / −1 / −2 (sum −1) → the 1 goes to p3.
+    const net = pointsHeadToHeadNet({ p1: 6, p2: 4, p3: 3 }, players, 0.5)
+    expect(net).toEqual({ p1: 2, p2: -1, p3: -1 })
+    expect(sum(net)).toBe(0)
+    expect(Object.values(net).every(Number.isInteger)).toBe(true)
+  })
+
+  it('pays nothing when everyone ties', () => {
+    expect(Object.values(pointsHeadToHeadNet({ p1: 9, p2: 9, p3: 9 }, players, 1))).toEqual([0, 0, 0])
+  })
+})
+
+describe('perPointNet — basis gate (Finding 7)', () => {
+  const stableford = { points: { p1: 6, p2: 4, p3: 3 }, holePoints: {}, winner: 'p1' }
+
+  it('head_to_head settles Stableford pairwise: 6 / 4 / 3 at 1 per point → +5 / −1 / −4', () => {
+    const game: Game = {
+      id: 'g1', type: 'stableford', buyInCents: 1, stakesMode: 'points',
+      config: { mode: 'net', payModel: 'per_point', valueCentsPerPoint: 1, perPointBasis: 'head_to_head' } as StablefordConfig,
+    }
+    expect(perPointNet(game, players, { stableford })).toEqual({ p1: 5, p2: -1, p3: -4 })
+  })
+
+  it('legacy gate: a stored per-point round with no basis still settles against the average (+2 / E / −2)', () => {
+    const game: Game = {
+      id: 'g1', type: 'stableford', buyInCents: 1, stakesMode: 'points',
+      config: { mode: 'net', payModel: 'per_point', valueCentsPerPoint: 1 } as StablefordConfig,
+    }
+    expect(perPointNet(game, players, { stableford })).toEqual({ p1: 2, p2: 0, p3: -2 })
+  })
+
+  it('an explicit vs_average basis is honoured too', () => {
+    const game: Game = {
+      id: 'g1', type: 'stableford', buyInCents: 1, stakesMode: 'points',
+      config: { mode: 'net', payModel: 'per_point', valueCentsPerPoint: 1, perPointBasis: 'vs_average' } as StablefordConfig,
+    }
+    expect(perPointNet(game, players, { stableford })).toEqual({ p1: 2, p2: 0, p3: -2 })
+  })
+
+  it('the same basis applies to BBB and Quota, which share the per-point setup control', () => {
+    const bbbGame: Game = {
+      id: 'g1', type: 'bingo_bango_bongo', buyInCents: 1,
+      config: { mode: 'gross', payModel: 'per_point', valueCentsPerPoint: 1, perPointBasis: 'head_to_head' } as BBBConfig,
+    }
+    expect(perPointNet(bbbGame, players, { bbb: { pointsWon: { p1: 6, p2: 4, p3: 3 }, totalPoints: 13, unknownPlayerIds: [] } }))
+      .toEqual({ p1: 5, p2: -1, p3: -4 })
+    const quotaGame: Game = {
+      id: 'g2', type: 'quota', buyInCents: 1,
+      config: { mode: 'net', quotas: {}, payModel: 'per_point', valueCentsPerPoint: 1, perPointBasis: 'head_to_head' } as QuotaConfig,
+    }
+    expect(perPointNet(quotaGame, players, {
+      quota: { stablefordPoints: {}, quotas: {}, netPoints: { p1: 6, p2: 4, p3: 3 }, winner: 'p1' },
+    })).toEqual({ p1: 5, p2: -1, p3: -4 })
+  })
+
+  it('pot stays the capped alternative: payModel pot ignores the basis entirely', () => {
+    const game: Game = {
+      id: 'g1', type: 'stableford', buyInCents: 100,
+      config: { mode: 'net', payModel: 'pot', perPointBasis: 'head_to_head' } as StablefordConfig,
+    }
+    expect(perPointNet(game, players, { stableford })).toBeNull()
   })
 })
 

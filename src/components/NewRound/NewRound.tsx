@@ -984,16 +984,16 @@ const POINTS_FORMATS: GameType[] = ['bingo_bango_bongo', 'stableford', 'vegas', 
  */
 const POINTS_RANGE_HINT: Partial<Record<GameType, string>> = {
   bingo_bango_bongo:
-    '54 points in a full round — about 13 each in a foursome. At 1 per point, expect to finish within about ±5.',
+    '54 points in a full round — about 13 each in a foursome. At 1 per point you settle with each of the others, so a 5-point lead over the field is about +15 in a foursome.',
   stableford:
-    'Stableford rounds usually spread 6–10 points between first and last. At 1 per point, expect ±3 to ±6.',
+    'Stableford rounds usually spread 6–10 points between first and last. At 1 per point you settle with each other player, so in a foursome expect roughly ±10 to ±20.',
   vegas:
     'Vegas totals run high — 50 to 200 points is common, and one blow-up hole can add 30. Most groups use 0.1 to 0.25 a point.',
   quota:
-    'Quota nets usually land within ±8 of target. At 1 per point, expect ±3 to ±8.',
+    'Quota nets usually land within ±8 of target. At 1 per point you settle with each other player, so in a foursome expect roughly ±10 to ±20.',
 }
 
-function GameSetup({
+export function GameSetup({
   players,
   initialStakesMode,
   scorerId,
@@ -1249,6 +1249,10 @@ function GameSetup({
     valueCentsPerPoint: stakesMode === 'points'
       ? Math.max(1, parsePointsValue(pointsValue))
       : Math.max(1, parseDollarsToCents(pointsValue)),
+    // Per point means pairwise: each player settles with every other player at the
+    // value × the difference in points. A stored round without this field keeps
+    // settling against the field average, as it did (Finding 7).
+    perPointBasis: 'head_to_head' as const,
   }
 
   const makeGame = (): Game => {
@@ -1262,7 +1266,9 @@ function GameSetup({
       return { id, type: 'best_ball', buyInCents, stakesMode, config }
     }
     if (type === 'nassau') {
-      const config: NassauConfig = { mode: 'net' }
+      // New rounds are match play (holes up); a stored round without `scoring`
+      // stays on the legacy lowest-total-strokes engine so history does not move.
+      const config: NassauConfig = { mode: 'net', scoring: 'match' }
       return { id, type: 'nassau', buyInCents, stakesMode, config }
     }
     if (type === 'wolf') {
@@ -1665,7 +1671,7 @@ function GameSetup({
                 <div className="space-y-2">
                   {([
                     { v: 'per_point' as PointsPayModel, label: 'Per point',
-                      hint: 'Standard. Swings match the play.' },
+                      hint: 'Standard. You settle with each other player: the difference in your points, times the value.' },
                     { v: 'pot' as PointsPayModel, label: 'Split a pot',
                       hint: `Everyone puts in ${fmtAmount(buyInCents, stakesMode)}. Nobody can lose more than that.` },
                   ]).map(opt => (
@@ -1744,9 +1750,23 @@ function GameSetup({
 
           {type === 'nassau' && stakesMode !== 'points' && (
             <p className="text-xs text-gray-500">
-              = {fmtMoney(Math.floor(buyInCents / 3))} per leg × 3 legs (Front 9, Back 9, Total)
+              = {fmtMoney(Math.floor(buyInCents / 3))} a leg × 3 legs (front, back, full round), settled with each other player
             </p>
           )}
+          {/* Exposure, stated plainly. A match-play Nassau is settled with each
+              opponent, so in a group the worst case is the entry once per opponent —
+              the figure to know before the first tee, not after. */}
+          {type === 'nassau' && (() => {
+            const opponents = Math.max(players.length - 1, 1)
+            const unit = stakesMode === 'points' ? buyInCents : Math.round(buyInCents / 100)
+            return (
+              <p className="text-sm text-gray-600 dark:text-gray-300">
+                {opponents <= 1
+                  ? `Most you can lose: ${fmtAmount(buyInCents, stakesMode)}.`
+                  : `Most you can lose: ${fmtAmount(buyInCents * opponents, stakesMode)}, ${unit} to each opponent.`}
+              </p>
+            )
+          })()}
         </section>
 
         {/* Best Ball Options */}
@@ -1807,10 +1827,11 @@ function GameSetup({
           <section className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm p-4 space-y-3">
             <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Nassau Options</p>
             <div className="bg-teal-50 rounded-xl p-3 text-sm text-teal-700 space-y-1">
-              <p className="font-semibold">3 separate legs:</p>
-              <p>• Front 9 — lowest total strokes wins</p>
-              <p>• Back 9 — lowest total strokes wins</p>
-              <p>• Full round — lowest total strokes wins</p>
+              <p className="font-semibold">Three matches, scored in holes up:</p>
+              <p>• Front nine · Back nine · Full round — each its own match, net</p>
+              <p>• A match closes when a player is up by more holes than remain (3&2). Level at the end halves it.</p>
+              <p>• Each leg is worth a third of the entry, settled between the two players in the match{players.length > 2 ? ' — with more than two of you, everyone plays everyone' : ''}.</p>
+              <p>• Press: when you're down, press to open a new match from the next hole to the end of that nine, at the same value. The app asks who's pressing.</p>
             </div>
           </section>
         )}

@@ -9,9 +9,10 @@ import {
   calculateBBBPayouts, calculateVegasPayouts,
   calculateStablefordPayouts, calculateQuotaPayouts,
   isUnitGame, unitGameNet, netFromPayouts, perPointNet,
+  nassauMatchNet, nassauMatchLegStatus,
 } from '../../lib/gameLogic'
 import type {
-  SkinsResult, BestBallResult, NassauResult, WolfResult, BBBResult,
+  SkinsResult, BestBallResult, NassauResult, NassauMatchResult, WolfResult, BBBResult,
   HammerResult, VegasResult, StablefordResult, BankerResult, QuotaResult,
   PlayerPayout,
 } from '../../lib/gameLogic'
@@ -27,6 +28,8 @@ interface Props {
   skinsResult: SkinsResult | null
   bestBallResult: BestBallResult | null
   nassauResult: NassauResult | null
+  /** Match-play Nassau (NassauConfig.scoring === 'match'); nassauResult is null then. */
+  nassauMatch?: NassauMatchResult | null
   wolfResult: WolfResult | null
   bbbResult: BBBResult | null
   hammerResult: HammerResult | null
@@ -54,7 +57,7 @@ const GAME_LABELS: Record<string, string> = {
 
 export function LeaderboardTab({
   snapshot, players, holeScores, courseHcps, game, round,
-  skinsResult, bestBallResult, nassauResult, wolfResult, bbbResult,
+  skinsResult, bestBallResult, nassauResult, nassauMatch = null, wolfResult, bbbResult,
   hammerResult, vegasResult, stablefordResult, bankerResult, quotaResult,
   primaryMode = 'net',
 }: Props) {
@@ -96,6 +99,9 @@ export function LeaderboardTab({
       })!).forEach(([pid, c]) => m.set(pid, (m.get(pid) ?? 0) + c))
     } else if (isUnitGame(game.type) && unitRaw) {
       Object.entries(unitGameNet(game.type, game.buyInCents, unitRaw)).forEach(([pid, c]) => m.set(pid, (m.get(pid) ?? 0) + c))
+    } else if (game.type === 'nassau' && nassauMatch) {
+      // Match-play Nassau settles directly from its signed net, like the unit games.
+      Object.entries(nassauMatchNet(nassauMatch, players)).forEach(([pid, c]) => m.set(pid, (m.get(pid) ?? 0) + c))
     } else {
       let payouts: PlayerPayout[] = []
       if (game.type === 'skins' && skinsResult) payouts = calculateSkinsPayouts(skinsResult, game, players.length)
@@ -300,7 +306,37 @@ export function LeaderboardTab({
           )
         })()}
 
-        {/* Nassau */}
+        {/* Nassau — match play */}
+        {nassauMatch && (() => {
+          const nameOf = (id: string) => (players.find(p => p.id === id)?.name ?? '?').split(' ')[0]
+          const legs = [
+            { label: 'Front', leg: nassauMatch.front },
+            { label: 'Back', leg: nassauMatch.back },
+            { label: 'Total', leg: nassauMatch.total },
+            ...nassauMatch.presses.map(p => ({
+              label: `Press ${p.holeRange} (${nameOf(p.press.playerId)})`, leg: p,
+            })),
+          ]
+          return (
+            <div className="mt-3 pt-3 border-t border-gray-100">
+              <p className="text-xs font-semibold text-gray-500 uppercase mb-2">Nassau · match play (net)</p>
+              <div className="space-y-1">
+                {legs.map(({ label, leg }) => (
+                  <p key={label} className="text-sm text-gray-700">
+                    <span className="font-semibold">{label}:</span>{' '}
+                    {!leg.started
+                      ? <span className="text-gray-400">Not started</span>
+                      : <span className={leg.complete ? 'text-amber-600 dark:text-brass font-semibold' : ''}>
+                          {nassauMatchLegStatus(leg, nameOf)}{leg.complete ? '' : ` · thru ${Math.max(...leg.matches.map(m => m.holesPlayed))}`}
+                        </span>}
+                  </p>
+                ))}
+              </div>
+            </div>
+          )
+        })()}
+
+        {/* Nassau — stroke play (legacy rounds) */}
         {nassauResult && (
           <div className="mt-3 pt-3 border-t border-gray-100">
             <p className="text-xs font-semibold text-gray-500 uppercase mb-2">Nassau ({primaryLabel})</p>

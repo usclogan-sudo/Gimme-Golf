@@ -57,24 +57,25 @@ export const GAME_RULES: Record<GameType, GameRuleEntry> = {
 
   nassau: {
     title: 'Nassau',
-    summary: 'Three segments in one: front 9, back 9, and overall 18. Win any segment to collect that portion of the total. The most popular golf format.',
+    summary: 'Three matches in one: the front nine, the back nine, and the full round. Each is scored in holes up, net. Win any of the three on its own. The most popular golf format.',
     howToPlay: [
-      'The round is split into three segments: front 9, back 9, and total 18.',
-      'Each segment is worth 1/3 of the total.',
-      'The player with the lowest total strokes in each segment wins that segment.',
-      'Optional presses: when losing, a player can "press" to raise the value from that hole to the end of the nine.',
+      'The round is three legs: the front nine, the back nine, and all eighteen.',
+      'Each leg is match play, scored in holes up, using the handicap strokes already set for the round.',
+      'A leg closes as soon as a player is up by more holes than remain — 3&2, for example. The holes after that do not change it.',
+      'Level after the last hole of a leg halves it; nothing changes hands for that leg.',
+      'With more than two players, everyone plays everyone: each pair has its own three matches.',
+      'Press: when a player is down they can press. That opens a new match from the next hole to the end of that nine, worth the same as the leg. The app asks who is pressing and records the leg and the starting hole.',
     ],
     scoring: [
-      'The total is divided equally across 3 segments.',
-      'Each segment winner takes their 1/3 of the total.',
-      'Ties in a segment result in that portion being split.',
-      'Each press adds a segment\'s worth of value.',
-      'Gross or net scoring available.',
+      'Each leg is worth a third of the entry, settled between the two players in each match.',
+      'The winner of a leg collects that third from the loser. A halved leg moves nothing.',
+      'A press settles as its own leg at the same value.',
+      'Scoring is net: strokes fall on the holes the round already allocated them to.',
     ],
     tips: [
       'Nassau is great because you can lose the front but still win the back and overall.',
       'Pressing when down keeps the game interesting but increases your exposure.',
-      'The "2-down automatic press" is a popular house rule.',
+      'There is no automatic press. Every press is declared by a named player, on the hole they declare it.',
     ],
   },
 

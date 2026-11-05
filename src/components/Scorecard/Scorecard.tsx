@@ -32,6 +32,9 @@ import {
   calculateBestBall,
   calculateNassau,
   nassauLive,
+  calculateNassauMatch,
+  isMatchNassau,
+  nassauMatchLegStatus,
   calculateWolf,
   calculateBBB,
   calculateHammer,
@@ -47,7 +50,8 @@ import {
   fmtAmount,
 } from '../../lib/gameLogic'
 import type { BestBallResult } from '../../lib/gameLogic'
-import { makePlayableSnapshot, getPlayableHoleNumbers, roundToHolesConfig } from '../../lib/holeUtils'
+import { makePlayableSnapshot, getPlayableHoleNumbers, roundToHolesConfig, getFrontBackSplit } from '../../lib/holeUtils'
+import type { NassauPress } from '../../types'
 import type {
   Round,
   RoundPlayer,
@@ -1014,6 +1018,49 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
   // How many presses the current user can undo.
   const myPressCount = ((game?.config as any)?.presses ?? []).filter((p: any) => p.playerId === userId).length
 
+  // Match-play Nassau presses (Finding 6). The leg in progress is the one the
+  // current hole sits in. A press opens a new match from the NEXT hole to the end
+  // of that nine, so — unlike the Skins press — it is allowed after this hole is
+  // scored: that is exactly when a player knows they are down. It records who
+  // pressed, which leg, and the starting hole. Nothing is automatic.
+  const nassauMatchCfg = game?.type === 'nassau' && isMatchNassau(game.config as NassauConfig)
+    ? (game.config as NassauConfig) : null
+  const [pressPickerOpen, setPressPickerOpen] = useState(false)
+  const matchPressContext = useMemo(() => {
+    if (!nassauMatchCfg || !playableSnapshot) return null
+    const { frontHoles, backHoles } = getFrontBackSplit(playableSnapshot.holes)
+    const leg: 'front' | 'back' = frontHoles.includes(currentHole) ? 'front' : 'back'
+    const legHoles = leg === 'front' ? frontHoles : backHoles
+    const idx = legHoles.indexOf(currentHole)
+    // No press on the last hole of a nine — there is nothing left to play for.
+    const startHole = idx >= 0 && idx < legHoles.length - 1 ? legHoles[idx + 1] : null
+    return { leg, startHole }
+  }, [nassauMatchCfg, playableSnapshot, currentHole])
+  const matchPressCount = nassauMatchCfg?.matchPresses?.length ?? 0
+  const handleMatchPress = async (playerId: string) => {
+    if (!matchPressContext?.startHole) return
+    const press: NassauPress = {
+      id: uuidv4(),
+      playerId,
+      leg: matchPressContext.leg,
+      startHole: matchPressContext.startHole,
+      pressedAtHole: currentHole,
+    }
+    setPressPickerOpen(false)
+    await updateGameState(game => {
+      const config = game.config as NassauConfig
+      return { ...game, config: { ...config, matchPresses: [...(config.matchPresses ?? []), press] } }
+    })
+  }
+  const handleUndoMatchPress = async () => {
+    await updateGameState(game => {
+      const config = game.config as NassauConfig
+      const presses = [...(config.matchPresses ?? [])]
+      presses.pop()
+      return { ...game, config: { ...config, matchPresses: presses } }
+    })
+  }
+
   // BBB point handler
   const setBBBPoint = async (category: 'bingo' | 'bango' | 'bongo', playerId: string) => {
     const existing = bbbPoints.find(p => p.holeNumber === currentHole)
@@ -1363,15 +1410,32 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
     return calculateBestBall(players, approvedScores, playableSnapshot, game.config as BestBallConfig, courseHcps)
   }, [game, players, approvedScores, playableSnapshot, courseHcps])
 
+  // Legacy stroke-play Nassau (NassauConfig.scoring absent). Null for match play.
   const nassauResult = useMemo(() => {
     if (!game || game.type !== 'nassau' || !playableSnapshot) return null
+    if (isMatchNassau(game.config as NassauConfig)) return null
     return calculateNassau(players, approvedScores, playableSnapshot, game.config as NassauConfig, courseHcps)
   }, [game, players, approvedScores, playableSnapshot, courseHcps])
 
   const nassauLiveStatus = useMemo(() => {
     if (!game || game.type !== 'nassau' || !playableSnapshot) return null
+    if (isMatchNassau(game.config as NassauConfig)) return null
     return nassauLive(players, approvedScores, playableSnapshot, game.config as NassauConfig, courseHcps)
   }, [game, players, approvedScores, playableSnapshot, courseHcps])
+
+  // Match-play Nassau (Finding 6): holes up per leg, pairwise, closing early.
+  const nassauMatch = useMemo(() => {
+    if (!game || game.type !== 'nassau' || !playableSnapshot) return null
+    if (!isMatchNassau(game.config as NassauConfig)) return null
+    return calculateNassauMatch(players, approvedScores, playableSnapshot, game.config as NassauConfig, courseHcps, game.buyInCents)
+  }, [game, players, approvedScores, playableSnapshot, courseHcps])
+
+  // The viewer's own seat, for "from my side" status lines. A registered user's
+  // player id is their auth uid; a guest-seat joiner is found via their participant row.
+  const viewerPlayerId = useMemo(() =>
+    roundParticipants.find(rp => rp.userId === userId)?.playerId
+      ?? (players.some(p => p.id === userId) ? userId : null),
+  [roundParticipants, players, userId])
 
   const wolfResult = useMemo(() => {
     if (!game || game.type !== 'wolf' || !playableSnapshot) return null
@@ -1437,6 +1501,7 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
   const nassauResultAlt = useMemo(() => {
     if (!game || game.type !== 'nassau' || !playableSnapshot) return null
     const cfg = game.config as NassauConfig
+    if (isMatchNassau(cfg)) return null
     return calculateNassau(players, approvedScores, playableSnapshot, { ...cfg, mode: cfg.mode === 'net' ? 'gross' : 'net' }, courseHcps)
   }, [game, players, approvedScores, playableSnapshot, courseHcps])
 
@@ -2056,6 +2121,21 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
                       )}
                     </p>
                   )}
+                  {nassauMatch && (() => {
+                    const nameOf = (id: string) => (players.find(p => p.id === id)?.name ?? '?').split(' ')[0] || '?'
+                    const legs = [
+                      { label: 'F', leg: nassauMatch.front },
+                      { label: 'B', leg: nassauMatch.back },
+                      { label: 'T', leg: nassauMatch.total },
+                    ]
+                    return (
+                      <p className="text-xs text-gray-500">
+                        <span className="font-semibold">Nassau:</span>{' '}
+                        {legs.map(({ label, leg }) => `${label}: ${nassauMatchLegStatus(leg, nameOf, viewerPlayerId)}`).join(' · ')}
+                        {matchPressCount > 0 && ` · ${matchPressCount} press${matchPressCount === 1 ? '' : 'es'}`}
+                      </p>
+                    )
+                  })()}
                   {nassauResult && (() => {
                     const getName = (id: string | null) => id ? (players.find(p => p.id === id)?.name ?? '?') : null
                     const firstName = (id: string | null) => (getName(id) ?? '').split(' ')[0] || '?'
@@ -2190,6 +2270,7 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
           skinsResult={skinsResult}
           bestBallResult={bestBallResult}
           nassauResult={nassauResult}
+          nassauMatch={nassauMatch}
           wolfResult={wolfResult}
           bbbResult={bbbResult}
           hammerResult={hammerResult}
@@ -2278,7 +2359,7 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
         {!showBatchEntry && (
           <>
             {/* Game Status accordion toggle */}
-            {(skinsResult || bestBallResult || nassauResult || (wolfConfig && wolfId) || (game?.type === 'hammer' && hammerConfig) || (game?.type === 'bingo_bango_bongo') || (junkConfig && junkConfig.types.length > 0)) && (
+            {(skinsResult || bestBallResult || nassauResult || nassauMatch || (wolfConfig && wolfId) || (game?.type === 'hammer' && hammerConfig) || (game?.type === 'bingo_bango_bongo') || (junkConfig && junkConfig.types.length > 0)) && (
               <button
                 onClick={() => setShowGameStatus(!showGameStatus)}
                 className="w-full min-h-[44px] flex items-center justify-between bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-4 active:bg-gray-50 dark:active:bg-gray-700 transition-colors"
@@ -2328,7 +2409,94 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
             )}
             {showGameStatus && bestBallResult && game && <BestBallStatus result={bestBallResult} scoring={(game.config as BestBallConfig).scoring} />}
 
-            {/* Nassau status */}
+            {/* Nassau status — match play. Each leg reads in holes up ("Sam 2 UP",
+                "AS", "Sam 3&2"), never a stroke count. The press button asks who is
+                pressing before anything is recorded. */}
+            {showGameStatus && nassauMatch && game && (() => {
+              const nameOf = (id: string) => (players.find(p => p.id === id)?.name ?? '?').split(' ')[0] || '?'
+              const totalHoles = playableSnapshot?.holes.length ?? 18
+              const half = Math.ceil(totalHoles / 2)
+              const legs = [
+                { label: `F${half}`, leg: nassauMatch.front },
+                { label: `B${totalHoles - half}`, leg: nassauMatch.back },
+                { label: `${totalHoles}`, leg: nassauMatch.total },
+              ]
+              const canPress = SHOW_PRESSES && !readOnly && !!matchPressContext?.startHole
+              return (
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2">
+                    <div className="flex-1 bg-teal-50 border border-teal-200 rounded-xl px-3 py-2 flex items-center gap-2">
+                      <span className="font-bold text-teal-700 text-sm mr-1">Nassau</span>
+                      {legs.map(({ label, leg }) => (
+                        <div key={label} className="text-center px-2 border-l border-teal-200 min-w-0">
+                          <p className="text-xs text-teal-500">{label}</p>
+                          <p className="text-xs font-semibold text-teal-800 truncate max-w-[88px]">
+                            {nassauMatchLegStatus(leg, nameOf, viewerPlayerId)}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                    {SHOW_PRESSES && !readOnly && (
+                      <button
+                        onClick={() => setPressPickerOpen(v => !v)}
+                        disabled={!canPress}
+                        title={!canPress ? 'Nothing left to press on this nine' : undefined}
+                        className="px-3 py-2 bg-navy text-cream dark:bg-brass dark:text-navy text-xs font-bold rounded-xl active:opacity-90 flex-shrink-0 disabled:opacity-40 disabled:active:opacity-40"
+                      >
+                        Press{matchPressCount ? ` (${matchPressCount})` : ''}
+                      </button>
+                    )}
+                    {!readOnly && matchPressCount > 0 && (
+                      <button
+                        onClick={handleUndoMatchPress}
+                        aria-label="Undo last press"
+                        title="Undo last press"
+                        className="px-2.5 py-2 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200 text-xs font-bold rounded-xl active:bg-gray-300 dark:active:bg-gray-600 flex-shrink-0"
+                      >
+                        ↩
+                      </button>
+                    )}
+                  </div>
+                  {pressPickerOpen && matchPressContext?.startHole && (
+                    <div className="bg-white dark:bg-gray-800 border border-teal-200 dark:border-gray-700 rounded-xl px-3 py-3 space-y-2">
+                      <p className="text-sm font-semibold text-gray-800 dark:text-gray-100">Who's pressing?</p>
+                      <p className="text-xs text-gray-500 dark:text-gray-400">
+                        Opens a new match on the {matchPressContext.leg} nine from hole {matchPressContext.startHole} to the end, at the same value as the leg.
+                      </p>
+                      <div className="flex flex-wrap gap-2">
+                        {players.map(p => (
+                          <button
+                            key={p.id}
+                            onClick={() => handleMatchPress(p.id)}
+                            className="px-3 py-2 min-h-[44px] rounded-lg text-sm font-semibold bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 text-gray-800 dark:text-gray-100 active:bg-gray-100"
+                          >
+                            {p.name}
+                          </button>
+                        ))}
+                        <button
+                          onClick={() => setPressPickerOpen(false)}
+                          className="px-3 py-2 min-h-[44px] rounded-lg text-sm text-gray-500 underline"
+                        >
+                          Not now
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                  {nassauMatch.presses.length > 0 && (
+                    <div className="bg-teal-50/60 border border-teal-100 rounded-xl px-3 py-2 space-y-0.5">
+                      {nassauMatch.presses.map(p => (
+                        <p key={p.press.id} className="text-xs text-teal-800">
+                          <span className="font-semibold">{nameOf(p.press.playerId)} pressed</span> · {p.press.leg} nine from {p.press.startHole} —{' '}
+                          {nassauMatchLegStatus(p, nameOf, viewerPlayerId)}
+                        </p>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )
+            })()}
+
+            {/* Nassau status — stroke play (legacy rounds) */}
             {showGameStatus && nassauResult && game && (() => {
               const getName = (id: string | null) => id ? (players.find(p => p.id === id)?.name ?? '?') : null
               const firstName = (id: string | null) => (getName(id) ?? '').split(' ')[0] || '?'

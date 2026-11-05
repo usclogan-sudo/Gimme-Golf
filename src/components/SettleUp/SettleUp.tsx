@@ -13,6 +13,10 @@ import {
   calculateSkins,
   calculateBestBall,
   calculateNassau,
+  calculateNassauMatch,
+  nassauMatchNet,
+  nassauMatchLegStatus,
+  isMatchNassau,
   calculateWolf,
   calculateBBB,
   calculateHammer,
@@ -343,10 +347,24 @@ export function SettleUp({ roundId, userId, eventId, onDone, onContinue }: Props
     return calculateBestBall(players, holeScores, playableSnapshot, game.config as BestBallConfig, courseHcps)
   }, [game, players, holeScores, playableSnapshot, courseHcps])
 
+  // Legacy stroke-play Nassau only; null for a match-play round (see nassauMatch).
   const nassauResult = useMemo(() => {
     if (!game || game.type !== 'nassau' || !playableSnapshot) return null
+    if (isMatchNassau(game.config as NassauConfig)) return null
     return calculateNassau(players, holeScores, playableSnapshot, game.config as NassauConfig, courseHcps)
   }, [game, players, holeScores, playableSnapshot, courseHcps])
+
+  const nassauMatch = useMemo(() => {
+    if (!game || game.type !== 'nassau' || !playableSnapshot) return null
+    if (!isMatchNassau(game.config as NassauConfig)) return null
+    return calculateNassauMatch(players, holeScores, playableSnapshot, game.config as NassauConfig, courseHcps, game.buyInCents)
+  }, [game, players, holeScores, playableSnapshot, courseHcps])
+
+  // Match-play Nassau settles directly from a signed net — no pot, no treasurer.
+  const nassauNet = useMemo((): Record<string, number> | null => {
+    if (!nassauMatch) return null
+    return nassauMatchNet(nassauMatch, players)
+  }, [nassauMatch, players])
 
   const wolfResult = useMemo(() => {
     if (!game || game.type !== 'wolf' || !playableSnapshot) return null
@@ -484,6 +502,7 @@ export function SettleUp({ roundId, userId, eventId, onDone, onContinue }: Props
   const unitNet = useMemo((): Record<string, number> | null => {
     if (skinsNet) return skinsNet
     if (pointsNet) return pointsNet
+    if (nassauNet) return nassauNet
     if (!game || !isUnitGame(game.type)) return null
     const raw =
       game.type === 'wolf' ? wolfResult
@@ -493,7 +512,7 @@ export function SettleUp({ roundId, userId, eventId, onDone, onContinue }: Props
       : null
     if (!raw) return null
     return unitGameNet(game.type, game.buyInCents, raw)
-  }, [game, wolfResult, bankerResult, hammerResult, dotsResult, skinsNet, pointsNet])
+  }, [game, wolfResult, bankerResult, hammerResult, dotsResult, skinsNet, pointsNet, nassauNet])
   const unitTotalWon = unitNet
     ? Object.values(unitNet).filter(n => n > 0).reduce((s, n) => s + n, 0)
     : null
@@ -546,11 +565,13 @@ export function SettleUp({ roundId, userId, eventId, onDone, onContinue }: Props
       : undefined
     // Skins-with-a-joiner settles from its prorated signed net (Option A), head-to-
     // head like a unit game — never through the treasurer/pot path.
-    const settleDirect = isUnit || skinsNet != null || pointsNet != null
+    const settleDirect = isUnit || skinsNet != null || pointsNet != null || nassauNet != null
     const gameNet = skinsNet
       ? skinsNet
       : pointsNet
       ? pointsNet
+      : nassauNet
+      ? nassauNet
       : isUnit && game && unitRaw
         ? unitGameNet(game.type, game.buyInCents, unitRaw)
         : netFromPayouts(payouts, players, game?.buyInCents ?? 0)
@@ -653,7 +674,7 @@ export function SettleUp({ roundId, userId, eventId, onDone, onContinue }: Props
     }
 
     setCalculatingSettlements(false)
-  }, [treasurerId, userId, settlementsInitialized, settlementRecords.length, payouts, junkResult, sideBetSettlements, propSettlements, resolvedPropBets, propBets, roundId, participantMap, players, game, hammerResult, dotsResult, wolfResult, bankerResult, skinsNet])
+  }, [treasurerId, userId, settlementsInitialized, settlementRecords.length, payouts, junkResult, sideBetSettlements, propSettlements, resolvedPropBets, propBets, roundId, participantMap, players, game, hammerResult, dotsResult, wolfResult, bankerResult, skinsNet, nassauNet])
 
   useEffect(() => {
     if (!loading && round && game && snapshot) {
@@ -1437,6 +1458,60 @@ export function SettleUp({ roundId, userId, eventId, onDone, onContinue }: Props
             )}
           </section>
         )}
+
+        {nassauMatch && (() => {
+          const nameOf = (id: string) => playerById(id)?.name ?? '?'
+          const legs = [
+            { label: `Front (${nassauMatch.front.holeRange})`, leg: nassauMatch.front },
+            { label: `Back (${nassauMatch.back.holeRange})`, leg: nassauMatch.back },
+            { label: `Total (${nassauMatch.total.holeRange})`, leg: nassauMatch.total },
+            ...nassauMatch.presses.map(p => ({
+              label: `Press ${p.holeRange} · ${nameOf(p.press.playerId)}`, leg: p,
+            })),
+          ]
+          const decided = legs.filter(l => l.leg.complete).length
+          return (
+            <section className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm overflow-hidden">
+              <button onClick={() => toggleSection('nassau')} className="w-full flex items-center justify-between p-4 active:bg-gray-50 dark:active:bg-gray-700">
+                <span className="text-sm font-semibold text-gray-700 dark:text-gray-200">
+                  🏳️ Nassau · {decided === legs.length ? 'All legs decided' : `${decided} of ${legs.length} legs decided`}
+                </span>
+                <span className="text-gray-400 text-sm">{expandedSections.has('nassau') ? '▾' : '▸'}</span>
+              </button>
+              {expandedSections.has('nassau') && (
+                <div className="px-4 pb-4 space-y-3">
+                  {legs.map(({ label, leg }) => (
+                    <div key={label} className={`rounded-xl p-3 ${leg.complete ? 'bg-teal-50' : 'bg-gray-50'}`}>
+                      <div className="flex items-center justify-between gap-3">
+                        <p className="font-semibold text-gray-700 dark:text-gray-300 text-sm">{label}</p>
+                        <p className={`font-bold text-sm text-right ${leg.complete ? 'text-teal-700' : 'text-gray-400'}`}>
+                          {!leg.started ? 'Not played' : nassauMatchLegStatus(leg, nameOf)}
+                        </p>
+                      </div>
+                      {leg.matches.length > 1 && leg.started && (
+                        <div className="mt-2 space-y-0.5">
+                          {leg.matches.map(m => (
+                            <p key={`${m.a}-${m.b}`} className="text-xs text-gray-500 dark:text-gray-400">
+                              {nameOf(m.a)} v {nameOf(m.b)} —{' '}
+                              {m.result === 'halved' ? 'halved'
+                                : m.holesUp === 0 ? 'all square'
+                                : `${nameOf(m.holesUp > 0 ? m.a : m.b)} ${m.label}${m.result ? '' : ' (open)'}`}
+                            </p>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                  {legs.some(l => l.leg.started && !l.leg.complete) && (
+                    <p className="text-xs text-gray-500 dark:text-gray-400">
+                      A match that was still open when the round ended settles as nothing — only decided matches move tokens.
+                    </p>
+                  )}
+                </div>
+              )}
+            </section>
+          )
+        })()}
 
         {nassauResult && (
           <section className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm overflow-hidden">
