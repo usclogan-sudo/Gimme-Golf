@@ -1896,7 +1896,7 @@ export function calculateDotsPayouts(
     .map(([playerId, net]) => ({
       playerId,
       amountCents: net,
-      reason: `Dots net winnings`,
+      reason: `Dots net result`,
     }))
 }
 
@@ -2367,7 +2367,7 @@ export function buildUnifiedSettlements(
     for (const [playerId, netCents] of Object.entries(junkResult.netCents)) {
       if (netCents > 0 && playerId !== treasurerId) {
         // Player won junk money → treasurer pays them
-        addFlow(treasurerId, playerId, netCents, 'Junk winnings', 'junk')
+        addFlow(treasurerId, playerId, netCents, 'Junk result', 'junk')
       } else if (netCents < 0 && playerId !== treasurerId) {
         // Player lost junk money → they owe treasurer
         addFlow(playerId, treasurerId, Math.abs(netCents), 'Junk losses', 'junk')
@@ -2378,7 +2378,7 @@ export function buildUnifiedSettlements(
 
   // Side bet settlements: direct player-to-player (not through treasurer)
   for (const sbs of sideBetSettlements) {
-    addFlow(sbs.fromId, sbs.toId, sbs.amountCents, `Side bet: ${sbs.description}`, 'side_bet')
+    addFlow(sbs.fromId, sbs.toId, sbs.amountCents, `Side game: ${sbs.description}`, 'side_bet')
   }
 
   // Prop settlements: direct player-to-player (like side bets)
@@ -2419,7 +2419,7 @@ export function buildUnifiedSettlements(
     const sourceCount = [hasGame, hasJunk, hasSideBet, hasProp].filter(Boolean).length
     if (sourceCount > 1) {
       const gameReasons = reasons.filter(r => r.source === 'game').map(r => r.reason).join(', ')
-      const parts = [gameReasons, hasJunk ? 'junk' : '', hasSideBet ? 'side bets' : '', hasProp ? 'props' : ''].filter(Boolean)
+      const parts = [gameReasons, hasJunk ? 'junk' : '', hasSideBet ? 'side games' : '', hasProp ? 'props' : ''].filter(Boolean)
       reason = `${parts.join(' + ')} (netted)`
     } else if (net !== forward && net !== -reverse) {
       // Partial netting happened

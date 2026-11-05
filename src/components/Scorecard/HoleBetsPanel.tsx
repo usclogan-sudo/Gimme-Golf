@@ -35,7 +35,7 @@ export function HoleBetsPanel({
     return (
       <div className="bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-700 rounded-xl p-3">
         <div className="flex items-center justify-between">
-          <p className="font-bold text-amber-800 dark:text-amber-300 text-sm">🎯 Hole Bets — Hole {currentHole}</p>
+          <p className="font-bold text-amber-800 dark:text-amber-300 text-sm">🎯 Hole Games — Hole {currentHole}</p>
           <button
             onClick={() => setShowSideBetForm(true)}
             className="text-xs font-semibold px-2.5 py-1 rounded-lg bg-amber-500 text-white active:bg-amber-600"
@@ -43,14 +43,14 @@ export function HoleBetsPanel({
             + Side Bet
           </button>
         </div>
-        <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">No bets on this hole</p>
+        <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">No side games on this hole</p>
       </div>
     )
   }
 
   return (
     <div className="bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-700 rounded-xl p-3 space-y-3">
-      <p className="font-bold text-amber-800 dark:text-amber-300 text-sm">🎯 Hole Bets — Hole {currentHole}</p>
+      <p className="font-bold text-amber-800 dark:text-amber-300 text-sm">🎯 Hole Games — Hole {currentHole}</p>
 
       {/* Quick Junks Row */}
       {hasJunks && (
@@ -103,7 +103,7 @@ export function HoleBetsPanel({
       {/* Side Bets List */}
       {holeBets.length > 0 && (
         <div className="space-y-2">
-          <p className="text-xs font-semibold text-amber-700 dark:text-amber-300">💰 Side Bets</p>
+          <p className="text-xs font-semibold text-amber-700 dark:text-amber-300">💰 Side Games</p>
           {holeBets.map(bet => {
             const participantNames = bet.participants.map(id => players.find(p => p.id === id)?.name ?? '?')
             const winnerName = bet.winnerPlayerId ? players.find(p => p.id === bet.winnerPlayerId)?.name : null
@@ -196,7 +196,7 @@ export function HoleBetsPanel({
             disabled={!sideBetDesc.trim() || sideBetParticipants.length < 2}
             className="w-full py-2 rounded-lg text-sm font-semibold bg-amber-500 text-white active:bg-amber-600 disabled:opacity-40"
           >
-            Create Bet ({sideBetParticipants.length < 2 ? 'need 2+ players' : `$${sideBetAmount} each`})
+            Create Side Game ({sideBetParticipants.length < 2 ? 'need 2+ players' : `$${sideBetAmount} each`})
           </button>
         </div>
       )}

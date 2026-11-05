@@ -53,7 +53,7 @@ describe('GameSetup — points formats settle controls', () => {
     expect(screen.getByText('How to settle')).toBeDefined()
     expect(screen.getByText('Value per point')).toBeDefined()
     expect(screen.getByText('Per point')).toBeDefined()
-    expect(screen.getByText('Split a pot')).toBeDefined()
+    expect(screen.getByText('Split the total')).toBeDefined()
   })
 
   it('keeps the controls after switching to Skins and back to Stableford', () => {

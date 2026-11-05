@@ -1498,7 +1498,7 @@ export function GameSetup({
             isn't useful. Flip the flag to bring back. */}
         {SHOW_ALT_STAKES_MODES && (
           <section className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm p-4 space-y-3">
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Stakes</p>
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Entry</p>
             <div className="grid grid-cols-3 gap-2">
               <button
                 onClick={() => handleStakesChange('standard')}
@@ -1588,7 +1588,7 @@ export function GameSetup({
                   <span className="ml-2 text-amber-600 font-normal">({junkTypes.size} active)</span>
                 )}
               </p>
-              <p className="text-xs text-gray-400 mt-0.5">Optional peer-to-peer bets tracked per hole</p>
+              <p className="text-xs text-gray-400 mt-0.5">Optional peer-to-peer side games tracked per hole</p>
             </div>
             <div
               role="switch"
@@ -1677,10 +1677,10 @@ export function GameSetup({
                 the entry; per-skin has no ceiling, which is how most groups actually
                 play "20 a skin". */}
             <div>
-              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Paying for skins</p>
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">How skins settle</p>
               <div className="flex rounded-xl overflow-hidden border-2 border-gray-200 dark:border-gray-600">
                 {([
-                  { v: 'pot' as SkinsPayModel, label: 'Shared pot' },
+                  { v: 'pot' as SkinsPayModel, label: 'Split the total' },
                   { v: 'per_skin' as SkinsPayModel, label: 'Per skin' },
                 ]).map(opt => (
                   <button
@@ -1704,7 +1704,7 @@ export function GameSetup({
               {skinsPayModel === 'per_skin'
                 ? ` Every other player pays the winner ${fmtAmount(buyInCents, stakesMode)} per skin.${
                     carryovers
-                      ? ` A hole carrying three skins costs each of them ${fmtAmount(buyInCents * 3, stakesMode)} — carries multiply real money here, they don't reshuffle a fixed pot.`
+                      ? ` A hole carrying three skins costs each of them ${fmtAmount(buyInCents * 3, stakesMode)} — carries multiply real money here, they don't reshuffle a fixed total.`
                       : ''
                   } Nothing is collected up front and there's no ceiling.`
                 : ` Everyone puts in ${fmtAmount(buyInCents, stakesMode)} up front and the winners split it in proportion to skins won. That entry is the most anyone can lose${carryovers ? ', carries or not' : ''}.`}
@@ -1756,7 +1756,7 @@ export function GameSetup({
                   {([
                     { v: 'per_point' as PointsPayModel, label: 'Per point',
                       hint: 'Standard. You settle with each other player: the difference in your points, times the value.' },
-                    { v: 'pot' as PointsPayModel, label: 'Split a pot',
+                    { v: 'pot' as PointsPayModel, label: 'Split the total',
                       hint: `Everyone puts in ${fmtAmount(buyInCents, stakesMode)}. Nobody can lose more than that.` },
                   ]).map(opt => (
                     <button
@@ -1825,7 +1825,7 @@ export function GameSetup({
             </div>
           ) : perPointSelected ? null : (
             <div className="bg-amber-50 rounded-xl px-4 py-3 flex items-center justify-between">
-              <span className="text-sm text-gray-600">{stakesMode === 'points' ? 'Total points' : 'Total pot'}</span>
+              <span className="text-sm text-gray-600">{stakesMode === 'points' ? 'Total points' : 'Total in play'}</span>
               <span className="font-bold text-gray-800 dark:text-gray-100 text-lg">
                 {stakesMode === 'points' ? fmtAmount(buyInCents * players.length, 'points') : fmtMoney(buyInCents * players.length)}
               </span>
@@ -2049,7 +2049,7 @@ export function GameSetup({
               <p>• Each hole starts at {stakesMode === 'points'
                 ? (() => { const n = Math.max(1, parsePointsValue(hammerBaseValueDollars)); return `${n} pt${n !== 1 ? 's' : ''}` })()
                 : fmtMoney(Math.max(1, parseDollarsToCents(hammerBaseValueDollars)))}</p>
-              <p>• The hammer holder can "throw" the hammer to double the stakes</p>
+              <p>• The hammer holder can "throw" the hammer to double the value</p>
               <p>• Opponent must accept (value doubles) or decline (lose current value)</p>
               <p>• After accepting, the hammer passes to the accepter</p>
             </div>
@@ -2104,7 +2104,7 @@ export function GameSetup({
               <p className="font-semibold">Point values per hole:</p>
               <p>• Double bogey+ = 0 pts, Bogey = 1, Par = 2</p>
               <p>• Birdie = 3, Eagle = 4, Albatross = 5</p>
-              <p>• Highest total points wins the pot</p>
+              <p>• Highest total points wins</p>
             </div>
           </section>
         )}
@@ -2479,7 +2479,7 @@ function TreasurerAndBuyIns({
         <section className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm p-4 space-y-3">
           <div>
             <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Treasurer</p>
-            <p className="text-sm text-gray-500 mt-1">Who is holding the pot?</p>
+            <p className="text-sm text-gray-500 mt-1">Who is holding the total?</p>
           </div>
           <div className="space-y-2">
             {players.map(p => (

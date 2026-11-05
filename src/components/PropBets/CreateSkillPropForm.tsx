@@ -192,7 +192,7 @@ export function CreateSkillPropForm({ players, roundId, onCreateProp, onClose, c
 
       {/* Stake */}
       <div>
-        <p className="text-xs text-gray-500 mb-1 font-semibold">Wager Amount</p>
+        <p className="text-xs text-gray-500 mb-1 font-semibold">Amount</p>
         <div className="flex gap-1.5">
           {AMOUNT_OPTIONS.map(amt => (
             <button

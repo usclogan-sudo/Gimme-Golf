@@ -899,7 +899,7 @@ export function EventSetup({ userId, onStart, onCancel, onAddCourse }: Props) {
         <header className="app-header text-white px-4 py-4 sticky top-0 z-10 shadow-xl flex items-center gap-3">
           <button onClick={() => setStep('groups')} className="min-w-[44px] min-h-[44px] flex items-center justify-center rounded-full hover:bg-black/20 text-xl">←</button>
           <div>
-            <h1 className="text-xl font-bold">Game & Stakes</h1>
+            <h1 className="text-xl font-bold">Game & Entry</h1>
             <p className="text-gray-300 text-xs">{eventName} · {selectedPlayers.length} players</p>
           </div>
         </header>

@@ -1933,7 +1933,7 @@ export function SettleUp({ roundId, userId, eventId, onDone, onContinue }: Props
         {sideBets.filter(sb => sb.status === 'resolved').length > 0 && (
           <section className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm overflow-hidden">
             <button onClick={() => toggleSection('sidebets')} className="w-full flex items-center justify-between p-4 active:bg-gray-50 dark:active:bg-gray-700">
-              <span className="text-sm font-semibold text-gray-700 dark:text-gray-200">💰 Side Bets · {sideBets.filter(sb => sb.status === 'resolved').length} resolved</span>
+              <span className="text-sm font-semibold text-gray-700 dark:text-gray-200">💰 Side Games · {sideBets.filter(sb => sb.status === 'resolved').length} resolved</span>
               <span className="text-gray-400 text-sm">{expandedSections.has('sidebets') ? '▾' : '▸'}</span>
             </button>
             {expandedSections.has('sidebets') && (
@@ -2045,7 +2045,7 @@ export function SettleUp({ roundId, userId, eventId, onDone, onContinue }: Props
                           <span className={`text-xs font-semibold px-1.5 py-0.5 rounded flex-shrink-0 ${
                             s.source === 'prop' ? 'bg-purple-100 text-purple-700' : s.source === 'side_bet' ? 'bg-amber-100 text-amber-700' : s.source === 'junk' ? 'bg-indigo-100 text-indigo-700' : 'bg-blue-100 text-blue-700'
                           }`}>
-                            {s.source === 'prop' ? 'Prop' : s.source === 'side_bet' ? 'Side Bet' : s.source === 'junk' ? 'Junk' : 'Game'}
+                            {s.source === 'prop' ? 'Prop' : s.source === 'side_bet' ? 'Side Game' : s.source === 'junk' ? 'Junk' : 'Game'}
                           </span>
                         )}
                       </div>

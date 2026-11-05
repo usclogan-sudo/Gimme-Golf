@@ -2562,7 +2562,7 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
                         return (
                           <p className="text-xs text-orange-600">
                             {!hState
-                              ? `${holderName} ${holdVerb} the hammer — throw it to double the stakes`
+                              ? `${holderName} ${holdVerb} the hammer — throw it to double the value`
                               : holeScored
                                 ? `Hammer settled at ${fmtAmount(holeValue, game?.stakesMode)} for the hole`
                                 : `${holderName} threw the hammer (×${hState.presses}) — ${receiverName} ${respondVerb}: play on to accept, or Decline`}
