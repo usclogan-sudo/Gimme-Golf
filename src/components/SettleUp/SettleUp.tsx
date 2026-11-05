@@ -684,13 +684,15 @@ export function SettleUp({ roundId, userId, eventId, onDone, onContinue }: Props
 
   // Current user's player ID (for "I Paid" buttons)
   const myPlayerId = useMemo(() => {
-    return Array.from(participantMap.entries()).find(([, uid]) => uid === userId)?.[0]
-      // The creator's own player uses their auth userId as its player id (see
-      // NewRound), so match that directly — otherwise self-created guest rounds
-      // (no round_participants row, no treasurer) can't identify the viewer and
-      // the personal "you owe / you collect" summary silently falls back to an
-      // impersonal pot total.
-      ?? players.find(p => p.id === userId)?.id
+    // A registered user's player id IS their auth userId (see NewRound), so the
+    // roster is the authority: check it first. The participant map is a fallback
+    // for guest-seat joiners whose player id is a plain uuid. Order matters — a
+    // stray round_participants row binding this user to someone else's seat
+    // (the organiser-claimed-a-guest case, Finding 1) used to win here and
+    // compute "you owe" for the wrong player. Self-created guest rounds (no
+    // participant row, no treasurer) also resolve through the roster.
+    return players.find(p => p.id === userId)?.id
+      ?? Array.from(participantMap.entries()).find(([, uid]) => uid === userId)?.[0]
       ?? (treasurerId && (userId === round?.createdBy) ? treasurerId : null)
   }, [participantMap, userId, treasurerId, round?.createdBy, players])
 

@@ -2,12 +2,16 @@ import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { reportSupabaseError } from '../../lib/sentry'
 
+type SeatStatus = 'pending' | 'accepted' | 'declined'
+
 interface RoundPreview {
   id: string
   courseName: string
   gameType: string
   players: { id: string; name: string }[]
-  participants: { id: string; userId: string; playerId: string }[]
+  participants: { id: string; userId: string; playerId: string; status: SeatStatus }[]
+  /** Roster ids that are registered accounts (a registered player's id IS their auth uid). */
+  registeredPlayerIds: string[]
   currentHole: number
 }
 
@@ -19,10 +23,21 @@ interface EventPreview {
   gameType: string
   players: { id: string; name: string }[]
   groups?: Record<string, number>
-  participants: { id: string; userId: string; playerId: string; role: string; groupNumber?: number }[]
+  participants: { id: string; userId: string; playerId: string; status: SeatStatus; role: string; groupNumber?: number }[]
+  registeredPlayerIds: string[]
   groupScorekeepers: Record<number, string>
   currentHole: number
 }
+
+// Rows written before the status column existed have none; they were all
+// self-joins, which is what 'accepted' means.
+const seatStatus = (s: unknown): SeatStatus =>
+  s === 'pending' || s === 'declined' ? s : 'accepted'
+
+// Refusals the join RPC raises on purpose (seat binding rules). Shown verbatim,
+// and not worth a Sentry event.
+const isExpectedSeatRefusal = (msg: string) =>
+  msg.includes('already claimed') || msg.includes('belongs to a registered') || msg.includes('already have a seat')
 
 interface Props {
   userId: string
@@ -91,9 +106,11 @@ export function JoinRound({ userId, initialCode, onJoined, onCancel }: Props) {
             id: p.id,
             userId: p.user_id,
             playerId: p.player_id,
+            status: seatStatus(p.status),
             role: p.role,
             groupNumber: p.group_number,
           })),
+          registeredPlayerIds: ed.registered_player_ids ?? [],
           groupScorekeepers: ed.group_scorekeepers ?? {},
           currentHole: roundData.current_hole ?? 1,
         })
@@ -119,7 +136,9 @@ export function JoinRound({ userId, initialCode, onJoined, onCancel }: Props) {
           id: p.id,
           userId: p.user_id,
           playerId: p.player_id,
+          status: seatStatus(p.status),
         })),
+        registeredPlayerIds: roundData.registered_player_ids ?? [],
         currentHole: roundData.current_hole ?? 1,
       })
       setStep('pick')
@@ -173,17 +192,22 @@ export function JoinRound({ userId, initialCode, onJoined, onCancel }: Props) {
         onJoined(preview.id)
       }
     } catch (err: any) {
-      // The "already claimed" path is expected user behavior, not an error worth
+      // A seat-binding refusal is expected user behaviour, not an error worth
       // capturing. Everything else is a real Supabase/RPC failure.
-      if (!err.message?.includes('already claimed')) {
+      const msg: string = err.message ?? ''
+      if (!isExpectedSeatRefusal(msg)) {
         reportSupabaseError(err, 'join_round_or_event', {
           mode: eventPreview ? 'event' : 'round',
           inviteCode: code.toUpperCase().trim(),
         })
       }
-      setError(err.message?.includes('already claimed')
-        ? 'This player is already claimed by another user'
-        : err.message ?? 'Failed to join')
+      // The RPC's refusals are already plain sentences; show them as written.
+      // Older deployments raise "...already claimed by another user" with no
+      // full stop — normalise that one so the screen reads the same either way.
+      setError(
+        msg.includes('already claimed') ? 'This seat is already claimed by another player.'
+        : msg || 'Something went wrong joining this round. Try again.',
+      )
       setJoining(false)
     }
   }
@@ -193,32 +217,45 @@ export function JoinRound({ userId, initialCode, onJoined, onCancel }: Props) {
   const activePreview = eventPreview ?? preview
   const activePlayers = eventPreview?.players ?? preview?.players ?? []
   const activeParticipants = eventPreview?.participants ?? preview?.participants ?? []
+  const registeredIds = useMemo(
+    () => new Set(eventPreview?.registeredPlayerIds ?? preview?.registeredPlayerIds ?? []),
+    [eventPreview, preview],
+  )
 
+  // Seat-binding rules, mirrored from the join RPC (see 20261105120100_join_seat_binding):
+  //   1. a seat whose id is a registered account belongs to that account only;
+  //   2. if my own uid is on the roster, that is my seat;
+  //   3. if I already hold an accepted seat, that is my seat;
+  //   4. a pending or accepted row by someone else makes a seat taken.
+  // Declined rows free the seat again.
   const isPlayerClaimed = (playerId: string) => {
-    return activeParticipants.some((p: any) => p.playerId === playerId && p.userId !== userId)
+    if (registeredIds.has(playerId) && playerId !== userId) return true
+    return activeParticipants.some(p =>
+      p.playerId === playerId && p.userId !== userId && p.status !== 'declined')
   }
 
-  const isAlreadyJoined = activeParticipants.some((p: any) => p.userId === userId)
+  const mySeatId = useMemo<string | null>(() => {
+    if (activePlayers.some(p => p.id === userId)) return userId
+    const accepted = activeParticipants.find(p => p.userId === userId && p.status === 'accepted')
+    return accepted?.playerId ?? null
+  }, [activePlayers, activeParticipants, userId])
+  const mySeat = mySeatId ? activePlayers.find(p => p.id === mySeatId) ?? null : null
 
-  // Filter by search and sort: own player first → unclaimed alphabetically → claimed alphabetically
+  // Filter by search and sort: unclaimed alphabetically → claimed alphabetically.
+  // When the viewer has a seat, the list is just that seat.
   const sortedPlayers = useMemo(() => {
+    if (mySeat) return [mySeat]
     const filtered = activePlayers.filter(p =>
       p.name.toLowerCase().includes(playerSearch.toLowerCase())
     )
     return filtered.sort((a, b) => {
-      const aIsMine = activeParticipants.some((p: any) => p.playerId === a.id && p.userId === userId)
-      const bIsMine = activeParticipants.some((p: any) => p.playerId === b.id && p.userId === userId)
-      if (aIsMine && !bIsMine) return -1
-      if (!aIsMine && bIsMine) return 1
-
       const aClaimed = isPlayerClaimed(a.id)
       const bClaimed = isPlayerClaimed(b.id)
       if (!aClaimed && bClaimed) return -1
       if (aClaimed && !bClaimed) return 1
-
       return a.name.localeCompare(b.name)
     })
-  }, [activePlayers, playerSearch, activeParticipants, userId])
+  }, [activePlayers, playerSearch, activeParticipants, registeredIds, userId, mySeat])
 
   const GAME_LABELS: Record<string, string> = {
     skins: 'Skins',
@@ -313,9 +350,17 @@ export function JoinRound({ userId, initialCode, onJoined, onCancel }: Props) {
 
             {/* Player picker */}
             <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 p-5 space-y-3">
-              <h3 className="font-display font-semibold text-gray-800 dark:text-gray-100">Which player are you?</h3>
+              <h3 className="font-display font-semibold text-gray-800 dark:text-gray-100">
+                {mySeat ? 'Your seat' : 'Which player are you?'}
+              </h3>
 
-              {activePlayers.length > 6 && (
+              {mySeat && (
+                <p className="text-sm text-gray-500 dark:text-gray-400">
+                  This is your seat. Tap it to continue.
+                </p>
+              )}
+
+              {!mySeat && activePlayers.length > 6 && (
                 <input
                   type="text"
                   placeholder="Search players..."
@@ -323,12 +368,6 @@ export function JoinRound({ userId, initialCode, onJoined, onCancel }: Props) {
                   onChange={e => setPlayerSearch(e.target.value)}
                   className="w-full h-12 px-4 rounded-xl border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
                 />
-              )}
-
-              {isAlreadyJoined && (
-                <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-xl px-4 py-3 text-sm text-green-800 dark:text-green-400">
-                  You've already joined! Tap your name to continue.
-                </div>
               )}
 
               {error && <p className="text-red-500 text-sm">{error}</p>}
@@ -345,8 +384,8 @@ export function JoinRound({ userId, initialCode, onJoined, onCancel }: Props) {
 
               <div className="space-y-2">
                 {sortedPlayers.map(player => {
-                  const claimed = isPlayerClaimed(player.id)
-                  const isMine = activeParticipants.some((p: any) => p.playerId === player.id && p.userId === userId)
+                  const isMine = player.id === mySeatId
+                  const claimed = !isMine && isPlayerClaimed(player.id)
                   const groupNum = eventPreview?.groups?.[player.id]
                   return (
                     <button
@@ -366,8 +405,12 @@ export function JoinRound({ userId, initialCode, onJoined, onCancel }: Props) {
                           {player.name}
                           {groupNum && <span className="ml-2 text-[10px] font-bold px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-600 text-gray-500 dark:text-gray-300">G{groupNum}</span>}
                         </p>
-                        {claimed && <p className="text-xs text-gray-400">Already claimed</p>}
-                        {isMine && <p className="text-xs text-amber-600 font-medium">Your player</p>}
+                        {claimed && (
+                          <p className="text-xs text-gray-400">
+                            {registeredIds.has(player.id) ? 'Registered player' : 'Already claimed'}
+                          </p>
+                        )}
+                        {isMine && <p className="text-xs text-amber-600 font-medium">Your seat</p>}
                       </div>
                       {!claimed && (
                         <span className={`text-sm font-semibold ${isMine ? 'text-amber-600' : 'text-gray-400'}`}>
