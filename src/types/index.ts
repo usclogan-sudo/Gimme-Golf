@@ -489,6 +489,12 @@ export interface SettlementRecord {
   paidAt?: Date
   playerReportedAt?: Date
   reportedMethod?: string
+  /** Who tapped "Mark sent" (auth uid). */
+  reportedBy?: string
+  /** Who tapped "Confirm received" (auth uid). */
+  confirmedBy?: string
+  /** True when the organiser confirmed on a guest payee's behalf. */
+  confirmedForGuest?: boolean
 }
 
 // ─── Notifications ──────────────────────────────────────────────────────────

@@ -6,7 +6,7 @@ import type { AppNotification } from '../../types'
 import { PaymentButtons, getPreferredPayment } from '../PaymentButtons'
 import { Tooltip } from '../ui/Tooltip'
 import { safeWrite } from '../../lib/safeWrite'
-import { canConfirmSettlementReceived } from '../../lib/settlementAuthority'
+import { canConfirmSettlementReceived, settlementActions } from '../../lib/settlementAuthority'
 import {
   buildCourseHandicaps,
   strokesOnHole,
@@ -107,19 +107,121 @@ const GAME_LABELS: Record<GameType, string> = {
   quota: 'Quota',
 }
 
-/** Merge fresh profile payment info over snapshot player data */
-function mergePaymentInfo(player: Player, profiles: Map<string, UserProfile>, participantMap: Map<string, string>): Player {
+/** Payment handles a guest player carries on their `players` row. */
+type GuestHandles = Pick<Player, 'venmoUsername' | 'zelleIdentifier' | 'cashAppUsername' | 'paypalEmail'>
+
+/**
+ * Merge fresh payment info over snapshot player data: a registered player's
+ * profile, or — for a guest — the handles on their `players` row, which the
+ * organiser can add at settle-up (Finding 10) and which persist for future rounds.
+ */
+function mergePaymentInfo(
+  player: Player,
+  profiles: Map<string, UserProfile>,
+  participantMap: Map<string, string>,
+  guestHandles: Record<string, GuestHandles>,
+): Player {
   const linkedUserId = participantMap.get(player.id)
-  if (!linkedUserId) return player
-  const profile = profiles.get(linkedUserId)
-  if (!profile) return player
+  const profile = linkedUserId ? profiles.get(linkedUserId) : undefined
+  if (profile) {
+    return {
+      ...player,
+      venmoUsername: profile.venmoUsername ?? player.venmoUsername,
+      zelleIdentifier: profile.zelleIdentifier ?? player.zelleIdentifier,
+      cashAppUsername: profile.cashAppUsername ?? player.cashAppUsername,
+      paypalEmail: profile.paypalEmail ?? player.paypalEmail,
+    }
+  }
+  const g = guestHandles[player.id]
+  if (!g) return player
   return {
     ...player,
-    venmoUsername: profile.venmoUsername ?? player.venmoUsername,
-    zelleIdentifier: profile.zelleIdentifier ?? player.zelleIdentifier,
-    cashAppUsername: profile.cashAppUsername ?? player.cashAppUsername,
-    paypalEmail: profile.paypalEmail ?? player.paypalEmail,
+    venmoUsername: g.venmoUsername ?? player.venmoUsername,
+    zelleIdentifier: g.zelleIdentifier ?? player.zelleIdentifier,
+    cashAppUsername: g.cashAppUsername ?? player.cashAppUsername,
+    paypalEmail: g.paypalEmail ?? player.paypalEmail,
   }
+}
+
+type GuestHandleMethod = 'venmo' | 'zelle' | 'cashapp'
+const GUEST_HANDLE_FIELDS: Record<GuestHandleMethod, { label: string; column: string; key: keyof GuestHandles; placeholder: string }> = {
+  venmo: { label: 'Venmo', column: 'venmo_username', key: 'venmoUsername', placeholder: '@username' },
+  zelle: { label: 'Zelle', column: 'zelle_identifier', key: 'zelleIdentifier', placeholder: 'phone or email' },
+  cashapp: { label: 'Cash App', column: 'cashapp_username', key: 'cashAppUsername', placeholder: '$cashtag' },
+}
+
+/**
+ * Inline "Add {name}'s Venmo, Zelle or Cash App" for a guest payee with no handle.
+ * Saves to the guest's `players` row (owned by whoever added them), so the deep
+ * links render now and the handle is there next round too.
+ */
+function AddGuestHandle({ player, onSaved }: { player: Player; onSaved: (handles: GuestHandles) => void }) {
+  const [open, setOpen] = useState(false)
+  const [method, setMethod] = useState<GuestHandleMethod>('venmo')
+  const [value, setValue] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const field = GUEST_HANDLE_FIELDS[method]
+  const firstName = player.name.split(' ')[0] || player.name
+
+  const save = async () => {
+    const handle = value.trim()
+    if (!handle) return
+    setSaving(true); setError(null)
+    const { data, error: err } = await supabase.from('players').update({ [field.column]: handle }).eq('id', player.id).select('id')
+    setSaving(false)
+    if (err || !data || data.length === 0) {
+      // RLS: only whoever added the guest owns their row.
+      setError(`Couldn't save that. Only whoever added ${firstName} to the round can save their details.`)
+      return
+    }
+    onSaved({ [field.key]: handle })
+    setOpen(false); setValue('')
+  }
+
+  if (!open) {
+    return (
+      <button
+        onClick={() => setOpen(true)}
+        className="w-full min-h-[44px] rounded-xl border border-dashed border-blue-300 text-sm font-semibold text-blue-700 dark:text-blue-300 active:bg-blue-50"
+      >
+        Add {firstName}&apos;s Venmo, Zelle or Cash App
+      </button>
+    )
+  }
+  return (
+    <div className="bg-white dark:bg-gray-800 border border-blue-200 dark:border-gray-600 rounded-xl p-3 space-y-2">
+      <p className="text-xs text-gray-500 dark:text-gray-400">
+        Saved to {firstName}&apos;s player card — it shows here now and in future rounds.
+      </p>
+      <div className="flex gap-1.5">
+        {(Object.keys(GUEST_HANDLE_FIELDS) as GuestHandleMethod[]).map(m => (
+          <button
+            key={m}
+            onClick={() => setMethod(m)}
+            className={`flex-1 min-h-[40px] rounded-lg text-sm font-semibold ${method === m ? 'bg-navy text-cream dark:bg-brass dark:text-navy' : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200'}`}
+          >
+            {GUEST_HANDLE_FIELDS[m].label}
+          </button>
+        ))}
+      </div>
+      <input
+        type="text"
+        value={value}
+        onChange={e => setValue(e.target.value)}
+        placeholder={field.placeholder}
+        aria-label={`${firstName}'s ${field.label}`}
+        className="w-full h-11 px-3 rounded-xl border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 text-base focus:outline-none focus:ring-2 focus:ring-amber-500"
+      />
+      {error && <p className="text-xs text-red-600">{error}</p>}
+      <div className="flex gap-2">
+        <button onClick={() => { setOpen(false); setValue(''); setError(null) }} className="flex-1 h-10 border border-gray-300 dark:border-gray-600 rounded-xl text-sm font-semibold text-gray-600 dark:text-gray-300">Cancel</button>
+        <button onClick={() => { void save() }} disabled={saving || !value.trim()} className="flex-1 h-10 bg-gray-800 text-white dark:bg-brass dark:text-navy rounded-xl text-sm font-semibold disabled:opacity-50">
+          {saving ? 'Saving…' : `Save ${field.label}`}
+        </button>
+      </div>
+    </div>
+  )
 }
 
 function NudgeButton({ playerName, amountCents, toPlayer, fromPlayerId, roundId, treasurerName, participantMap, nudgedPlayerIds, onNudged, stakesMode }: {
@@ -193,6 +295,8 @@ export function SettleUp({ roundId, userId, eventId, onDone, onContinue }: Props
   const [propWagers, setPropWagers] = useState<PropWager[]>([])
   const [settlementRecords, setSettlementRecords] = useState<SettlementRecord[]>([])
   const [profileMap, setProfileMap] = useState<Map<string, UserProfile>>(new Map())
+  // Guest players' payment handles from their `players` rows (Finding 10).
+  const [guestHandles, setGuestHandles] = useState<Record<string, GuestHandles>>({})
   const [participantMap, setParticipantMap] = useState<Map<string, string>>(new Map()) // playerId → userId
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState(false)
@@ -278,6 +382,23 @@ export function SettleUp({ roundId, userId, eventId, onDone, onContinue }: Props
           }
           setParticipantMap(pMap)
           setProfileMap(profs)
+          // Guests (no account): their handles live on the `players` row the host
+          // owns — read them so a handle added last round is here this round.
+          const guestIds = playerIds.filter(pid => !pMap.has(pid))
+          if (guestIds.length > 0) {
+            const { data: guestRows } = await supabase
+              .from('players').select('id, venmo_username, zelle_identifier, cashapp_username, paypal_email').in('id', guestIds)
+            const handles: Record<string, GuestHandles> = {}
+            for (const row of guestRows ?? []) {
+              handles[row.id] = {
+                venmoUsername: row.venmo_username ?? undefined,
+                zelleIdentifier: row.zelle_identifier ?? undefined,
+                cashAppUsername: row.cashapp_username ?? undefined,
+                paypalEmail: row.paypal_email ?? undefined,
+              }
+            }
+            setGuestHandles(handles)
+          }
         })()
       }
 
@@ -322,8 +443,8 @@ export function SettleUp({ roundId, userId, eventId, onDone, onContinue }: Props
 
   // Merge fresh payment info from profiles over snapshot
   const enrichedPlayers = useMemo(() => {
-    return players.map(p => mergePaymentInfo(p, profileMap, participantMap))
-  }, [players, profileMap, participantMap])
+    return players.map(p => mergePaymentInfo(p, profileMap, participantMap, guestHandles))
+  }, [players, profileMap, participantMap, guestHandles])
 
   const courseHcps = useMemo(() => {
     if (!snapshot || !roundPlayers) return {}
@@ -733,6 +854,17 @@ export function SettleUp({ roundId, userId, eventId, onDone, onContinue }: Props
       myPlayerId,
       isTreasurer,
       isPayeeDeviceBound: participantMap.has(s.toPlayerId),
+      playerReported: !!s.playerReportedAt,
+    }),
+  [myPlayerId, isTreasurer, participantMap])
+
+  // Everything a settle row may offer this viewer, from one tested rule set.
+  const actionsFor = useCallback((s: SettlementRecord) =>
+    settlementActions(s, { status: s.status === 'paid' ? 'paid' : 'owed', playerReported: !!s.playerReportedAt }, {
+      myPlayerId,
+      isTreasurer,
+      isPayeeDeviceBound: participantMap.has(s.toPlayerId),
+      isPayerDeviceBound: participantMap.has(s.fromPlayerId),
     }),
   [myPlayerId, isTreasurer, participantMap])
 
@@ -741,6 +873,8 @@ export function SettleUp({ roundId, userId, eventId, onDone, onContinue }: Props
   const reportSettlementPayment = async (settlement: SettlementRecord, method: string) => {
     if (!userId || !myPlayerId) return
     setReportingSettlementId(settlement.id)
+    // The server records who tapped (reported_by) and allows the organiser to mark
+    // sent for a guest payer who has no device.
     const { error } = await supabase.rpc('player_report_settlement', {
       p_settlement_id: settlement.id,
       p_method: method,
@@ -749,7 +883,7 @@ export function SettleUp({ roundId, userId, eventId, onDone, onContinue }: Props
       // Optimistic update
       setSettlementRecords(prev => prev.map(s =>
         s.id === settlement.id
-          ? { ...s, playerReportedAt: new Date(), reportedMethod: method }
+          ? { ...s, playerReportedAt: new Date(), reportedMethod: method, reportedBy: userId }
           : s
       ))
       // Notify treasurer
@@ -827,10 +961,30 @@ export function SettleUp({ roundId, userId, eventId, onDone, onContinue }: Props
 
     const timer = setTimeout(async () => {
       setPendingAction(null)
-      const { error } = await supabase.from('settlements').update({ status: newStatus, paid_at: newPaidAt }).eq('id', settlement.id)
+      let error: { message?: string; code?: string } | null = null
+      if (newStatus === 'paid') {
+        // Confirming goes through the server rule (payee only; organiser for a
+        // guest, after Mark sent) and records who confirmed. Fall back to the old
+        // direct update if the function is not deployed yet.
+        const rpc = await supabase.rpc('confirm_settlement_received', { p_settlement_id: settlement.id })
+        const missingFn = rpc.error && /confirm_settlement_received|PGRST202|42883/.test(`${rpc.error.code ?? ''} ${rpc.error.message ?? ''}`)
+        if (rpc.error && !missingFn) {
+          error = rpc.error
+        } else if (missingFn) {
+          error = (await supabase.from('settlements').update({ status: newStatus, paid_at: newPaidAt }).eq('id', settlement.id)).error
+        } else {
+          const forGuest = (rpc.data as { confirmed_for_guest?: boolean } | null)?.confirmed_for_guest === true
+          setSettlementRecords(prev => prev.map(s =>
+            s.id === settlement.id ? { ...s, confirmedBy: userId, confirmedForGuest: forGuest } : s))
+        }
+      } else {
+        error = (await supabase.from('settlements').update({ status: newStatus, paid_at: newPaidAt }).eq('id', settlement.id)).error
+      }
       if (error) {
         setSettlementRecords(prevRecords)
-        setMutationError('Failed to update settlement. Please try again.')
+        setMutationError(error.message && /mark this as sent first|Only the/.test(error.message)
+          ? error.message
+          : 'Failed to update settlement. Please try again.')
       }
     }, 4000)
 
@@ -1867,9 +2021,10 @@ export function SettleUp({ roundId, userId, eventId, onDone, onContinue }: Props
               const playerReported = !!s.playerReportedAt && !isPaid
               const iAmPayer = s.fromPlayerId === myPlayerId
               const isMyDebt = iAmPayer && !isPaid
-              const canConfirm = canConfirmReceived(s)
-              // Treasurer confirming for a payee who isn't on their own device.
-              const isProxyConfirm = canConfirm && s.toPlayerId !== myPlayerId
+              const actions = actionsFor(s)
+              const canConfirm = actions.canConfirm
+              const payeeIsGuest = !participantMap.has(s.toPlayerId)
+              const payeeHasHandle = !!getPreferredPayment(toPlayer)
               const roundNote = `${snapshot.courseName} · ${gameLabel}${s.reason ? ` — ${s.reason}` : ''}`
               return (
                 <div key={s.id} className={`space-y-2 p-3 rounded-xl ${isPaid ? 'bg-green-50' : playerReported ? 'bg-amber-50' : 'bg-gray-50'}`}>
@@ -1896,9 +2051,12 @@ export function SettleUp({ roundId, userId, eventId, onDone, onContinue }: Props
                       </div>
                       {playerReported && (
                         <p className="text-xs text-amber-600 font-semibold mt-0.5">
-                          {fromPlayer.name} marked sent via {s.reportedMethod ?? 'cash'}
-                          {canConfirm ? ' — confirm when received' : ` — ${toPlayer.name} to confirm`}
+                          Sent, waiting on {toPlayer.name}
+                          <span className="font-normal text-gray-500"> · via {s.reportedMethod ?? 'cash'}{s.reportedBy && s.reportedBy !== participantMap.get(s.fromPlayerId) && s.reportedBy !== s.fromPlayerId ? ' (marked by the organiser)' : ''}</span>
                         </p>
+                      )}
+                      {isPaid && s.confirmedForGuest && (
+                        <p className="text-xs text-gray-500 mt-0.5">Confirmed by the organiser on {toPlayer.name}&apos;s behalf</p>
                       )}
                       {!isPaid && !playerReported && (() => {
                         const pref = getPreferredPayment(toPlayer)
@@ -1920,7 +2078,7 @@ export function SettleUp({ roundId, userId, eventId, onDone, onContinue }: Props
                               : 'bg-amber-100 text-amber-700 active:bg-amber-200'
                           }`}
                         >
-                          {isPaid ? 'Received' : isProxyConfirm ? `Confirm for ${toPlayer.name}` : 'Confirm received'}
+                          {isPaid ? 'Received' : actions.confirmForGuest ? `Confirm received for ${toPlayer.name}` : 'Confirm received'}
                         </button>
                       ) : (
                         <span className={`px-2 py-1 rounded-xl text-xs font-semibold ${isPaid ? 'text-brass' : playerReported ? 'text-amber-600' : 'text-gray-500'}`}>
@@ -1929,17 +2087,35 @@ export function SettleUp({ roundId, userId, eventId, onDone, onContinue }: Props
                       )}
                     </div>
                   </div>
+                  {/* Confirming for a guest is a proxy action — say so, every time. */}
+                  {!isPaid && actions.confirmForGuest && (
+                    <p className="text-xs text-gray-500 dark:text-gray-400">
+                      You&apos;re confirming on {toPlayer.name}&apos;s behalf — they have no device in this round. This is recorded as yours.
+                    </p>
+                  )}
+                  {/* A guest payee with no handle: the organiser can add one here. It
+                      lands on the guest's player card, so the links render now and the
+                      handle is there next round (Finding 10). */}
+                  {!isPaid && payeeIsGuest && !payeeHasHandle && isTreasurer && (
+                    <AddGuestHandle
+                      player={toPlayer}
+                      onSaved={h => setGuestHandles(prev => ({ ...prev, [toPlayer.id]: { ...(prev[toPlayer.id] ?? {}), ...h } }))}
+                    />
+                  )}
                   {/* Payment links for unpaid & non-reported settlements */}
                   {!isPaid && !playerReported && (
                     <PaymentButtons toPlayer={toPlayer} amountCents={toPayCents(s.amountCents)} note={roundNote} compact />
                   )}
-                  {/* "Mark sent" for the payer on their own debt (§5a). Marking that you
-                      sent money acts against your own interest, so it needs no approval —
-                      but it does NOT clear the debt. Only the payee confirms received. */}
-                  {isMyDebt && !playerReported && !canConfirm && (() => {
+                  {/* "Mark sent" — the payer on their own debt (§5a), or the organiser for
+                      a guest payer with no device. Marking that money was sent acts
+                      against the payer's interest, so it needs no approval — but it does
+                      NOT clear the debt. Only the payee (or the organiser for a guest
+                      payee, afterwards) confirms received. */}
+                  {actions.canMarkSent && (() => {
                     const isReporting = reportingSettlementId === s.id
                     const hasDigitalPayment = !!(toPlayer.venmoUsername || toPlayer.zelleIdentifier || toPlayer.cashAppUsername || toPlayer.paypalEmail)
                     const defaultMethod = toPlayer.venmoUsername ? 'venmo' : toPlayer.zelleIdentifier ? 'zelle' : toPlayer.cashAppUsername ? 'cashapp' : toPlayer.paypalEmail ? 'paypal' : 'cash'
+                    const forName = actions.markSentForPayer ? ` for ${fromPlayer.name}` : ''
                     return (
                       <div className="flex gap-2">
                         {hasDigitalPayment && (
@@ -1948,7 +2124,7 @@ export function SettleUp({ roundId, userId, eventId, onDone, onContinue }: Props
                             disabled={isReporting}
                             className="flex-1 h-10 bg-green-600 text-white font-semibold rounded-xl text-sm active:bg-green-700 disabled:opacity-50"
                           >
-                            {isReporting ? 'Marking...' : 'Mark sent'}
+                            {isReporting ? 'Marking...' : `Mark sent${forName}`}
                           </button>
                         )}
                         <button
@@ -1956,7 +2132,7 @@ export function SettleUp({ roundId, userId, eventId, onDone, onContinue }: Props
                           disabled={isReporting}
                           className={`${hasDigitalPayment ? 'px-4' : 'flex-1'} h-10 bg-gray-700 text-white font-semibold rounded-xl text-sm active:bg-gray-800 disabled:opacity-50`}
                         >
-                          {isReporting ? 'Marking...' : hasDigitalPayment ? 'Cash' : 'Mark sent · cash'}
+                          {isReporting ? 'Marking...' : hasDigitalPayment ? 'Cash' : `Mark sent${forName} · cash`}
                         </button>
                       </div>
                     )
@@ -1966,7 +2142,7 @@ export function SettleUp({ roundId, userId, eventId, onDone, onContinue }: Props
                     <div className="flex items-center gap-2 text-sm">
                       <span className="text-brass">&#10003;</span>
                       <span className="text-brass font-semibold">Sent via {s.reportedMethod ?? 'cash'}</span>
-                      <span className="text-gray-400 text-xs">— waiting on {toPlayer.name} to confirm</span>
+                      <span className="text-gray-400 text-xs">— waiting on {toPlayer.name}{payeeIsGuest ? ' (the organiser confirms for them)' : ''}</span>
                     </div>
                   )}
                   {!isPaid && (isTreasurer || s.toPlayerId === myPlayerId) && (
