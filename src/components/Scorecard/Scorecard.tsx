@@ -54,6 +54,7 @@ import {
 } from '../../lib/gameLogic'
 import type { BestBallResult } from '../../lib/gameLogic'
 import { makePlayableSnapshot, getPlayableHoleNumbers, roundToHolesConfig, getFrontBackSplit } from '../../lib/holeUtils'
+import { gameStandings } from '../../lib/standings'
 import type { NassauPress } from '../../types'
 import type {
   Round,
@@ -1599,51 +1600,18 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
     return prevHole.winnerId === null ? prevHole.carry + 1 : 0
   }, [skinsResult, currentHole])
 
-  const miniBoard = useMemo(() => {
-    if (!playableSnapshot) return []
-    const pSnap = playableSnapshot
-    const gt = game?.type
-    // Points/net games rank by their own metric, not strokes: BBB & Stableford by
-    // points, Quota by points-over-quota, Banker by holes-won units.
-    const rankBy: 'points' | 'quota' | 'banker' | 'strokes' =
-      gt === 'bingo_bango_bongo' || gt === 'stableford' ? 'points'
-      : gt === 'quota' ? 'quota'
-      : gt === 'banker' ? 'banker'
-      : 'strokes'
-    const board = players.map(p => {
-      const pScores = holeScores.filter(s => s.playerId === p.id && playableHoleNums.includes(s.holeNumber))
-      const gross = pScores.reduce((s, hs) => s + hs.grossScore, 0)
-      const courseHcp = courseHcps[p.id] ?? 0
-      const netStrokes = pScores.reduce((s, hs) => {
-        const hole = pSnap.holes.find(h => h.number === hs.holeNumber)
-        return s + (hole ? strokesOnHole(courseHcp, hole.strokeIndex, pSnap.holes.length) : 0)
-      }, 0)
-      const net = gross - netStrokes
-      const scoredPar = pScores.reduce((s, hs) => {
-        const hole = pSnap.holes.find(h => h.number === hs.holeNumber)
-        return s + (hole?.par ?? 0)
-      }, 0)
-      const vsPar = gross - scoredPar
-      const points =
-        gt === 'stableford' ? (stablefordResult?.points[p.id] ?? 0)
-        : gt === 'quota' ? (quotaResult?.netPoints[p.id] ?? 0)
-        : (bbbResult?.pointsWon[p.id] ?? 0)
-      const bankerUnits = bankerResult?.netCents[p.id] ?? 0
-      return { player: p, gross, net, vsPar, thru: pScores.length, points, bankerUnits }
-    })
-    // Higher is better for points/quota/banker; lower net is better for strokes.
-    const metric = (e: typeof board[number]) => rankBy === 'banker' ? e.bankerUnits : e.points
-    board.sort((a, b) => rankBy === 'strokes' ? a.net - b.net : metric(b) - metric(a))
-    const positions: number[] = []
-    board.forEach((entry, idx) => {
-      if (idx === 0) positions.push(1)
-      else {
-        const tied = rankBy === 'strokes' ? entry.net === board[idx - 1].net : metric(entry) === metric(board[idx - 1])
-        positions.push(tied ? positions[idx - 1] : idx + 1)
-      }
-    })
-    return board.map((entry, idx) => ({ ...entry, pos: positions[idx], rankBy }))
-  }, [players, holeScores, playableSnapshot, playableHoleNums, courseHcps, game, bbbResult, stablefordResult, quotaResult, bankerResult])
+  // The standings bar ranks and displays on the side game's own result for every
+  // format (Finding 9) — skins won, units, holes up, points, legs — through the
+  // shared helper the Leaderboard tab also uses, so the two never disagree.
+  // Strokes-to-par appear nowhere in it. No result yet ⇒ a dash per player.
+  const miniBoard = useMemo(() => gameStandings(game ?? null, players, {
+    skins: skinsResult, bestBall: bestBallResult, nassau: nassauResult, nassauMatch,
+    wolf: wolfResult, bbb: bbbResult, hammer: hammerResult, vegas: vegasResult,
+    stableford: stablefordResult, dots: dotsResult, banker: bankerResult, quota: quotaResult,
+  }, { stakesMode: game?.stakesMode }), [
+    game, players, skinsResult, bestBallResult, nassauResult, nassauMatch, wolfResult,
+    bbbResult, hammerResult, vegasResult, stablefordResult, dotsResult, bankerResult, quotaResult,
+  ])
 
   const headerClass = game?.stakesMode === 'high_roller' ? 'hr-header' : 'app-header'
 
@@ -2041,7 +2009,7 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
       })()}
 
       {/* Mini-leaderboard on Scores tab */}
-      {scoreTab === 'scores' && miniBoard.length > 0 && (
+      {scoreTab === 'scores' && game && miniBoard.entries.length > 0 && (
         <div className="px-4 pt-3 max-w-2xl mx-auto">
           <div className="bg-gray-50 border border-gray-200 rounded-xl overflow-hidden">
             <button
@@ -2049,29 +2017,24 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
               className="w-full px-3 py-2 flex items-center justify-between"
             >
               {showMiniBoard ? (
-                <span className="text-xs font-semibold text-gray-500 uppercase">Standings</span>
+                <span className="text-xs font-semibold text-gray-500 uppercase">Standings · {miniBoard.metric || 'Game'}</span>
               ) : (
                 <div className="flex-1 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-xs font-semibold text-gray-600">
                   {/* Wraps rather than scrolling sideways. As a horizontal scroller
-                      this quietly hid the last players on a narrow phone — and in a
-                      points game the standings strip is the only thing that reveals
-                      a mis-tapped award, so a hidden player is a wrong score nobody
-                      catches. */}
-                  {miniBoard.map((e, i) => (
+                      this quietly hid the last players on a narrow phone — and the
+                      standings strip is the only thing that reveals a mis-tapped
+                      award, so a hidden player is a wrong score nobody catches.
+                      The figure is the side game's own result (Finding 9). */}
+                  {miniBoard.entries.map((e, i) => (
                     <span key={e.player.id} className="whitespace-nowrap">
                       {i > 0 && <span className="text-gray-300 mx-0.5">·</span>}
-                      {e.pos}. {e.player.name}{' '}
-                      {e.rankBy === 'points' ? (
-                        <span className="text-purple-600 font-bold">{e.points}pt</span>
-                      ) : e.rankBy === 'quota' ? (
-                        <span className={e.points > 0 ? 'text-green-600 font-bold' : e.points < 0 ? 'text-red-500 font-bold' : 'text-gray-400 font-bold'}>{e.points > 0 ? '+' : ''}{e.points}</span>
-                      ) : e.rankBy === 'banker' ? (
-                        <span className={e.bankerUnits > 0 ? 'text-green-600 font-bold' : e.bankerUnits < 0 ? 'text-red-500 font-bold' : 'text-gray-400 font-bold'}>{e.bankerUnits > 0 ? '+' : ''}{e.bankerUnits}u</span>
-                      ) : (
-                        <span className={e.vsPar > 0 ? 'text-red-500' : e.vsPar < 0 ? 'text-green-600' : 'text-gray-400'}>
-                          ({e.thru > 0 ? `${e.vsPar > 0 ? '+' : ''}${e.vsPar === 0 ? 'E' : e.vsPar}` : '—'})
-                        </span>
-                      )}
+                      {miniBoard.hasResult ? `${e.position}. ` : ''}{e.player.name}{' '}
+                      <span className={
+                        e.value === null ? 'text-gray-400'
+                        : e.value > 0 ? 'text-amber-700 dark:text-brass font-bold'
+                        : e.value < 0 ? 'text-gray-500 font-bold'
+                        : 'text-gray-500 font-bold'
+                      }>{e.label}</span>
                     </span>
                   ))}
                 </div>
@@ -2085,39 +2048,17 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
                     <tr className="text-xs text-gray-400 uppercase">
                       <th className="text-left py-1 px-1 font-medium w-6">Pos</th>
                       <th className="text-left py-1 px-1 font-medium">Player</th>
-                      {game?.type === 'bingo_bango_bongo' || game?.type === 'stableford' ? (
-                        <th className="text-center py-1 px-1 font-medium">Points</th>
-                      ) : game?.type === 'quota' ? (
-                        <th className="text-center py-1 px-1 font-medium">vs Quota</th>
-                      ) : game?.type === 'banker' ? (
-                        <th className="text-center py-1 px-1 font-medium">Units</th>
-                      ) : (
-                        <>
-                          <th className="text-center py-1 px-1 font-medium"><Tooltip term="Net">Net</Tooltip></th>
-                          <th className="text-center py-1 px-1 font-medium">vs Par</th>
-                        </>
-                      )}
+                      <th className="text-right py-1 px-1 font-medium">{miniBoard.metric || 'Result'}</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {miniBoard.map(e => (
-                      <tr key={e.player.id} className={e.pos === 1 ? 'bg-amber-50' : ''}>
-                        <td className={`py-1 px-1 font-bold text-sm ${e.pos === 1 ? 'text-amber-600' : 'text-gray-500'}`}>{e.pos}</td>
+                    {miniBoard.entries.map(e => (
+                      <tr key={e.player.id} className={e.position === 1 ? 'bg-amber-50' : ''}>
+                        <td className={`py-1 px-1 font-bold text-sm ${e.position === 1 ? 'text-amber-600' : 'text-gray-500'}`}>{e.position || '—'}</td>
                         <td className="py-1 px-1 font-semibold text-gray-800 dark:text-gray-100 text-sm">{e.player.name}</td>
-                        {game?.type === 'bingo_bango_bongo' || game?.type === 'stableford' ? (
-                          <td className="py-1 px-1 text-center font-bold text-purple-600 text-sm">{e.points} pt</td>
-                        ) : game?.type === 'quota' ? (
-                          <td className={`py-1 px-1 text-center font-bold text-sm ${e.points > 0 ? 'text-green-600' : e.points < 0 ? 'text-red-600' : 'text-gray-400'}`}>{e.points > 0 ? '+' : ''}{e.thru > 0 ? e.points : '—'}</td>
-                        ) : game?.type === 'banker' ? (
-                          <td className={`py-1 px-1 text-center font-bold text-sm ${e.bankerUnits > 0 ? 'text-green-600' : e.bankerUnits < 0 ? 'text-red-600' : 'text-gray-400'}`}>{e.bankerUnits > 0 ? '+' : ''}{e.bankerUnits}</td>
-                        ) : (
-                          <>
-                            <td className="py-1 px-1 text-center font-semibold text-gray-700 text-sm">{e.net || '—'}</td>
-                            <td className={`py-1 px-1 text-center font-semibold text-sm ${e.vsPar > 0 ? 'text-red-600' : e.vsPar < 0 ? 'text-green-600' : 'text-gray-400'}`}>
-                              {e.thru > 0 ? `${e.vsPar > 0 ? '+' : ''}${e.vsPar === 0 ? 'E' : e.vsPar}` : '—'}
-                            </td>
-                          </>
-                        )}
+                        <td className={`py-1 px-1 text-right font-bold text-sm ${
+                          e.value === null ? 'text-gray-400' : e.value > 0 ? 'text-amber-700 dark:text-brass' : 'text-gray-600 dark:text-gray-300'
+                        }`}>{e.label}</td>
                       </tr>
                     ))}
                   </tbody>
