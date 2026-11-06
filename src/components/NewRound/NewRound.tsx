@@ -2,7 +2,8 @@ import { useEffect, useMemo, useState } from 'react'
 import { v4 as uuidv4 } from 'uuid'
 import { supabase, courseToRow, playerToRow, roundToRow, roundPlayerToRow, buyInToRow, rowToCourse, rowToPlayer, rowToSharedCourse, rowToGamePreset, rowToUserProfile, generateInviteCode } from '../../lib/supabase'
 import { safeWrite } from '../../lib/safeWrite'
-import { reportSupabaseError } from '../../lib/sentry'
+import { reportSupabaseError, addBreadcrumb } from '../../lib/sentry'
+import { holdReload } from '../../lib/swUpdate'
 import { SHOW_HOLE_BETS, SHOW_EXTRA_GAMES, SHOW_DOTS, SHOW_BEST_BALL_STROKE_PLAY } from '../../lib/featureFlags'
 import { fmtMoney, fmtAmount, fmtHandicap, JUNK_LABELS, DOT_LABELS, computeCourseHandicap } from '../../lib/gameLogic'
 import { findPlayerByName } from '../../lib/players'
@@ -2640,6 +2641,9 @@ export function NewRound({ userId, onStart, onCancel, onAddCourse, initialStakes
     : null
 
   const [step, setStep] = useState<'course' | 'players' | 'groups' | 'game' | 'money'>(templateCourse ? 'players' : 'course')
+  // Hold the service worker reload for the life of the wizard (see lib/swUpdate.ts).
+  useEffect(() => holdReload('new-round'), [])
+  useEffect(() => { addBreadcrumb('wizard', 'new-round step', { step }) }, [step])
   const [course, setCourse] = useState<Course | null>(templateCourse)
   const [players, setPlayers] = useState<Player[] | null>(null)
   const [groups, setGroups] = useState<Record<string, number> | undefined>(templateRound?.groups)

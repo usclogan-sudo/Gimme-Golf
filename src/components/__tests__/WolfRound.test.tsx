@@ -21,6 +21,7 @@ import type { Player, HoleScore, CourseSnapshot, WolfConfig } from '../../types'
 vi.mock('../../lib/sentry', () => ({
   Sentry: { captureException: vi.fn() },
   reportSupabaseError: vi.fn(),
+  addBreadcrumb: vi.fn(),
 }))
 
 const players: Player[] = [

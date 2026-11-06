@@ -2,6 +2,7 @@ import { StrictMode, lazy, Suspense } from 'react'
 import { createRoot } from 'react-dom/client'
 import { initSentry, Sentry } from './lib/sentry'
 import { passwordRecoveryInProgress } from './lib/supabase'
+import { reloadHeld, markUpdatePending } from './lib/swUpdate'
 import './index.css'
 import App from './App.tsx'
 import { RecoveryScreen } from './components/RecoveryScreen'
@@ -59,16 +60,30 @@ if ('serviceWorker' in navigator) {
     }).catch(() => {})
 
     // When the new SW takes control, reload to get fresh assets — except during a
-    // password reset. That flow depends on a URL hash that exists for exactly one
-    // page load, so reloading through it throws the user back to the home screen
-    // with no way to finish, and the emailed link is single-use. Deferred rather
-    // than skipped: the reload happens on their next navigation anyway.
+    // password reset, or while a screen is holding the reload (a setup wizard in
+    // progress, a scorecard with unsaved taps; see lib/swUpdate.ts). The password
+    // flow depends on a URL hash that exists for exactly one page load, so reloading
+    // through it throws the user back to the home screen with no way to finish. A
+    // wizard reload is the same loss in a different coat: on 6 November two Create
+    // Event attempts went to the spinner and came back reset. Held reloads are
+    // parked behind an "Update ready" line the user taps when they are ready.
     let refreshing = false
     navigator.serviceWorker.addEventListener('controllerchange', () => {
       if (refreshing) return
-      if (passwordRecoveryInProgress()) return
+      if (passwordRecoveryInProgress() || reloadHeld()) {
+        markUpdatePending()
+        return
+      }
       refreshing = true
       window.location.reload()
     })
+  })
+
+  // Safety net for a deferred update: the old page may still lazy-load a chunk
+  // whose hashed file the new deploy no longer serves. Vite raises this event when
+  // that import fails; reloading is the only thing that fixes it.
+  window.addEventListener('vite:preloadError', (event) => {
+    event.preventDefault()
+    window.location.reload()
   })
 }

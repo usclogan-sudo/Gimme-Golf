@@ -19,6 +19,41 @@ export function initSentry() {
 
   Sentry.setTag('app.platform', APP_PLATFORM)
   Sentry.setTag('app.version', APP_VERSION)
+
+  startLongTaskObserver()
+}
+
+/** A plain breadcrumb: wizard step changes and the like, so an event has a trail. */
+export function addBreadcrumb(category: string, message: string, data?: Record<string, unknown>): void {
+  Sentry.addBreadcrumb({ category, message, data, level: 'info' })
+}
+
+/**
+ * Record main-thread tasks over `thresholdMs` as breadcrumbs. The 6 November
+ * Create Event report had no trail at all: Sentry here has no tracing, so a hang
+ * leaves nothing. This is the cheapest trace that still says "the thread was busy
+ * for 1.4 s right after the step changed". Safari has no longtask entry type; it
+ * simply returns.
+ */
+export function startLongTaskObserver(thresholdMs = 200): void {
+  if (typeof PerformanceObserver === 'undefined') return
+  try {
+    if (!PerformanceObserver.supportedEntryTypes?.includes('longtask')) return
+    const observer = new PerformanceObserver(list => {
+      for (const entry of list.getEntries()) {
+        if (entry.duration < thresholdMs) continue
+        Sentry.addBreadcrumb({
+          category: 'performance',
+          message: 'long task',
+          level: 'warning',
+          data: { durationMs: Math.round(entry.duration), startMs: Math.round(entry.startTime) },
+        })
+      }
+    })
+    observer.observe({ type: 'longtask', buffered: true })
+  } catch {
+    // Observation is best effort; never let diagnostics break the app.
+  }
 }
 
 /** Attach the signed-in user to all subsequent Sentry events. Call on auth success. */

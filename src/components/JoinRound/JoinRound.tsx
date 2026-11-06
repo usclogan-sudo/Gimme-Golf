@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../../lib/supabase'
-import { reportSupabaseError } from '../../lib/sentry'
+import { reportSupabaseError, addBreadcrumb } from '../../lib/sentry'
+import { holdReload } from '../../lib/swUpdate'
 
 type SeatStatus = 'pending' | 'accepted' | 'declined'
 
@@ -49,6 +50,9 @@ interface Props {
 export function JoinRound({ userId, initialCode, onJoined, onCancel }: Props) {
   const [code, setCode] = useState(initialCode ?? '')
   const [step, setStep] = useState<'code' | 'pick' | 'joined'>(initialCode ? 'code' : 'code')
+  // Hold the service worker reload while joining (see lib/swUpdate.ts).
+  useEffect(() => holdReload('join'), [])
+  useEffect(() => { addBreadcrumb('wizard', 'join step', { step }) }, [step])
   const [loading, setLoading] = useState(false)
   const [joinedPlayerId, setJoinedPlayerId] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
