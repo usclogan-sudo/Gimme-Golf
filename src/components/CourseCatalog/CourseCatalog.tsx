@@ -5,6 +5,7 @@ import { venturaCourses } from '../../data/venturaCourses'
 import { searchCourses, getCourseDetails, hasCompleteScorecard } from '../../lib/golfCourseApi'
 import type { SearchResult, ApiCourseDetail } from '../../lib/golfCourseApi'
 import type { Course, Tee, Hole } from '../../types'
+import { Seal } from '../brand'
 
 interface Props {
   userId: string
@@ -326,7 +327,9 @@ export function CourseCatalog({ userId, onDone, onAddCustom, onPrefillCourse }: 
 
           {filtered.length === 0 && (
             <div className="text-center py-8 text-gray-500 dark:text-gray-400">
-              <p className="text-3xl mb-2">⛳</p>
+              <div className="flex justify-center mb-2 text-navy dark:text-cream">
+                <Seal size={28} outer="currentColor" letter="currentColor" />
+              </div>
               <p className="font-medium">No local courses match "{query}"</p>
             </div>
           )}

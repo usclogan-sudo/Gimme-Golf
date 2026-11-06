@@ -48,6 +48,8 @@ interface Props {
   bankerResultAlt?: BankerResult | null
   quotaResultAlt?: QuotaResult | null
   primaryMode?: 'net' | 'gross'
+  /** Seat id → first name of the registered user holding a claimed guest seat. */
+  claimedBy?: Record<string, string>
 }
 
 const GAME_LABELS: Record<string, string> = {
@@ -61,8 +63,12 @@ export function LeaderboardTab({
   skinsResult, bestBallResult, nassauResult, nassauMatch = null, wolfResult, bbbResult,
   hammerResult, vegasResult, stablefordResult, bankerResult, quotaResult,
   primaryMode = 'net',
+  claimedBy = {},
 }: Props) {
   const [sharing, setSharing] = useState(false)
+  const claimedLine = (playerId: string) => claimedBy[playerId]
+    ? <p className="text-[11px] font-normal text-gray-400 dark:text-gray-500">claimed by {claimedBy[playerId]}</p>
+    : null
   // Show one set of units — the game's primary mode. (The opposite-mode "Alt"
   // duplicate that printed identical values was removed. §5)
   const primaryLabel = primaryMode === 'net' ? 'Net' : 'Gross'
@@ -213,7 +219,7 @@ export function LeaderboardTab({
               {standings.entries.map(e => (
                 <tr key={e.player.id} className={`border-b border-gray-50 ${e.position === 1 ? 'bg-amber-50' : ''}`}>
                   <td className={`py-2.5 px-1 font-bold w-8 ${e.position === 1 ? 'text-amber-600' : 'text-gray-500'}`}>{e.position || '—'}</td>
-                  <td className="py-2.5 px-1 font-semibold text-gray-800 dark:text-gray-100">{e.player.name}</td>
+                  <td className="py-2.5 px-1 font-semibold text-gray-800 dark:text-gray-100">{e.player.name}{claimedLine(e.player.id)}</td>
                   <td className={`py-2.5 px-1 text-right font-bold text-lg ${
                     e.value === null ? 'text-gray-400' : e.value < 0 ? 'text-gray-500 dark:text-gray-400' : 'text-amber-600 dark:text-brass'
                   }`}>{e.label}</td>
@@ -391,7 +397,7 @@ export function LeaderboardTab({
             {board.map((entry, idx) => (
               <tr key={entry.player.id} className={`border-b border-gray-50 ${positions[idx] === 1 ? 'bg-amber-50' : ''}`}>
                 <td className={`py-2.5 px-1 font-bold ${positions[idx] === 1 ? 'text-amber-600' : 'text-gray-500'}`}>{positions[idx]}</td>
-                <td className="py-2.5 px-1 font-semibold text-gray-800 dark:text-gray-100">{entry.player.name}</td>
+                <td className="py-2.5 px-1 font-semibold text-gray-800 dark:text-gray-100">{entry.player.name}{claimedLine(entry.player.id)}</td>
                 <td className="py-2.5 px-1 text-center text-gray-500">{entry.thru}</td>
                 <td className="py-2.5 px-1 text-center font-semibold text-gray-700">{entry.gross || '—'}</td>
                 <td className="py-2.5 px-1 text-center font-semibold text-gray-700">{entry.net || '—'}</td>

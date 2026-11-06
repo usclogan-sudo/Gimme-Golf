@@ -7,6 +7,7 @@ import { PaymentButtons, getPreferredPayment } from '../PaymentButtons'
 import { Tooltip } from '../ui/Tooltip'
 import { safeWrite } from '../../lib/safeWrite'
 import { canConfirmSettlementReceived, settlementActions } from '../../lib/settlementAuthority'
+import { claimedSeatNames } from '../../lib/seats'
 import {
   buildCourseHandicaps,
   strokesOnHole,
@@ -467,6 +468,15 @@ export function SettleUp({ roundId, userId, eventId, onDone, onContinue }: Props
     if (!game || game.type !== 'best_ball' || !playableSnapshot) return null
     return calculateBestBall(players, holeScores, playableSnapshot, game.config as BestBallConfig, courseHcps)
   }, [game, players, holeScores, playableSnapshot, courseHcps])
+
+  // Guest seats claimed by a registered user: seat id → claimant first name. The
+  // participant map already carries only accepted rows (plus self-links, which the
+  // helper skips because seat id === uid).
+  const claimedBy = useMemo(() => claimedSeatNames(
+    Array.from(participantMap, ([playerId, userId]) => ({ playerId, userId, status: 'accepted' })),
+    uid => profileMap.get(uid)?.displayName,
+    round?.createdBy,
+  ), [participantMap, profileMap, round?.createdBy])
 
   // Legacy stroke-play Nassau only; null for a match-play round (see nassauMatch).
   const nassauResult = useMemo(() => {
@@ -1527,7 +1537,10 @@ export function SettleUp({ roundId, userId, eventId, onDone, onContinue }: Props
                   <tbody>
                     {board.sort((a, b) => a.net - b.net).map(({ player, gross, net, vsPar }) => (
                       <tr key={player.id} className="border-b border-gray-50 dark:border-gray-700">
-                        <td className="py-2 px-2 font-semibold text-gray-800 dark:text-gray-100">{player.name}</td>
+                        <td className="py-2 px-2 font-semibold text-gray-800 dark:text-gray-100">
+                          {player.name}
+                          {claimedBy[player.id] && <p className="text-[11px] font-normal text-gray-400 dark:text-gray-500">claimed by {claimedBy[player.id]}</p>}
+                        </td>
                         <td className={`py-2 px-2 text-center font-semibold ${gross === bestGross ? 'text-brass' : 'text-gray-700 dark:text-gray-300'}`}>
                           {gross}{gross === bestGross ? ' *' : ''}
                         </td>

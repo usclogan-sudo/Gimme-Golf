@@ -46,6 +46,7 @@ const Ledger = lazy(() => import('./components/Ledger/Ledger').then(m => ({ defa
 const LiveLeaderboard = lazy(() => import('./components/LiveLeaderboard/LiveLeaderboard').then(m => ({ default: m.LiveLeaderboard })))
 const PropBetsScreen = lazy(() => import('./components/PropBets/PropBetsScreen').then(m => ({ default: m.PropBetsScreen })))
 import { RouteErrorBoundary } from './components/RouteErrorBoundary'
+import { Seal } from './components/brand'
 import type { AppNotification, Course, Round, UserProfile, GameType, StakesMode } from './types'
 
 type Screen = 'home' | 'course-catalog' | 'course-setup' | 'new-round' | 'scorecard' | 'settle-up' | 'round-history' | 'stats' | 'settings' | 'onboarding' | 'admin' | 'upgrade-account' | 'player-directory' | 'handicap-detail' | 'join-round' | 'tournament-list' | 'tournament-setup' | 'tournament-detail' | 'personal-dashboard' | 'event-setup' | 'event-leaderboard' | 'ledger' | 'spectate' | 'prop-bets'
@@ -529,7 +530,9 @@ function Home({
         {!personalSummary && roundCount === 0 && (
           <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 px-5 py-5 space-y-4">
             <div className="text-center">
-              <p className="text-3xl mb-1">⛳</p>
+              <div className="flex justify-center mb-1 text-navy dark:text-cream">
+                <Seal size={28} outer="currentColor" letter="currentColor" />
+              </div>
               <p className="font-display font-bold text-gray-800 dark:text-gray-100 text-lg">Welcome to Gimme!</p>
               <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Get started in 3 easy steps</p>
             </div>

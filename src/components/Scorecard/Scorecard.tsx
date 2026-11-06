@@ -54,6 +54,7 @@ import {
   fmtAmount,
 } from '../../lib/gameLogic'
 import type { BestBallResult } from '../../lib/gameLogic'
+import { claimedSeatNames, joinedSeatCount } from '../../lib/seats'
 import { makePlayableSnapshot, getPlayableHoleNumbers, roundToHolesConfig, getFrontBackSplit } from '../../lib/holeUtils'
 import { gameStandings } from '../../lib/standings'
 import type { NassauPress } from '../../types'
@@ -181,7 +182,7 @@ function SkinsStatus({ carry, potCents, stakesMode }: { carry: number; potCents:
     return (
       <div className="bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 flex items-center gap-2">
         <span className="text-gray-500 font-bold text-sm">Skins</span>
-        <span className="text-gray-600 text-sm">{fmtAmount(valueCents, stakesMode)} per hole</span>
+        <span className="text-gray-600 text-sm">{fmtAmount(valueCents, stakesMode)} in play</span>
       </div>
     )
   }
@@ -234,6 +235,9 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
   // holds ACCEPTED members, so pending invitees are tracked separately for the
   // "INVITED" badge on the scoring card (UX M2).
   const [pendingInviteeIds, setPendingInviteeIds] = useState<Set<string>>(new Set())
+  // Profile display names for registered users who claimed a guest seat, keyed by
+  // auth uid. The seat keeps the organiser's name; this is who is holding it.
+  const [claimantNames, setClaimantNames] = useState<Record<string, string>>({})
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState(false)
   const [inviteToast, setInviteToast] = useState<string | null>(null)
@@ -628,6 +632,35 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
     if (!snapshot || !roundPlayers) return {}
     return buildCourseHandicaps(players, roundPlayers, snapshot, round?.holesMode)
   }, [players, roundPlayers, snapshot, round?.holesMode])
+
+  // Claimed guest seats: fetch the claimant's profile display name once per uid.
+  const claimantUids = useMemo(
+    () => roundParticipants.filter(rp => rp.playerId !== rp.userId).map(rp => rp.userId).sort().join(','),
+    [roundParticipants],
+  )
+  useEffect(() => {
+    const missing = claimantUids.split(',').filter(uid => uid && !(uid in claimantNames))
+    if (missing.length === 0) return
+    let stale = false
+    supabase.from('user_profiles').select('user_id, display_name').in('user_id', missing).then(({ data }) => {
+      if (stale || !data) return
+      setClaimantNames(prev => {
+        const next = { ...prev }
+        for (const row of data) next[row.user_id] = row.display_name ?? ''
+        return next
+      })
+    })
+    return () => { stale = true }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [claimantUids])
+  const claimedBy = useMemo(
+    () => claimedSeatNames(roundParticipants, uid => claimantNames[uid], round?.createdBy),
+    [roundParticipants, claimantNames, round?.createdBy],
+  )
+  const joinedCount = useMemo(
+    () => joinedSeatCount(roundParticipants, round?.createdBy),
+    [roundParticipants, round?.createdBy],
+  )
 
   // Resolve an actor's user id to a display name, for score provenance (§5b). The
   // creator's own player uses their auth user id as its player id (see NewRound), so
@@ -1826,6 +1859,9 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
           <div className="max-w-2xl mx-auto flex items-center justify-between gap-2">
             <p className="text-sm text-gray-600 dark:text-gray-300 min-w-0 truncate">
               <span className="font-semibold text-gray-800 dark:text-gray-100">{players.length} playing</span>
+              {joinedCount > 0 && (
+                <span className="text-gray-500 dark:text-gray-400"> · {joinedCount} joined</span>
+              )}
               {pendingInviteeIds.size > 0 && (
                 <span className="text-amber-600 dark:text-amber-400"> · {pendingInviteeIds.size} invited</span>
               )}
@@ -2243,6 +2279,7 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
           bankerResultAlt={bankerResultAlt}
           quotaResultAlt={quotaResultAlt}
           primaryMode={(game?.config as any)?.mode ?? 'net'}
+          claimedBy={claimedBy}
         />
       )}
 
@@ -3002,7 +3039,12 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
             return (
               <div key={player.id} className={`bg-white rounded-xl shadow-sm border px-4 py-2.5 flex items-center justify-between ${isPending ? 'border-yellow-300 bg-yellow-50/50' : isRejected ? 'border-red-300 bg-red-50/50' : 'border-gray-100'}`}>
                 <div className="flex items-center gap-2">
-                  <p className={`font-semibold text-sm ${isRejected ? 'text-gray-400 line-through' : isPending ? 'text-gray-600' : 'text-gray-800 dark:text-gray-100'}`}>{player.name}</p>
+                  <div>
+                    <p className={`font-semibold text-sm ${isRejected ? 'text-gray-400 line-through' : isPending ? 'text-gray-600' : 'text-gray-800 dark:text-gray-100'}`}>{player.name}</p>
+                    {claimedBy[player.id] && (
+                      <p className="text-[11px] text-gray-400 dark:text-gray-500">claimed by {claimedBy[player.id]}</p>
+                    )}
+                  </div>
                   {hasGroups && groupNums.length > 1 && (
                     <span className="text-[10px] font-bold uppercase px-1.5 py-0.5 rounded bg-gray-100 text-gray-500">G{playerGroup}</span>
                   )}
@@ -3048,7 +3090,12 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
               <div className="flex items-start justify-between mb-2">
                 <div>
                   <div className="flex items-center gap-2">
-                    <p className="font-bold text-gray-800 dark:text-gray-100 text-base">{player.name}</p>
+                    <div>
+                      <p className="font-bold text-gray-800 dark:text-gray-100 text-base">{player.name}</p>
+                      {claimedBy[player.id] && (
+                        <p className="text-[11px] text-gray-400 dark:text-gray-500 -mt-0.5">claimed by {claimedBy[player.id]}</p>
+                      )}
+                    </div>
                     {pendingInviteeIds.has(player.id) && (
                       <span
                         className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-100 text-amber-700"

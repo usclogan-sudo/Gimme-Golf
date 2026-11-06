@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { supabase } from '../../lib/supabase'
+import { Seal } from '../brand'
 import { parseHandicap } from '../../lib/gameLogic'
 
 interface Props {
@@ -84,7 +85,9 @@ export function Onboarding({ userId, onComplete }: Props) {
       <main className="flex-1 flex flex-col items-center justify-center px-6 py-10 max-w-lg mx-auto w-full">
         {step === 'profile' ? (
           <div className="text-center space-y-6 w-full">
-            <div className="text-7xl">&#9971;</div>
+            <div className="flex justify-center text-navy dark:text-cream">
+              <Seal size={64} outer="currentColor" letter="currentColor" />
+            </div>
             <h2 className="font-display text-3xl font-bold text-gray-900 dark:text-gray-100">Welcome to Gimme</h2>
             <p className="text-gray-500 dark:text-gray-400 text-lg">Track your side games, keep score, and settle up clean — all in one place.</p>
 
