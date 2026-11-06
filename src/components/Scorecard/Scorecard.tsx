@@ -1024,22 +1024,33 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
 
   // Atomic game state update: reads latest from ref, applies mutation, persists.
   // On conflict (stale local state), refetches from DB and retries once.
-  const updateGameState = async (mutate: (game: Game) => Game) => {
+  // Every per-hole decision that lives in rounds.game (Wolf picks, Skins and
+  // Nassau presses, Hammer throws) goes through here. The write is optimistic;
+  // if it fails after one retry the local state is put back to what the server
+  // holds and the user is told, so a pick that never saved is not shown as made.
+  const updateGameState = async (mutate: (game: Game) => Game): Promise<boolean> => {
     const latest = roundRef.current
-    if (!latest?.game) return
-    const updatedGame = mutate(latest.game)
+    if (!latest?.game) return false
+    const previousGame = latest.game
+    const updatedGame = mutate(previousGame)
     setRound(prev => prev ? { ...prev, game: updatedGame } : prev)
     const { error } = await supabase.from('rounds')
       .update({ game: updatedGame }).eq('id', roundId).select('game').single()
-    if (error) {
-      // Conflict or network error — refetch and retry once
-      const { data: fresh } = await supabase.from('rounds').select('game').eq('id', roundId).single()
-      if (fresh?.game) {
-        const retryGame = mutate(fresh.game)
-        setRound(prev => prev ? { ...prev, game: retryGame } : prev)
-        safeWrite(supabase.from('rounds').update({ game: retryGame }).eq('id', roundId), 'retry game update')
-      }
+    if (!error) return true
+    // Conflict or network error — refetch and retry once
+    const { data: fresh } = await supabase.from('rounds').select('game').eq('id', roundId).single()
+    if (fresh?.game) {
+      const retryGame = mutate(fresh.game)
+      setRound(prev => prev ? { ...prev, game: retryGame } : prev)
+      const ok = await safeWrite(supabase.from('rounds').update({ game: retryGame }).eq('id', roundId), 'retry game update')
+      if (ok) return true
+      setRound(prev => prev ? { ...prev, game: fresh.game } : prev)
+    } else {
+      reportSupabaseError(error, 'updateGameState')
+      setRound(prev => prev ? { ...prev, game: previousGame } : prev)
     }
+    showScoreToast("That didn't save. Try again.", 'error')
+    return false
   }
 
   // Wolf decision handler (Finding 4).
@@ -1157,10 +1168,16 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
     const currentVal = existing?.[category]
     const newVal = currentVal === playerId ? null : playerId
 
+    // Optimistic, then put back and say so if the write fails — an award that
+    // never saved must not stay lit on the phone.
     if (existing) {
       const updated = { ...existing, [category]: newVal }
       setBbbPoints(prev => prev.map(p => p.id === existing.id ? updated : p))
-      safeWrite(supabase.from('bbb_points').update({ [category]: newVal }).eq('id', existing.id), 'update bbb point')
+      const ok = await safeWrite(supabase.from('bbb_points').update({ [category]: newVal }).eq('id', existing.id), 'update bbb point')
+      if (!ok) {
+        setBbbPoints(prev => prev.map(p => p.id === existing.id ? existing : p))
+        showScoreToast("That didn't save. Try again.", 'error')
+      }
     } else {
       const newPoint: BBBPoint = {
         id: uuidv4(),
@@ -1171,20 +1188,35 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
         bongo: category === 'bongo' ? newVal : null,
       }
       setBbbPoints(prev => [...prev, newPoint])
-      safeWrite(supabase.from('bbb_points').insert(bbbPointToRow(newPoint, userId)), 'insert bbb point')
+      const ok = await safeWrite(supabase.from('bbb_points').insert(bbbPointToRow(newPoint, userId)), 'insert bbb point')
+      if (!ok) {
+        setBbbPoints(prev => prev.filter(p => p.id !== newPoint.id))
+        showScoreToast("That didn't save. Try again.", 'error')
+      }
     }
   }
 
-  // Junk toggle handler
+  // Junk toggle handler (Junks side game and Dots: junkType holds the DotType).
+  // Optimistic; a failed write puts the selection back and tells the user. The
+  // 6 November Dots failure (23514, junk_type check) sat behind exactly this
+  // silence: the dot stayed lit, the row never existed.
   const toggleJunk = async (junkType: JunkType, playerId: string) => {
     const existing = junkRecords.find(jr => jr.holeNumber === currentHole && jr.playerId === playerId && jr.junkType === junkType)
     if (existing) {
       setJunkRecords(prev => prev.filter(jr => jr.id !== existing.id))
-      safeWrite(supabase.from('junk_records').delete().eq('id', existing.id), 'delete junk record')
+      const ok = await safeWrite(supabase.from('junk_records').delete().eq('id', existing.id), 'delete junk record')
+      if (!ok) {
+        setJunkRecords(prev => prev.some(jr => jr.id === existing.id) ? prev : [...prev, existing])
+        showScoreToast("That didn't save. Try again.", 'error')
+      }
     } else {
       const newRecord: JunkRecord = { id: uuidv4(), roundId, holeNumber: currentHole, playerId, junkType }
       setJunkRecords(prev => [...prev, newRecord])
-      safeWrite(supabase.from('junk_records').insert(junkRecordToRow(newRecord, userId)), 'insert junk record')
+      const ok = await safeWrite(supabase.from('junk_records').insert(junkRecordToRow(newRecord, userId)), 'insert junk record')
+      if (!ok) {
+        setJunkRecords(prev => prev.filter(jr => jr.id !== newRecord.id))
+        showScoreToast("That didn't save. Try again.", 'error')
+      }
     }
   }
 
