@@ -1109,6 +1109,18 @@ export function nassauMatchLegValues(buyInCents: number): Record<NassauLeg, numb
   return { front: third, back: third, total: buyInCents - 2 * third }
 }
 
+/**
+ * Where a press opens. A press called on a hole with no scores in yet starts on that
+ * hole; once the hole is scored it starts on the next hole of the nine. Null when
+ * there is nothing left to press for (the last hole of the nine is already scored).
+ */
+export function nassauPressStartHole(legHoles: number[], currentHole: number, currentHoleScored: boolean): number | null {
+  const idx = legHoles.indexOf(currentHole)
+  if (idx < 0) return null
+  if (!currentHoleScored) return currentHole
+  return idx < legHoles.length - 1 ? legHoles[idx + 1] : null
+}
+
 export function nassauMatchLabel(holesUp: number, holesRemaining: number, closed: boolean): string {
   const up = Math.abs(holesUp)
   if (up === 0) return 'AS'
