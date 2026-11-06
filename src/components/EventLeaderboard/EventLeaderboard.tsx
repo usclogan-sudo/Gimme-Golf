@@ -1,4 +1,6 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { FreshnessLine } from '../FreshnessLine'
+import { useFreshness, type ChannelState } from '../../lib/freshness'
 import { supabase, rowToRound, rowToRoundPlayer, rowToHoleScore, rowToEvent, rowToEventParticipant } from '../../lib/supabase'
 import { buildCourseHandicaps, strokesOnHole, fmtAmount, fmtHandicap } from '../../lib/gameLogic'
 import { createRealtimeSync } from '../../lib/realtimeSync'
@@ -25,6 +27,11 @@ export function EventLeaderboard({ userId, eventId, onBack }: Props) {
   const [onlineUsers, setOnlineUsers] = useState<Set<string>>(new Set())
   const [showApproval, setShowApproval] = useState(false)
   const [approvingId, setApprovingId] = useState<string | null>(null)
+  // Freshness: last successful fetch or realtime message, and channel state.
+  const [lastSyncAt, setLastSyncAt] = useState<number | null>(null)
+  const [channelState, setChannelState] = useState<ChannelState>('closed')
+  const freshness = useFreshness(lastSyncAt, channelState)
+  const refetchRef = useRef<() => void>(() => {})
 
   // Load data — extracted so the realtime catch-up paths can refetch on demand.
   // Those refetches are silent: they never put the loading screen back up.
@@ -48,6 +55,7 @@ export function EventLeaderboard({ userId, eventId, onBack }: Props) {
         if (rpRes.data) setRoundPlayers(rpRes.data.map(rowToRoundPlayer))
         if (hsRes.data) setHoleScores(hsRes.data.map(rowToHoleScore))
         if (epRes.data) setEventParticipants(epRes.data.map(rowToEventParticipant))
+        setLastSyncAt(Date.now())
         setLoading(false)
       })
     })
@@ -73,6 +81,7 @@ export function EventLeaderboard({ userId, eventId, onBack }: Props) {
         const dataChannel = supabase
           .channel(`event-${eventId}`)
           .on('postgres_changes', { event: '*', schema: 'public', table: 'hole_scores', filter: `round_id=eq.${round.id}` }, (payload) => {
+            setLastSyncAt(Date.now())
             if (payload.eventType === 'INSERT') {
               const row = payload.new as any
               setHoleScores(prev => prev.some(s => s.id === row.id) ? prev : [...prev, rowToHoleScore(row)])
@@ -108,11 +117,14 @@ export function EventLeaderboard({ userId, eventId, onBack }: Props) {
         }
       },
       refetch: () => { if (!cancelled) loadData(() => cancelled) },
+      onStateChange: (s) => { if (!cancelled) setChannelState(s) },
     })
+    refetchRef.current = () => sync.refetch()
     sync.start()
 
     return () => {
       cancelled = true
+      refetchRef.current = () => {}
       sync.stop()
     }
   }, [round?.id, event?.id, eventId, userId])
@@ -238,6 +250,7 @@ export function EventLeaderboard({ userId, eventId, onBack }: Props) {
         <div className="max-w-2xl mx-auto flex items-center justify-between">
           <div>
             <p className="text-xs text-gray-300">{snapshot.courseName}</p>
+            <FreshnessLine label={freshness} onRefresh={() => refetchRef.current()} tone="dark" />
             <h1 className="text-xl font-bold flex items-center gap-2">
               {event.name}
               <span className="inline-flex items-center gap-1 text-[10px] bg-green-500/30 px-1.5 py-0.5 rounded-full">

@@ -49,6 +49,8 @@ export function RoundHistory({ userId, onBack, onViewSettlements, onPlayAgain, e
   // outcome each row leads with (UX v2.1 §10).
   const [settlementsByRound, setSettlementsByRound] = useState<Map<string, SettlementRecord[]>>(new Map())
   const [myPlayerByRound, setMyPlayerByRound] = useState<Map<string, string>>(new Map())
+  // Event names for event rounds, so two outings at one course can be told apart.
+  const [eventNames, setEventNames] = useState<Record<string, string>>({})
 
   useEffect(() => {
     supabase
@@ -61,6 +63,12 @@ export function RoundHistory({ userId, onBack, onViewSettlements, onPlayAgain, e
           const mapped = data.map(rowToRound)
           setRounds(mapped)
           const ids = mapped.map(r => r.id)
+          const eventIds = Array.from(new Set(mapped.map(r => r.eventId).filter((id): id is string => !!id)))
+          if (eventIds.length > 0) {
+            supabase.from('events').select('id,name').in('id', eventIds).then(({ data: evs }) => {
+              if (evs) setEventNames(Object.fromEntries(evs.map((e: any) => [e.id, e.name])))
+            })
+          }
           if (ids.length > 0) {
             // Settlement records (for status badges + per-round outcome) and
             // participant rows (to resolve which player is the current user).
@@ -225,17 +233,19 @@ export function RoundHistory({ userId, onBack, onViewSettlements, onPlayAgain, e
               >
                 <div className="flex items-center justify-between gap-3">
                   <div className="min-w-0">
-                    {/* The game follows the course, "Las Posas Country Club · Wolf",
-                        so a card says what was played before it says when. */}
+                    {/* "Test 2 · Sterling Hills Golf Club · Skins": the event name leads
+                        when there is one, then the course, then the game, so two
+                        outings at the same course read apart. */}
                     {outcome ? (
                       <p className={`font-display text-lg font-semibold leading-tight truncate ${toneClass}`}>{outcome.label}</p>
                     ) : (
                       <p className="font-display text-lg font-semibold text-gray-900 dark:text-gray-100 leading-tight truncate">
+                        {round.eventId && eventNames[round.eventId] ? `${eventNames[round.eventId]} · ` : ''}
                         {snapshot?.courseName ?? 'Unknown Course'}{game && <> · {gameLabelOf(game.type)}</>}
                       </p>
                     )}
                     <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5 truncate">
-                      {outcome && <>{snapshot?.courseName ?? 'Unknown Course'}{game && <> · {gameLabelOf(game.type)}</>} · </>}
+                      {outcome && <>{round.eventId && eventNames[round.eventId] ? `${eventNames[round.eventId]} · ` : ''}{snapshot?.courseName ?? 'Unknown Course'}{game && <> · {gameLabelOf(game.type)}</>} · </>}
                       {new Date(round.date).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
                       {game?.stakesMode === 'high_roller' && ' 💎'}
                       {players.length > 0 && <> · {players.length}p</>}

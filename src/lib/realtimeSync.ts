@@ -33,6 +33,8 @@ export interface RealtimeSyncOptions {
   /** How long a hidden tab keeps its channel before it is dropped. */
   hiddenGraceMs?: number
   reconnectDelayMs?: (attempt: number) => number
+  /** Channel state for the UI: open, reconnecting (between attempts), closed. */
+  onStateChange?: (state: 'open' | 'reconnecting' | 'closed') => void
 }
 
 export interface RealtimeSync {
@@ -56,6 +58,12 @@ export function createRealtimeSync(opts: RealtimeSyncOptions): RealtimeSync {
   let hiddenTimer: ReturnType<typeof setTimeout> | null = null
 
   const hidden = () => typeof document !== 'undefined' && document.visibilityState === 'hidden'
+  let lastState: 'open' | 'reconnecting' | 'closed' = 'closed'
+  const setState = (s: 'open' | 'reconnecting' | 'closed') => {
+    if (s === lastState) return
+    lastState = s
+    opts.onStateChange?.(s)
+  }
 
   const close = () => {
     if (!teardown) return
@@ -89,6 +97,7 @@ export function createRealtimeSync(opts: RealtimeSyncOptions): RealtimeSync {
     if (status === 'SUBSCRIBED') {
       attempt = 0
       clearRetry()
+      setState('open')
       if (failedSinceSubscribed) {
         failedSinceSubscribed = false
         opts.refetch()
@@ -98,6 +107,7 @@ export function createRealtimeSync(opts: RealtimeSyncOptions): RealtimeSync {
     if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
       failedSinceSubscribed = true
       close()
+      setState('reconnecting')
       opts.refetch()
       scheduleReopen()
     }
@@ -109,7 +119,7 @@ export function createRealtimeSync(opts: RealtimeSyncOptions): RealtimeSync {
       clearHidden()
       hiddenTimer = setTimeout(() => {
         hiddenTimer = null
-        if (!stopped && hidden()) close()
+        if (!stopped && hidden()) { close(); setState('closed') }
       }, hiddenGraceMs)
       return
     }
@@ -140,6 +150,7 @@ export function createRealtimeSync(opts: RealtimeSyncOptions): RealtimeSync {
       if (typeof document !== 'undefined') document.removeEventListener('visibilitychange', onVisibilityChange)
       if (typeof window !== 'undefined') window.removeEventListener('online', onOnline)
       close()
+      setState('closed')
     },
     refetch() { if (!stopped) opts.refetch() },
     isOpen() { return teardown !== null },

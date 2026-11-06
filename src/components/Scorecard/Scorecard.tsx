@@ -26,6 +26,9 @@ import { ScorecardHeaderMenu } from './ScorecardHeaderMenu'
 import { InlineErrorBoundary } from '../InlineErrorBoundary'
 import { BuyInBanner } from './BuyInBanner'
 import { LeaderboardTab } from './LeaderboardTab'
+import { InlineScorePad, ReadOnlyScore } from './ScoreCells'
+import { FreshnessLine } from '../FreshnessLine'
+import { useFreshness, type ChannelState } from '../../lib/freshness'
 import { BBBGrid } from './BBBGrid'
 import { HoleBetsPanel } from './HoleBetsPanel'
 import { DotsPanel } from './DotsPanel'
@@ -104,80 +107,7 @@ interface Props {
   readOnly?: boolean
 }
 
-function getScoreClass(score: number, par: number): string {
-  const diff = score - par
-  if (score === 1) return 'score-eagle'
-  if (diff <= -2) return 'score-eagle'
-  if (diff === -1) return 'score-birdie'
-  if (diff === 0) return 'score-par'
-  if (diff === 1) return 'score-bogey'
-  if (diff === 2) return 'score-double'
-  return 'score-worse'
-}
 
-
-function InlineScorePad({
-  value,
-  par,
-  hasScore,
-  readOnly,
-  onChange,
-  onMore,
-}: {
-  value: number
-  par: number
-  hasScore: boolean
-  readOnly?: boolean
-  onChange: (v: number) => void
-  onMore: () => void
-}) {
-  // Show par-2 through par+3 inline (6 buttons), then "..." for out-of-range
-  const start = Math.max(1, par - 2)
-  const end = par + 3
-  const nums = Array.from({ length: end - start + 1 }, (_, i) => start + i)
-  const inRange = hasScore && value >= start && value <= end
-  const moreHighlight = hasScore && !inRange
-  return (
-    <div className="grid grid-cols-7 gap-1.5">
-      {nums.map(n => {
-        const selected = inRange && value === n
-        return (
-          <button
-            key={n}
-            onClick={() => !readOnly && onChange(n)}
-            disabled={readOnly}
-            // One selected state — navy fill (brass in dark), cream numeral. No rainbow.
-            // Par chip gets a brass underline at rest so the eye lands on it. (§7c/§7d)
-            className={`relative h-12 rounded-xl font-bold text-lg flex items-center justify-center border-2 transition-all active:scale-95 ${
-              selected
-                ? 'bg-navy text-cream border-navy dark:bg-brass dark:text-navy dark:border-brass shadow-md'
-                : `bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-200 active:bg-gray-50 dark:active:bg-gray-600 border-gray-200 dark:border-gray-600 ${n === par ? 'border-b-brass' : ''}`
-            }`}
-            aria-label={`Score ${n}`}
-          >
-            {/* Under-par is marked by a brass dot, not a colour — restraint reads as
-                confidence. (§7d) */}
-            {selected && n < par && <span className="absolute top-1 left-1/2 -translate-x-1/2 w-1.5 h-1.5 rounded-full bg-brass dark:bg-navy" />}
-            {n}
-          </button>
-        )
-      })}
-      <button
-        onClick={() => !readOnly && onMore()}
-        disabled={readOnly}
-        className={`relative h-12 rounded-xl font-bold text-lg flex items-center justify-center border-2 transition-all active:scale-95 ${
-          moreHighlight
-            ? 'bg-navy text-cream border-navy dark:bg-brass dark:text-navy dark:border-brass shadow-md'
-            : 'bg-white dark:bg-gray-700 text-gray-500 dark:text-gray-300 border-gray-200 dark:border-gray-600 active:bg-gray-50 dark:active:bg-gray-600'
-        }`}
-        aria-label="More score options"
-      >
-        {moreHighlight && value < par && <span className="absolute top-1 left-1/2 -translate-x-1/2 w-1.5 h-1.5 rounded-full bg-brass dark:bg-navy" />}
-        {moreHighlight ? value : '···'}
-      </button>
-    </div>
-  )
-}
 
 /** `unitCents` is what one skin is worth to the winner: the whole pot under the pot
  *  model, or value × opponents when each skin is paid for individually. */
@@ -364,14 +294,14 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
 
   // `silent` refetches behind the current screen (realtime catch up, tab opened,
   // back from hidden): no loading screen, and a failure keeps what is shown.
-  const loadScorecardData = (isCancelled?: () => boolean, opts?: { silent?: boolean }) => {
+  const loadScorecardData = (isCancelled?: () => boolean, opts?: { silent?: boolean }): Promise<void> => {
     const cancelled = () => isCancelled?.() ?? false
     const silent = opts?.silent === true
     if (!silent) {
       setLoadError(false)
       setLoading(true)
     }
-    Promise.all([
+    return Promise.all([
       supabase.from('rounds').select('*').eq('id', roundId).single(),
       supabase.from('round_players').select('*').eq('round_id', roundId),
       supabase.from('hole_scores').select('*').eq('round_id', roundId),
@@ -402,6 +332,7 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
       if (biRes.data) setBuyIns(biRes.data.map(rowToBuyIn))
       if (pbRes?.data) setPropBets(pbRes.data.map(rowToPropBet))
       if (pwRes?.data) setPropWagers(pwRes.data.map(rowToPropWager))
+      setLastSyncAt(Date.now())
       setLoading(false)
     }).catch(() => {
       if (cancelled() || silent) return
@@ -416,9 +347,15 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
     return () => { cancelled = true }
   }, [roundId])
 
-  // Latest silent refetch, for the Leaderboard tab button (it is a plain handler
-  // outside the realtime effect's closure).
-  const refetchRef = useRef<() => void>(() => {})
+  // Latest silent refetch, for the Leaderboard tab button and pull to refresh
+  // (plain handlers outside the realtime effect's closure).
+  const refetchRef = useRef<() => Promise<void>>(() => Promise.resolve())
+  // Freshness: the last successful fetch or realtime message, and the channel
+  // state, for the "Updated 12s ago" / "Reconnecting" line (lib/freshness.ts).
+  const [lastSyncAt, setLastSyncAt] = useState<number | null>(null)
+  const [channelState, setChannelState] = useState<ChannelState>('closed')
+  const freshness = useFreshness(lastSyncAt, channelState)
+  const markSynced = () => setLastSyncAt(Date.now())
 
   // ─── Fetch event data when round is part of an event ──────────────────────
   useEffect(() => {
@@ -479,6 +416,7 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
     const buildChannel = () => supabase
       .channel(`round-${roundId}`)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'hole_scores', filter: `round_id=eq.${roundId}` }, (payload) => {
+        markSynced()
         if (payload.eventType === 'UPDATE') {
           const row = payload.new as any
           const oldRow = payload.old as any
@@ -493,28 +431,36 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
         setHoleScores(prev => applyHoleScorePayload(prev, payload as any))
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'bbb_points', filter: `round_id=eq.${roundId}` }, (payload) => {
+        markSynced()
         setBbbPoints(prev => applyBBBPointPayload(prev, payload as any))
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'junk_records', filter: `round_id=eq.${roundId}` }, (payload) => {
+        markSynced()
         setJunkRecords(prev => applyJunkRecordPayload(prev, payload as any))
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'side_bets', filter: `round_id=eq.${roundId}` }, (payload) => {
+        markSynced()
         setSideBets(prev => applySideBetPayload(prev, payload as any))
       })
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'rounds', filter: `id=eq.${roundId}` }, (payload) => {
+        markSynced()
         const row = payload.new as any
         setRound(rowToRound(row))
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'round_participants', filter: `round_id=eq.${roundId}` }, (payload) => {
+        markSynced()
         setRoundParticipants(prev => applyRoundParticipantPayload(prev, payload as any))
       })
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'buy_ins', filter: `round_id=eq.${roundId}` }, (payload) => {
+        markSynced()
         setBuyIns(prev => applyBuyInPayload(prev, payload as any))
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'prop_bets', filter: `round_id=eq.${roundId}` }, (payload) => {
+        markSynced()
         setPropBets(prev => applyPropBetPayload(prev, payload as any))
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'prop_wagers', filter: `round_id=eq.${roundId}` }, (payload) => {
+        markSynced()
         setPropWagers(prev => applyPropWagerPayload(prev, payload as any))
       })
 
@@ -524,14 +470,15 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
         channel.subscribe(status => onStatus(status))
         return () => { supabase.removeChannel(channel) }
       },
-      refetch: () => { if (!cancelled) loadScorecardData(() => cancelled, { silent: true }) },
+      refetch: () => { if (!cancelled) void loadScorecardData(() => cancelled, { silent: true }) },
+      onStateChange: (s) => { if (!cancelled) setChannelState(s) },
     })
-    refetchRef.current = () => sync.refetch()
+    refetchRef.current = () => (cancelled ? Promise.resolve() : loadScorecardData(() => cancelled, { silent: true }))
     sync.start()
 
     return () => {
       cancelled = true
-      refetchRef.current = () => {}
+      refetchRef.current = () => Promise.resolve()
       sync.stop()
     }
   }, [roundId])
@@ -694,9 +641,13 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
   const par = hole?.par ?? 4
   const strokeIndex = hole?.strokeIndex ?? currentHole
 
-  const getScore = (playerId: string): number => {
+  // null when no hole_scores row exists. This used to fall back to par, and the
+  // hole view printed the fallback as a score: three players with no score on a
+  // par 4 read as three 4s while the leaderboard showed them thru 0. Callers
+  // decide what a missing score looks like; nothing downstream invents one.
+  const getScore = (playerId: string): number | null => {
     const hs = holeScores.find(s => s.playerId === playerId && s.holeNumber === currentHole)
-    return hs?.grossScore ?? par
+    return hs?.grossScore ?? null
   }
 
   const showScoreToast = (
@@ -1779,6 +1730,7 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
                   {stance.badge}
                 </span>
               </p>
+              <FreshnessLine label={freshness} tone="dark" showRefresh={false} />
               {/* One hole header — stepper chevrons merged in; the duplicate row below
                   is gone, recovering ~56px of vertical space. (§7a) */}
               <h1 className="text-xl font-bold flex items-center gap-1">
@@ -1966,7 +1918,7 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
           <button
             // Opening the board is a moment the user expects it to be current, so
             // catch up on anything realtime missed.
-            onClick={() => { setScoreTab('leaderboard'); refetchRef.current() }}
+            onClick={() => { setScoreTab('leaderboard'); void refetchRef.current() }}
             className={`flex-1 min-h-[44px] rounded-lg text-sm font-semibold transition-colors ${
               scoreTab === 'leaderboard' ? 'bg-gray-800 text-white dark:bg-brass dark:text-navy' : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300'
             }`}
@@ -2332,6 +2284,8 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
           primaryMode={(game?.config as any)?.mode ?? 'net'}
           claimedBy={claimedBy}
           teeByPlayer={teeByPlayer}
+          freshness={freshness}
+          onRefresh={() => refetchRef.current()}
         />
       )}
 
@@ -2973,7 +2927,10 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
 
         {/* Score cards */}
         {!showBatchEntry && (game?.type !== 'bingo_bango_bongo' || showScoreEntry) && players.map(player => {
-          const grossScore = getScore(player.id)
+          const enteredScore = getScore(player.id)
+          const hasEntered = enteredScore !== null
+          // The pad needs a number to centre on: par is the suggestion, never a score.
+          const grossScore = enteredScore ?? par
           const courseHcp = courseHcps[player.id] ?? 0
           const strokesGiven = strokesOnHole(courseHcp, strokeIndex)
           const netScore = grossScore - strokesGiven
@@ -3082,8 +3039,8 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
                   {isRejected && <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-red-200 text-red-700">REJECTED</span>}
                 </div>
                 <div className="flex items-center gap-3 text-right">
-                  <span className={`text-base font-bold px-2 py-1 rounded ${isPending ? 'opacity-50' : ''} ${isRejected ? 'line-through opacity-40' : ''} ${getScoreClass(grossScore, par)}`}>{grossScore}</span>
-                  {strokesGiven > 0 && <span className="text-xs text-amber-600 font-semibold">Net {scoreRow ? netScore : '—'}</span>}
+                  <ReadOnlyScore gross={enteredScore} par={par} pending={isPending} rejected={isRejected} />
+                  {strokesGiven > 0 && hasEntered && <span className="text-xs text-amber-600 font-semibold">Net {netScore}</span>}
                   {holesPlayed > 0 && (
                     <span className={`text-xs font-semibold ${runningVsPar > 0 ? 'text-red-500' : runningVsPar < 0 ? 'text-green-600' : 'text-gray-400'}`}>
                       {runningGross} ({runningVsPar > 0 ? '+' : ''}{runningVsPar})
@@ -3094,10 +3051,10 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
             )
           }
 
-          // Score validation warnings
+          // Score validation warnings — only for a score that has been entered.
           const warnings: string[] = []
-          if (grossScore === 1 && par >= 4) warnings.push('Hole in one! Verify score')
-          if (grossScore >= par + 5) warnings.push(`That's +${grossScore - par} over par — verify score`)
+          if (hasEntered && grossScore === 1 && par >= 4) warnings.push('Hole in one! Verify score')
+          if (hasEntered && grossScore >= par + 5) warnings.push(`That's +${grossScore - par} over par — verify score`)
 
           return (
             <div key={player.id} className={`bg-white dark:bg-gray-800 rounded-2xl shadow-sm border px-3 py-2.5 ${isPending ? 'border-yellow-300' : isRejected ? 'border-red-300' : 'border-gray-100 dark:border-gray-700'}`}>
@@ -3176,13 +3133,13 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
                     "Thru N: G (±P)" line dropped — the Leaderboard tab answers it. */}
                 <div className="text-right">
                   {/* The pre-highlighted par is a suggestion, not a score: no Net until a tap lands. */}
-                  {strokesGiven > 0 && <p className="text-sm font-semibold text-amber-600 dark:text-amber-400 mt-0.5">Net {currentScore ? netScore : '—'}</p>}
+                  {strokesGiven > 0 && <p className="text-sm font-semibold text-amber-600 dark:text-amber-400 mt-0.5">Net {hasEntered ? netScore : '—'}</p>}
                 </div>
               </div>
               <InlineScorePad
                 value={grossScore}
                 par={par}
-                hasScore={!!currentScore}
+                hasScore={hasEntered}
                 readOnly={!isEditable}
                 onChange={v => setScore(player.id, v)}
                 onMore={() => setNumberPadTarget({ playerId: player.id, playerName: player.name })}

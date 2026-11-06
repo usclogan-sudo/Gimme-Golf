@@ -11,6 +11,7 @@ type Status = (s: string) => void
 function harness(opts: { hiddenGraceMs?: number } = {}) {
   const teardowns: ReturnType<typeof vi.fn>[] = []
   const statusCallbacks: Status[] = []
+  const states: string[] = []
   const open = vi.fn((onStatus: Status) => {
     statusCallbacks.push(onStatus)
     const teardown = vi.fn()
@@ -18,8 +19,8 @@ function harness(opts: { hiddenGraceMs?: number } = {}) {
     return teardown
   })
   const refetch = vi.fn()
-  const sync = createRealtimeSync({ open, refetch, hiddenGraceMs: opts.hiddenGraceMs })
-  return { sync, open, refetch, teardowns, status: (i: number, s: string) => statusCallbacks[i](s) }
+  const sync = createRealtimeSync({ open, refetch, hiddenGraceMs: opts.hiddenGraceMs, onStateChange: s => states.push(s) })
+  return { sync, open, refetch, teardowns, states, status: (i: number, s: string) => statusCallbacks[i](s) }
 }
 
 function setVisibility(state: 'visible' | 'hidden') {
@@ -126,6 +127,25 @@ describe('createRealtimeSync', () => {
     window.dispatchEvent(new Event('online'))
     expect(h.refetch).toHaveBeenCalledTimes(1)
     expect(h.open).toHaveBeenCalledTimes(1)
+  })
+
+  it('reports open, reconnecting while between attempts, and closed when dropped or stopped', () => {
+    const h = harness({ hiddenGraceMs: 100 })
+    h.sync.start()
+    h.status(0, 'SUBSCRIBED')
+    expect(h.states).toEqual(['open'])
+    h.status(0, 'CHANNEL_ERROR')
+    expect(h.states).toEqual(['open', 'reconnecting'])
+    vi.advanceTimersByTime(RECONNECT_BACKOFF_MS[0])
+    h.status(1, 'SUBSCRIBED')
+    expect(h.states).toEqual(['open', 'reconnecting', 'open'])
+    setVisibility('hidden')
+    vi.advanceTimersByTime(100)
+    expect(h.states).toEqual(['open', 'reconnecting', 'open', 'closed'])
+    setVisibility('visible')
+    h.status(2, 'SUBSCRIBED')
+    h.sync.stop()
+    expect(h.states.slice(-2)).toEqual(['open', 'closed'])
   })
 
   it('stop tears down, cancels a pending reopen, and ignores later statuses', () => {
