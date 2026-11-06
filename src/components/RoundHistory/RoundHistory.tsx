@@ -225,15 +225,18 @@ export function RoundHistory({ userId, onBack, onViewSettlements, onPlayAgain, e
               >
                 <div className="flex items-center justify-between gap-3">
                   <div className="min-w-0">
+                    {/* The game follows the course, "Las Posas Country Club · Wolf",
+                        so a card says what was played before it says when. */}
                     {outcome ? (
                       <p className={`font-display text-lg font-semibold leading-tight truncate ${toneClass}`}>{outcome.label}</p>
                     ) : (
-                      <p className="font-display text-lg font-semibold text-gray-900 dark:text-gray-100 leading-tight truncate">{snapshot?.courseName ?? 'Unknown Course'}</p>
+                      <p className="font-display text-lg font-semibold text-gray-900 dark:text-gray-100 leading-tight truncate">
+                        {snapshot?.courseName ?? 'Unknown Course'}{game && <> · {gameLabelOf(game.type)}</>}
+                      </p>
                     )}
                     <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5 truncate">
-                      {outcome && <>{snapshot?.courseName ?? 'Unknown Course'} · </>}
+                      {outcome && <>{snapshot?.courseName ?? 'Unknown Course'}{game && <> · {gameLabelOf(game.type)}</>} · </>}
                       {new Date(round.date).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
-                      {game && <> · {GAME_EMOJI[game.type] ?? game.type}</>}
                       {game?.stakesMode === 'high_roller' && ' 💎'}
                       {players.length > 0 && <> · {players.length}p</>}
                     </p>

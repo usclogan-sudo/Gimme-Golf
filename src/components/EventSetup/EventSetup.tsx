@@ -7,8 +7,9 @@ import { holdReload } from '../../lib/swUpdate'
 // Events store buy-in in cents (money mode); fmtAmount with no stakesMode
 // converts cents -> points for display (1 pt = $1), so no $ surfaces.
 import { fmtAmount, fmtHandicap, computeCourseHandicap } from '../../lib/gameLogic'
-import { findPlayerByName, guestCopyIds } from '../../lib/players'
-import { autoAssignGroups, randomAssignGroups, fillMissingGroups, autoAssignShotgunStarts, MAX_PER_GROUP } from '../../lib/eventUtils'
+import { guestCopyIds } from '../../lib/players'
+import { autoAssignGroups, randomAssignGroups, fillMissingGroups, autoAssignShotgunStarts, bestBallTeamStatus, MAX_PER_GROUP } from '../../lib/eventUtils'
+import { PlayerPicker } from '../NewRound/NewRound'
 import type { GroupMode } from '../../lib/eventUtils'
 import { parseDollarsToCents } from '../../lib/money'
 import { venturaCourses } from '../../data/venturaCourses'
@@ -65,12 +66,12 @@ export function EventSetup({ userId, onStart, onCancel, onAddCourse }: Props) {
   const [selectedCourse, setSelectedCourse] = useState<Course | null>(null)
 
   // Step 3: Players
-  const [availablePlayers, setAvailablePlayers] = useState<Player[]>([])
   const [selectedPlayers, setSelectedPlayers] = useState<Player[]>([])
   // Guest rows that share a name with a registered player (see guestCopyIds).
   const [guestCopies, setGuestCopies] = useState<Set<string>>(new Set())
-  const [playerSearch, setPlayerSearch] = useState('')
-  const [quickAddName, setQuickAddName] = useState('')
+  // Per-player tee picks made in the shared PlayerPicker; folded into each
+  // selected player on Continue.
+  const [playerTees, setPlayerTees] = useState<Record<string, string>>({})
 
   // Step 4: Groups & scorekeepers
   const [groups, setGroups] = useState<Record<string, number>>({})
@@ -84,6 +85,7 @@ export function EventSetup({ userId, onStart, onCancel, onAddCourse }: Props) {
   const [carryovers, setCarryovers] = useState(true)
   const [bbScoring] = useState<'match' | 'total'>('match')
   const [bbMode] = useState<'gross' | 'net'>('net')
+  const [bbTeams, setBbTeams] = useState<Record<string, 'A' | 'B'>>({})
   const [nassauMode] = useState<'gross' | 'net'>('net')
   const [wolfMode] = useState<'gross' | 'net'>('net')
   const [bbbMode] = useState<'gross' | 'net'>('net')
@@ -147,7 +149,6 @@ export function EventSetup({ userId, onStart, onCancel, onAddCourse }: Props) {
       for (const p of [...profilePlayers, ...guestPlayers]) {
         if (!seen.has(p.id)) { seen.add(p.id); all.push(p) }
       }
-      setAvailablePlayers(all)
       setGuestCopies(guestCopyIds(profilePlayers, guestPlayers))
 
       // THE ORGANISER IS A PLAYER UNTIL THEY SAY OTHERWISE
@@ -193,38 +194,24 @@ export function EventSetup({ userId, onStart, onCancel, onAddCourse }: Props) {
   // single person really does collect and pay out; most groups just settle between
   // themselves, which is what a normal round already does.
 
-  const togglePlayer = (player: Player) => {
-    setSelectedPlayers(prev =>
-      prev.some(p => p.id === player.id)
-        ? prev.filter(p => p.id !== player.id)
-        : [...prev, player]
-    )
-  }
-
-  const quickAddPlayer = () => {
-    if (!quickAddName.trim()) return
-    // Same name as someone already on the list: select them rather than making a
-    // second one (Finding 2). The round wizard asks; here the list is right there.
-    const existing = findPlayerByName(quickAddName, availablePlayers)
-    if (existing) {
-      setSelectedPlayers(prev => prev.some(p => p.id === existing.id) ? prev : [...prev, existing])
-      setQuickAddName('')
-      return
-    }
-    const newPlayer: Player = {
-      id: uuidv4(),
-      name: quickAddName.trim(),
-      handicapIndex: 0,
-      tee: 'White',
-      ghinNumber: '',
-    }
-    setAvailablePlayers(prev => [...prev, newPlayer])
-    setSelectedPlayers(prev => [...prev, newPlayer])
-    setQuickAddName('')
-  }
-
   const numGroups = Math.max(...Object.values(groups), 1)
   const groupNumbers = Array.from({ length: numGroups }, (_, i) => i + 1)
+
+  // Best Ball teams, per group. Nobody is paired automatically: the organiser
+  // places every player, and Game Setup cannot proceed until each group is split
+  // evenly (lib/eventUtils.ts bestBallTeamStatus) — the same rule as the round
+  // wizard.
+  const bbTeamStatus = useMemo(
+    () => bestBallTeamStatus(selectedPlayers, groups, bbTeams),
+    [selectedPlayers, groups, bbTeams],
+  )
+  // A group with an odd count cannot be split, so Best Ball is unavailable until
+  // the groups allow it.
+  const bestBallBlocked = groupNumbers.some(gn => {
+    const n = selectedPlayers.filter(p => (groups[p.id] ?? 1) === gn).length
+    return n < 2 || n % 2 !== 0
+  })
+  const gameStepValid = gameType !== 'best_ball' || bbTeamStatus.valid
 
   // Who is who, on every step. Two "Jeff Logan" rows at the same handicap gave the
   // organiser no way to tell the account from the guest copy once past the list.
@@ -240,8 +227,12 @@ export function EventSetup({ userId, onStart, onCancel, onAddCourse }: Props) {
     let config: SkinsConfig | BestBallConfig | NassauConfig | WolfConfig | BBBConfig | HammerConfig
     if (gameType === 'skins') config = { mode: skinsMode, carryovers }
     else if (gameType === 'best_ball') {
+      // Only the organiser's own picks, and only for players still on the roster.
       const teams: Record<string, 'A' | 'B'> = {}
-      selectedPlayers.forEach((p, i) => { teams[p.id] = i % 2 === 0 ? 'A' : 'B' })
+      for (const p of selectedPlayers) {
+        const side = bbTeams[p.id]
+        if (side === 'A' || side === 'B') teams[p.id] = side
+      }
       config = { scoring: bbScoring, mode: bbMode, teams }
     }
     // New Nassau rounds are match play; a stored round without `scoring` stays
@@ -450,15 +441,6 @@ export function EventSetup({ userId, onStart, onCancel, onAddCourse }: Props) {
     c.name.toLowerCase().includes(courseSearch.toLowerCase())
   )
 
-  // Selected players STAY in place with a check state. Removing a row on tap
-  // shifted every row below it up by one, so selecting four people at a steady
-  // tap rate produced one selection and three mis-taps — and at thirteen players
-  // every mis-tap is a wrong person in the round. Never reorder a list under an
-  // active finger.
-  const filteredPlayers = availablePlayers
-    .filter(p => p.name.toLowerCase().includes(playerSearch.toLowerCase()))
-    .sort((a, b) => a.name.localeCompare(b.name))
-
   const GAME_OPTIONS: { type: GameType; label: string; emoji: string }[] = [
     { type: 'skins', label: 'Skins', emoji: '🎰' },
     { type: 'best_ball', label: 'Best Ball', emoji: '🤝' },
@@ -565,103 +547,25 @@ export function EventSetup({ userId, onStart, onCancel, onAddCourse }: Props) {
 
   // ─── Step 3: Player Selection ───────────────────────────────────────────────
   if (step === 'players') {
+    // The same picker the round wizard uses: pinned "In this round" tier, search
+    // that keeps selected rows visible, recent friends by recency, the duplicate
+    // guest prompt, and the "you" and "guest copy" tags. An event holds up to
+    // eight foursomes, so the cap follows the groups rather than the round's six.
+    if (!selectedCourse) { setStep('course'); return null }
     return (
-      <div className="min-h-screen bg-gray-50 dark:bg-gray-900 pb-28">
-        <header className="app-header text-white px-4 py-4 sticky top-0 z-10 shadow-xl flex items-center gap-3">
-          <button onClick={() => setStep('course')} className="min-w-[44px] min-h-[44px] flex items-center justify-center rounded-full hover:bg-black/20 text-xl">←</button>
-          <div>
-            <h1 className="text-xl font-bold">Select Players</h1>
-            <p className="text-gray-300 text-xs">{eventName} · {selectedCourse?.name}</p>
-          </div>
-        </header>
-        <div className="px-4 py-4 max-w-2xl mx-auto space-y-3">
-          <p className="text-sm text-gray-600 dark:text-gray-400 font-medium">{selectedPlayers.length} selected</p>
-
-          {/* Selected players */}
-          {selectedPlayers.length > 0 && (
-            <div className="flex flex-wrap gap-2">
-              {selectedPlayers.map(p => (
-                <button
-                  key={p.id}
-                  onClick={() => togglePlayer(p)}
-                  className="px-3 py-1.5 bg-amber-100 text-amber-800 rounded-full text-sm font-semibold active:bg-amber-200"
-                >
-                  {p.name}{playerTagText(p)} ✕
-                </button>
-              ))}
-            </div>
-          )}
-
-          {/* Quick add */}
-          <div className="flex gap-2">
-            <input
-              type="text"
-              placeholder="Quick add guest..."
-              value={quickAddName}
-              onChange={e => setQuickAddName(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && quickAddPlayer()}
-              className="flex-1 h-11 px-4 rounded-xl border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
-            />
-            <button
-              onClick={quickAddPlayer}
-              disabled={!quickAddName.trim()}
-              className="h-11 px-4 bg-gray-800 text-white dark:bg-brass dark:text-navy text-sm font-bold rounded-xl disabled:opacity-40"
-            >
-              + Add
-            </button>
-          </div>
-
-          {/* Search */}
-          <input
-            type="text"
-            placeholder="Search players..."
-            value={playerSearch}
-            onChange={e => setPlayerSearch(e.target.value)}
-            className="w-full h-11 px-4 rounded-xl border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
-          />
-
-          {/* Available players */}
-          {filteredPlayers.map(p => {
-            const isSelected = selectedPlayers.some(sp => sp.id === p.id)
-            return (
-              <button
-                key={p.id}
-                onClick={() => togglePlayer(p)}
-                aria-pressed={isSelected}
-                className={`w-full text-left px-4 py-3 rounded-xl border transition-colors ${
-                  isSelected
-                    ? 'bg-amber-50 dark:bg-amber-900/20 border-amber-400'
-                    : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 active:bg-gray-50'
-                }`}
-              >
-                <div className="flex items-center justify-between gap-2">
-                  <div>
-                    <p className="font-semibold text-gray-900 dark:text-gray-100">
-                      {p.name}
-                      {playerTag(p)}
-                    </p>
-                    <p className="text-xs text-gray-500">HCP {fmtHandicap(p.handicapIndex)} · {p.tee}</p>
-                  </div>
-                  <span className={`shrink-0 text-lg ${isSelected ? 'text-amber-600' : 'text-gray-300'}`}>
-                    {isSelected ? '✓' : '＋'}
-                  </span>
-                </div>
-              </button>
-            )
-          })}
-        </div>
-        <div className="fixed bottom-0 inset-x-0 p-4 bg-white/95 dark:bg-gray-800/95 backdrop-blur-sm border-t border-gray-200 safe-bottom">
-          <div className="max-w-2xl mx-auto">
-            <button
-              onClick={() => setStep('groups')}
-              disabled={selectedPlayers.length < 2}
-              className="w-full h-14 bg-gray-800 text-white dark:bg-brass dark:text-navy text-lg font-bold rounded-2xl disabled:opacity-40 active:bg-gray-900"
-            >
-              Next: Assign Groups ({selectedPlayers.length} {selectedPlayers.length === 1 ? 'player' : 'players'}) →
-            </button>
-          </div>
-        </div>
-      </div>
+      <PlayerPicker
+        userId={userId}
+        course={selectedCourse}
+        stakesMode="points"
+        preSelectedIds={selectedPlayers.map(p => p.id)}
+        playerTees={playerTees}
+        onPlayerTeesChange={setPlayerTees}
+        maxPlayers={8 * MAX_PER_GROUP}
+        subtitle={`${eventName} · ${selectedCourse.name}`}
+        nextLabel={n => `Next: Assign Groups · ${n} players`}
+        onNext={players => { setSelectedPlayers(players); setStep('groups') }}
+        onBack={() => setStep('course')}
+      />
     )
   }
 
@@ -928,7 +832,7 @@ export function EventSetup({ userId, onStart, onCancel, onAddCourse }: Props) {
             <div className="grid grid-cols-3 gap-2">
               {GAME_OPTIONS.map(opt => {
                 const disabled = (opt.type === 'wolf' && selectedPlayers.length < 3) ||
-                  (opt.type === 'best_ball' && selectedPlayers.length % 2 !== 0) ||
+                  (opt.type === 'best_ball' && bestBallBlocked) ||
                   (opt.type === 'hammer' && selectedPlayers.length !== 2)
                 return (
                   <div key={opt.type} className="relative">
@@ -945,7 +849,7 @@ export function EventSetup({ userId, onStart, onCancel, onAddCourse }: Props) {
                     >
                       {opt.emoji} {opt.label}
                       {disabled && <span className="block text-[10px] font-normal mt-0.5">
-                        {opt.type === 'wolf' ? '3+ players' : opt.type === 'hammer' ? '2 players' : 'Even #'}
+                        {opt.type === 'wolf' ? '3+ players' : opt.type === 'hammer' ? '2 players' : 'Even groups'}
                       </span>}
                     </button>
                     <button
@@ -1047,6 +951,57 @@ export function EventSetup({ userId, onStart, onCancel, onAddCourse }: Props) {
             </div>
           </section>
 
+          {/* Best Ball teams, one picker per group. Matches the round wizard: no
+              automatic pairing, Review stays out of reach until everyone is placed
+              and each group is split evenly. */}
+          {gameType === 'best_ball' && (
+            <section className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 p-4 space-y-4">
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Best Ball Teams</p>
+              {groupNumbers.map(gn => {
+                const groupPlayers = selectedPlayers.filter(p => (groups[p.id] ?? 1) === gn)
+                if (groupPlayers.length === 0) return null
+                const uneven = bbTeamStatus.uneven.includes(gn)
+                const groupUnassigned = groupPlayers.filter(p => bbTeams[p.id] !== 'A' && bbTeams[p.id] !== 'B')
+                return (
+                  <div key={gn} className="space-y-2">
+                    {groupNumbers.length > 1 && <p className="font-bold text-gray-800 dark:text-gray-100 text-sm">Group {gn}</p>}
+                    <p className="text-sm text-gray-600 dark:text-gray-400">Teams (tap to assign)</p>
+                    <div className="grid grid-cols-2 gap-2">
+                      {(['A', 'B'] as const).map(team => (
+                        <div key={team} className={`rounded-xl border-2 p-3 ${team === 'A' ? 'border-blue-200 bg-blue-50' : 'border-orange-200 bg-orange-50'}`}>
+                          <p className={`text-xs font-bold uppercase tracking-wide mb-2 ${team === 'A' ? 'text-blue-700' : 'text-orange-700'}`}>Team {team}</p>
+                          <div className="space-y-1.5">
+                            {groupPlayers.map(p => (
+                              <button
+                                key={p.id}
+                                onClick={() => setBbTeams(prev => ({ ...prev, [p.id]: team }))}
+                                aria-pressed={bbTeams[p.id] === team}
+                                className={`w-full text-left px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                                  bbTeams[p.id] === team
+                                    ? team === 'A' ? 'bg-blue-600 text-white' : 'bg-orange-600 text-white'
+                                    : 'bg-white text-gray-600 border border-gray-200'
+                                }`}
+                              >
+                                {p.name}{playerTagText(p)}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                    {groupUnassigned.length > 0 ? (
+                      <p className="text-sm text-gray-600 dark:text-gray-400">
+                        Still to assign: {groupUnassigned.map(p => p.name).join(', ')}.
+                      </p>
+                    ) : uneven ? (
+                      <p className="text-red-600 text-sm">Teams must be equal size.</p>
+                    ) : null}
+                  </div>
+                )
+              })}
+            </section>
+          )}
+
           {/* Game-specific config */}
           {gameType === 'skins' && (
             <section className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 p-4 space-y-3">
@@ -1070,9 +1025,13 @@ export function EventSetup({ userId, onStart, onCancel, onAddCourse }: Props) {
         <div className="fixed bottom-0 inset-x-0 p-4 bg-white/95 dark:bg-gray-800/95 backdrop-blur-sm border-t border-gray-200 safe-bottom">
           <div className="max-w-2xl mx-auto">
             {/* No treasurer is a valid choice — players settle between themselves —
-                so this must not gate the step. */}
+                so this must not gate the step. Unplaced Best Ball players do. */}
+            {!gameStepValid && (
+              <p className="text-center text-xs text-gray-500 dark:text-gray-400 mb-2">Place every player on a team to continue</p>
+            )}
             <button
-              onClick={() => setStep('review')}
+              onClick={() => { if (gameStepValid) setStep('review') }}
+              disabled={!gameStepValid}
               className="w-full h-14 bg-gray-800 text-white dark:bg-brass dark:text-navy text-lg font-bold rounded-2xl disabled:opacity-40 active:bg-gray-900"
             >
               Next: Review →

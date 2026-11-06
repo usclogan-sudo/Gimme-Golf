@@ -2625,6 +2625,27 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
               </InlineErrorBoundary>
             )}
 
+            {/* Banker: who banks this hole, named on every hole the way the Wolf
+                panel names the wolf. The rotation is fixed at setup, so this is a
+                read-out, not a decision. */}
+            {showGameStatus && game?.type === 'banker' && (() => {
+              const order = ((game.config as BankerConfig).bankerOrder ?? []).filter(id => players.some(p => p.id === id))
+              const bankerId = order.length ? order[(currentHole - 1) % order.length] : null
+              const banker = bankerId ? players.find(p => p.id === bankerId) : null
+              return (
+                <div className="bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl p-3 space-y-1">
+                  <p className="font-bold text-gray-800 dark:text-gray-100 text-sm">
+                    Banker: {banker ? banker.name : 'nobody in the rotation is still in the round'}
+                  </p>
+                  {banker && (
+                    <p className="text-xs text-gray-500 dark:text-gray-400">
+                      {banker.name} plays each other player on hole {currentHole}.
+                    </p>
+                  )}
+                </div>
+              )
+            })()}
+
             {/* Hammer panel */}
             {showGameStatus && game?.type === 'hammer' && hammerConfig && players.length === 2 && (
               <InlineErrorBoundary label="the Hammer panel">

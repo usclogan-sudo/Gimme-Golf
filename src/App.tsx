@@ -484,7 +484,7 @@ function Home({
             <div className="px-6 py-4 flex items-center justify-between gap-3">
               <div className="text-left min-w-0">
                 <p className="font-display font-bold text-gray-900 dark:text-gray-100 text-xl">Play Again</p>
-                <p className="text-gray-500 dark:text-gray-400 text-sm mt-0.5 truncate">{lastRoundObj.courseSnapshot.courseName} · {lastRoundObj.players?.length ?? 0} players · same setup</p>
+                <p className="text-gray-500 dark:text-gray-400 text-sm mt-0.5 truncate">{lastRoundObj.courseSnapshot.courseName}{lastRoundObj.game?.type ? ` · ${GAME_EMOJI[lastRoundObj.game.type] ?? lastRoundObj.game.type}` : ''} · {lastRoundObj.players?.length ?? 0} players · same setup</p>
               </div>
               <div className="w-14 h-14 bg-brass/15 dark:bg-brass/20 rounded-2xl flex items-center justify-center text-3xl border border-brass/30 text-brass flex-shrink-0">↻</div>
             </div>
@@ -585,6 +585,7 @@ function Home({
                           {round.eventId && eventNames[round.eventId]
                             ? `${eventNames[round.eventId]} · ${round.courseSnapshot?.courseName ?? ''}`
                             : round.courseSnapshot?.courseName ?? 'Round in progress'}
+                          {round.game?.type ? ` · ${GAME_EMOJI[round.game.type] ?? round.game.type}` : ''}
                         </p>
                         <p className="text-xs text-gray-500 dark:text-gray-400 truncate">
                           Live · {round.players?.length ?? 0} players · Hole {round.currentHole}

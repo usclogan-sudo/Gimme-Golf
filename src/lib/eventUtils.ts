@@ -101,6 +101,43 @@ export function fillMissingGroups(
   return next
 }
 
+export type TeamSide = 'A' | 'B'
+
+export interface BestBallTeamStatus {
+  /** Every player placed, and every group split evenly with at least one a side. */
+  valid: boolean
+  /** Players on the roster with no team yet, in roster order. */
+  unassigned: { id: string; name: string }[]
+  /** Group numbers whose A and B sides are not the same size (after everyone is placed). */
+  uneven: number[]
+}
+
+/**
+ * Best Ball inside an event is played within each foursome, so each group
+ * needs its own even split. Nobody is paired automatically: an unassigned
+ * player blocks the step until the organiser places them.
+ */
+export function bestBallTeamStatus(
+  players: { id: string; name: string }[],
+  groups: Record<string, number>,
+  teams: Record<string, TeamSide | undefined>,
+): BestBallTeamStatus {
+  const unassigned = players.filter(p => teams[p.id] !== 'A' && teams[p.id] !== 'B')
+  const counts = new Map<number, { a: number; b: number }>()
+  for (const p of players) {
+    const g = groups[p.id] ?? 1
+    const c = counts.get(g) ?? { a: 0, b: 0 }
+    if (teams[p.id] === 'A') c.a += 1
+    else if (teams[p.id] === 'B') c.b += 1
+    counts.set(g, c)
+  }
+  const uneven = [...counts.entries()]
+    .filter(([, c]) => c.a !== c.b || c.a < 1)
+    .map(([g]) => g)
+    .sort((x, y) => x - y)
+  return { valid: unassigned.length === 0 && uneven.length === 0, unassigned, uneven }
+}
+
 /**
  * Validate group assignments: no group exceeds max size.
  */
