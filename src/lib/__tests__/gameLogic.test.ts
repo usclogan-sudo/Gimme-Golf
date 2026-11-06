@@ -1,4 +1,4 @@
-import type { Player, CourseSnapshot, HoleScore, SkinsConfig, StablefordConfig, JunkConfig, JunkRecord, SideBet, Game, RoundPlayer, VegasConfig, BBBConfig, QuotaConfig, NassauConfig, WolfConfig } from '../../types'
+import type { Player, CourseSnapshot, HoleScore, SkinsConfig, StablefordConfig, JunkConfig, JunkRecord, SideBet, Game, RoundPlayer, VegasConfig, BBBConfig, QuotaConfig, NassauConfig, WolfConfig, HammerConfig } from '../../types'
 
 import {
   calcCourseHandicap,
@@ -16,6 +16,9 @@ import {
   calculateBBBPayouts,
   calculateWolfPayouts,
   calculateWolf,
+  calculateHammer,
+  hammerPreThrowValue,
+  bestBallTeamsLabel,
   calculateNassau,
   calculateNassauPayouts,
   nassauLive,
@@ -1826,5 +1829,50 @@ describe('buildCourseHandicaps — the freeze', () => {
   it('halves a 9-hole course handicap', () => {
     expect(computeCourseHandicap(20, 'White', snapshot, 'front_9'))
       .toBe(Math.round(computeCourseHandicap(20, 'White', snapshot) / 2))
+  })
+})
+
+describe('Hammer', () => {
+  const two = [players[0], players[1]] // Alice p1, Bob p2
+  const hcps = { p1: 0, p2: 0 }
+  const cfg = (states: HammerConfig['hammerStates']): HammerConfig => ({ baseValueCents: 1, hammerStates: states })
+
+  it('a declined hammer posts the pre-throw value with no scores on the hole', () => {
+    // Alice threw (value doubled 1 → 2); Bob declined; nobody has scored hole 1.
+    const r = calculateHammer(two, [], snapshot, cfg({ 1: { hammerHolder: 'p1', value: 2, presses: 1, declined: true, declinedBy: 'p2' } }), hcps)
+    expect(r.netCents.p1).toBe(1)
+    expect(r.netCents.p2).toBe(-1)
+    expect(r.holeResults[0]).toMatchObject({ holeNumber: 1, winnerId: 'p1', amountCents: 1 })
+    expect(r.totalHolesPlayed).toBe(1)
+  })
+
+  it('a declined hammer settles at the pre-throw value even if scores are entered later', () => {
+    const scores = [hs('p1', 1, 6), hs('p2', 1, 3)] // Bob would have won on score; the decline already settled it.
+    const r = calculateHammer(two, scores, snapshot, cfg({ 1: { hammerHolder: 'p1', value: 2, presses: 1, declined: true, declinedBy: 'p2' } }), hcps)
+    expect(r.netCents.p1).toBe(1)
+    expect(r.netCents.p2).toBe(-1)
+  })
+
+  it('pre-throw value is half the doubled value', () => {
+    expect(hammerPreThrowValue({ hammerHolder: 'p1', value: 4, presses: 2, declined: false })).toBe(2)
+  })
+
+  it('an accepted hammer (played on) settles by score at the doubled value', () => {
+    const scores = [hs('p1', 1, 4), hs('p2', 1, 5)]
+    const r = calculateHammer(two, scores, snapshot, cfg({ 1: { hammerHolder: 'p1', value: 2, presses: 1, declined: false } }), hcps)
+    expect(r.netCents.p1).toBe(2)
+    expect(r.netCents.p2).toBe(-2)
+  })
+})
+
+describe('bestBallTeamsLabel', () => {
+  it('reads "Ann and Cy vs Bo and Test."', () => {
+    const four: Player[] = [
+      { id: 'a', name: 'Ann', handicapIndex: 0, tee: 'White', ghinNumber: '' },
+      { id: 'b', name: 'Bo', handicapIndex: 0, tee: 'White', ghinNumber: '' },
+      { id: 'c', name: 'Cy', handicapIndex: 0, tee: 'White', ghinNumber: '' },
+      { id: 't', name: 'Test', handicapIndex: 0, tee: 'White', ghinNumber: '' },
+    ]
+    expect(bestBallTeamsLabel(four, { a: 'A', c: 'A', b: 'B', t: 'B' })).toBe('Ann and Cy vs Bo and Test.')
   })
 })

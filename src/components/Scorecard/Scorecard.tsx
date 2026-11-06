@@ -21,6 +21,7 @@ import { PhotoImportConfirmGrid } from './PhotoImportConfirmGrid'
 import type { ExtractionResult } from '../../lib/photoImport'
 import { NumberPad } from './NumberPad'
 import { WolfHolePanel, WolfHoleOutcome, type WolfPick } from './WolfPanels'
+import { HammerPanel } from './HammerPanel'
 import { ScorecardHeaderMenu } from './ScorecardHeaderMenu'
 import { InlineErrorBoundary } from '../InlineErrorBoundary'
 import { BuyInBanner } from './BuyInBanner'
@@ -42,6 +43,7 @@ import {
   calculateWolf,
   calculateBBB,
   calculateHammer,
+  bestBallTeamsLabel,
   calculateVegas,
   calculateStableford,
   calculateBanker,
@@ -196,7 +198,16 @@ function SkinsStatus({ carry, potCents, stakesMode }: { carry: number; potCents:
   )
 }
 
-function BestBallStatus({ result, scoring }: { result: BestBallResult; scoring: 'match' | 'total' }) {
+function BestBallStatus({ result, scoring, teamsLine }: { result: BestBallResult; scoring: 'match' | 'total'; teamsLine?: string }) {
+  // Before any hole is decided there is no score to show; say who is with whom.
+  const decidedSoFar = result.holesWon.A + result.holesWon.B + result.holesWon.tied
+  if (decidedSoFar === 0 && teamsLine) {
+    return (
+      <div className="bg-blue-50 border border-blue-200 rounded-xl px-3 py-2">
+        <span className="text-blue-700 font-bold text-sm">{teamsLine}</span>
+      </div>
+    )
+  }
   // Stroke Play (total): the winner is decided by total strokes, so the scoreboard
   // must show strokes — not holes-won, which could contradict the payout.
   if (scoring === 'total') {
@@ -1666,6 +1677,10 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
   }, [game, players, approvedScores, playableSnapshot, courseHcps])
 
   const currentHammerState = hammerStates[currentHole] ?? null
+  // Both players scored on this hole: settled by play, so no more throws or declines.
+  const currentHoleScoredByAll = players.length > 0
+    && players.every(p => holeScores.some(s => s.playerId === p.id && s.holeNumber === currentHole))
+  const currentHammerSettled = !!currentHammerState?.declined || currentHoleScoredByAll
 
   const currentCarry = useMemo(() => {
     if (!skinsResult) return 0
@@ -1723,7 +1738,7 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
   const throwHammer = () => {
     if (!hammerConfig || players.length !== 2) return
     const current = currentHammerState
-    if (current && current.declined) return // Already resolved
+    if (currentHammerSettled) return // Settled by decline or by scores (the buttons are disabled too)
     const maxPresses = hammerConfig.maxPresses
     const baseValue = hammerConfig.baseValueCents
     if (!current) {
@@ -1749,7 +1764,7 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
   }
 
   const declineHammer = () => {
-    if (!currentHammerState || currentHammerState.declined) return
+    if (!currentHammerState || currentHammerSettled || currentHammerState.presses === 0) return
     const decliner = players.find(p => p.id !== currentHammerState.hammerHolder)!.id
     const newState: HammerHoleState = {
       ...currentHammerState,
@@ -2200,9 +2215,12 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
                   {bestBallResult && game && (
                     <p className="text-xs text-gray-500">
                       <span className="font-semibold">Best Ball:</span>{' '}
-                      {(game.config as BestBallConfig).scoring === 'total'
-                        ? `Team A ${bestBallResult.totalScore.A} – Team B ${bestBallResult.totalScore.B} strokes`
-                        : `Team A ${bestBallResult.holesWon.A} – Team B ${bestBallResult.holesWon.B}`}
+                      {bestBallResult.holesWon.A + bestBallResult.holesWon.B + bestBallResult.holesWon.tied === 0
+                        // Nothing decided yet: say who is with whom.
+                        ? bestBallTeamsLabel(players, (game.config as BestBallConfig).teams ?? {})
+                        : (game.config as BestBallConfig).scoring === 'total'
+                          ? `Team A ${bestBallResult.totalScore.A} – Team B ${bestBallResult.totalScore.B} strokes`
+                          : `Team A ${bestBallResult.holesWon.A} – Team B ${bestBallResult.holesWon.B}`}
                     </p>
                   )}
                   {wolfResult && (
@@ -2440,7 +2458,13 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
                 )}
               </div>
             )}
-            {showGameStatus && bestBallResult && game && <BestBallStatus result={bestBallResult} scoring={(game.config as BestBallConfig).scoring} />}
+            {showGameStatus && bestBallResult && game && (
+              <BestBallStatus
+                result={bestBallResult}
+                scoring={(game.config as BestBallConfig).scoring}
+                teamsLine={bestBallTeamsLabel(players, (game.config as BestBallConfig).teams ?? {})}
+              />
+            )}
 
             {/* Nassau status — match play. Each leg reads in holes up ("Sam 2 UP",
                 "AS", "Sam 3&2"), never a stroke count. The press button asks who is
@@ -2608,87 +2632,22 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
             )}
 
             {/* Hammer panel */}
-            {showGameStatus && game?.type === 'hammer' && hammerConfig && players.length === 2 && (() => {
-              const baseValue = hammerConfig.baseValueCents
-              const hState = currentHammerState
-              const holeValue = hState ? hState.value : baseValue
-              const holderName = hState ? (players.find(p => p.id === hState.hammerHolder)?.name ?? '?') : players[0].name
-              const receiverName = hState
-                ? (players.find(p => p.id !== hState.hammerHolder)?.name ?? '?')
-                : players[1].name
-              const canThrow = !readOnly && (!hState || (!hState.declined && (hammerConfig.maxPresses == null || hState.presses < hammerConfig.maxPresses)))
-              const canDecline = !readOnly && hState && !hState.declined && hState.presses > 0
-
-              return (
-                <div className="bg-orange-50 border border-orange-200 rounded-xl p-3 space-y-2">
-                  <div className="flex items-center justify-between">
-                    <p className="font-bold text-gray-800 dark:text-gray-100 text-sm">Hammer</p>
-                    <span className="text-xs font-semibold text-orange-600 bg-orange-100 px-2 py-0.5 rounded-full">
-                      Hole value: {fmtAmount(holeValue, game?.stakesMode)}
-                    </span>
-                  </div>
-
-                  {hState?.declined ? (
-                    <div className="bg-red-50 border border-red-200 rounded-lg p-2">
-                      <p className="text-sm text-red-700 font-semibold">
-                        {players.find(p => p.id === hState.declinedBy)?.name} declined — {holderName} wins {fmtAmount(hState.value / 2, game?.stakesMode)}
-                      </p>
-                    </div>
-                  ) : (
-                    <div className="space-y-2">
-                      {(() => {
-                        const holeScored = players.every(p => holeScores.some(s => s.playerId === p.id && s.holeNumber === currentHole))
-                        const holdVerb = holderName === 'You' ? 'hold' : 'holds'
-                        const respondVerb = receiverName === 'You' ? 'respond' : 'responds'
-                        return (
-                          <p className="text-xs text-orange-600">
-                            {!hState
-                              ? `${holderName} ${holdVerb} the hammer — throw it to double the value`
-                              : holeScored
-                                ? `Hammer settled at ${fmtAmount(holeValue, game?.stakesMode)} for the hole`
-                                : `${holderName} threw the hammer (×${hState.presses}) — ${receiverName} ${respondVerb}: play on to accept, or Decline`}
-                          </p>
-                        )
-                      })()}
-                      {!readOnly && (
-                        <div className="flex gap-2">
-                          <button
-                            onClick={throwHammer}
-                            disabled={!canThrow}
-                            className="flex-1 py-2 rounded-lg text-sm font-bold bg-orange-500 text-white active:bg-orange-600 disabled:opacity-40"
-                          >
-                            Throw Hammer
-                          </button>
-                          {canDecline && (
-                            <button
-                              onClick={declineHammer}
-                              className="flex-1 py-2 rounded-lg text-sm font-bold bg-red-100 text-red-700 border border-red-200 active:bg-red-200"
-                            >
-                              Decline
-                            </button>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  )}
-
-                  {/* Running totals */}
-                  <div className="flex gap-2 pt-1 border-t border-orange-200">
-                    {players.map(p => {
-                      const net = hammerResult?.netCents[p.id] ?? 0
-                      return (
-                        <div key={p.id} className={`flex-1 text-center rounded-lg py-1 ${net > 0 ? 'bg-green-50' : net < 0 ? 'bg-red-50' : 'bg-gray-50'}`}>
-                          <p className="text-xs text-gray-500">{p.name}</p>
-                          <p className={`text-sm font-bold ${net > 0 ? 'text-green-700' : net < 0 ? 'text-red-700' : 'text-gray-600'}`}>
-                            {net >= 0 ? '+' : ''}{fmtAmount(Math.abs(net), game?.stakesMode)}
-                          </p>
-                        </div>
-                      )
-                    })}
-                  </div>
-                </div>
-              )
-            })()}
+            {showGameStatus && game?.type === 'hammer' && hammerConfig && players.length === 2 && (
+              <InlineErrorBoundary label="the Hammer panel">
+                <HammerPanel
+                  players={players}
+                  baseValueCents={hammerConfig.baseValueCents}
+                  maxPresses={hammerConfig.maxPresses}
+                  state={currentHammerState}
+                  holeScored={currentHoleScoredByAll}
+                  netCents={hammerResult?.netCents ?? {}}
+                  readOnly={readOnly}
+                  stakesMode={game?.stakesMode}
+                  onThrow={throwHammer}
+                  onDecline={declineHammer}
+                />
+              </InlineErrorBoundary>
+            )}
 
             {/* BBB panel */}
             {showGameStatus && !readOnly && game?.type === 'bingo_bango_bongo' && (() => {
@@ -3334,7 +3293,11 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
 
       {showRulesModal && game && (
         <InlineErrorBoundary label="the rules">
-          <GameRulesModal gameType={game.type} onClose={() => setShowRulesModal(false)} />
+          <GameRulesModal
+            gameType={game.type}
+            onClose={() => setShowRulesModal(false)}
+            teamsLine={game.type === 'best_ball' ? bestBallTeamsLabel(players, (game.config as BestBallConfig).teams ?? {}) : undefined}
+          />
         </InlineErrorBoundary>
       )}
 

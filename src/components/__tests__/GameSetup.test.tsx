@@ -101,6 +101,31 @@ describe('GameSetup — points formats settle controls', () => {
     expect(screen.queryByText(/Blind Wolf \(called before any tee shot\) wins/)).toBeNull()
   })
 
+  it('Best Ball: Start stays disabled until every player is on a team, and nobody is paired automatically', () => {
+    const four = [...players, { id: 'p4', name: 'Dave', handicapIndex: 8, tee: 'White', ghinNumber: '' }]
+    renderSetup(four)
+    fireEvent.click(screen.getByText('🤝 Best Ball'))
+
+    const next = screen.getByRole('button', { name: /Next: Start Round/ }) as HTMLButtonElement
+    expect(next.disabled).toBe(true)
+    expect(screen.getByText('Still to assign: Alice, Bob, Carol, Dave.')).toBeDefined()
+    // No silent pairing: every team button starts unpressed.
+    const teamButtons = four.flatMap(p => screen.getAllByRole('button', { name: p.name }))
+    expect(teamButtons).toHaveLength(8)
+    expect(teamButtons.every(b => b.getAttribute('aria-pressed') === 'false')).toBe(true)
+
+    // Assign three of four: still disabled, and the line names who is left.
+    fireEvent.click(screen.getAllByRole('button', { name: 'Alice' })[0]) // Team A
+    fireEvent.click(screen.getAllByRole('button', { name: 'Bob' })[0])   // Team A
+    fireEvent.click(screen.getAllByRole('button', { name: 'Carol' })[1]) // Team B
+    expect(next.disabled).toBe(true)
+    expect(screen.getByText('Still to assign: Dave.')).toBeDefined()
+
+    fireEvent.click(screen.getAllByRole('button', { name: 'Dave' })[1])  // Team B
+    expect(screen.queryByText(/Still to assign/)).toBeNull()
+    expect(next.disabled).toBe(false)
+  })
+
   it('per point is the default and says it settles with each other player', () => {
     renderSetup()
     fireEvent.click(screen.getByText(/More Games/))

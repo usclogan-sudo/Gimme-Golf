@@ -354,7 +354,7 @@ export function LeaderboardTab({
                 const net = hammerResult.netCents[p.id] ?? 0
                 return (
                   <span key={p.id} className={`text-xs font-semibold px-2 py-1 rounded-lg ${net > 0 ? 'bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-brass' : net < 0 ? 'bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400' : 'bg-gray-50 dark:bg-gray-700/50 text-gray-500'}`}>
-                    {p.name}: {net > 0 ? '+' : ''}{fmtAmount(Math.abs(net), game?.stakesMode)}
+                    {p.name}: {net > 0 ? '+' : net < 0 ? '−' : ''}{fmtAmount(Math.abs(net), game?.stakesMode)}
                   </span>
                 )
               })}
