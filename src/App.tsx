@@ -1,11 +1,13 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react'
-import type { Session } from '@supabase/supabase-js'
 import { supabase, rowToCourse, rowToRound, rowToHoleScore, fetchOrCreateProfile, arrivedViaPasswordRecovery, clearPasswordRecovery } from './lib/supabase'
 import { useNotifications } from './hooks/useNotifications'
 import { flush as flushOfflineQueue, getPending as getOfflinePending } from './lib/offlineQueue'
 import { safeWrite } from './lib/safeWrite'
 import { finalizeRound } from './lib/finalizeRound'
 import { setSentryUser, clearSentryUser } from './lib/sentry'
+import { useGuardedSession, useSessionProfile } from './lib/authSession'
+import { holdReload } from './lib/swUpdate'
+import { useHeartbeat } from './lib/heartbeat'
 import { checkAppVersion } from './lib/appVersion'
 import { SHOW_PROP_BETS } from './lib/featureFlags'
 import { fmtHandicap, fmtAmount } from './lib/gameLogic'
@@ -51,6 +53,9 @@ import { UpdateReadyLine } from './components/UpdateReadyLine'
 import type { AppNotification, Course, Round, UserProfile, GameType, StakesMode } from './types'
 
 type Screen = 'home' | 'course-catalog' | 'course-setup' | 'new-round' | 'scorecard' | 'settle-up' | 'round-history' | 'stats' | 'settings' | 'onboarding' | 'admin' | 'upgrade-account' | 'player-directory' | 'handicap-detail' | 'join-round' | 'tournament-list' | 'tournament-setup' | 'tournament-detail' | 'personal-dashboard' | 'event-setup' | 'event-leaderboard' | 'ledger' | 'spectate' | 'prop-bets'
+
+/** Screens where a reload or a remount loses work in progress. */
+const WORK_IN_PROGRESS_SCREENS: ReadonlySet<Screen> = new Set<Screen>(['scorecard', 'join-round', 'event-setup', 'new-round'])
 
 const GAME_EMOJI: Record<GameType, string> = {
   skins: 'Skins',
@@ -866,7 +871,11 @@ function Home({
 }
 
 export default function App() {
-  const [session, setSession] = useState<Session | null | undefined>(undefined)
+  // The setter drops auth events that carry nothing new (same user, same token).
+  // auth-js fires SIGNED_IN on every tab visibility change and TOKEN_REFRESHED
+  // hourly; replacing the object on each one used to flip the profile spinner and
+  // unmount every screen in progress (6 November). See lib/authSession.ts.
+  const [session, applySession] = useGuardedSession()
   // Becomes true once we've ever held a session this tab — used to distinguish
   // "first visit" from "session expired mid-use" so the Auth screen can show
   // an appropriate banner.
@@ -881,9 +890,26 @@ export default function App() {
   // you on the tab you came from, instead of snapping back to Play (§3 back-to-origin).
   const [homeTab, setHomeTab] = useState<HomeTab>('play')
   const [roundsSeg, setRoundsSeg] = useState<'history' | 'leaderboard'>('history')
-  const [userProfile, setUserProfile] = useState<UserProfile | null>(null)
-  const [profileLoading, setProfileLoading] = useState(true)
-  const [profileError, setProfileError] = useState(false)
+  // Profile keyed on the user id: a token refresh re-fetches in the background,
+  // and the full screen spinner only shows while no profile for this user is
+  // loaded (first load, or a genuine user change).
+  const {
+    profile: userProfile,
+    setProfile: setUserProfile,
+    loading: profileLoading,
+    error: profileError,
+    retry: retryProfile,
+  } = useSessionProfile(session, fetchOrCreateProfile, async (profile, current) => {
+    // Auto-complete onboarding for anonymous guests — skip straight to app
+    if (current.user.is_anonymous && profile && !profile.onboardingComplete) {
+      await supabase.from('user_profiles').update({ onboarding_complete: true }).eq('user_id', current.user.id)
+      return { ...profile, onboardingComplete: true }
+    }
+  })
+  // Admin-only accounts skip straight to admin dashboard
+  useEffect(() => {
+    if (userProfile?.adminOnly) setScreen('admin')
+  }, [userProfile?.adminOnly])
   const [playAgainRound, setPlayAgainRound] = useState<Round | null>(null)
   const [newCourseName, setNewCourseName] = useState('')
   const [scorecardReadOnly, setScorecardReadOnly] = useState(false)
@@ -964,10 +990,10 @@ export default function App() {
     // Set up auth listener FIRST so it catches events from code exchange
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       if (session) hasEverHadSessionRef.current = true
-      setSession(session)
-      if (session?.user) {
-        setSentryUser(session.user.id, session.user.is_anonymous === true)
-      } else {
+      const kind = applySession(session, event)
+      if (kind === 'first' || kind === 'user') {
+        setSentryUser(session!.user.id, session!.user.is_anonymous === true)
+      } else if (kind === 'signed-out') {
         clearSentryUser()
       }
       if (event === 'PASSWORD_RECOVERY') {
@@ -984,7 +1010,7 @@ export default function App() {
       supabase.auth.exchangeCodeForSession(code).then(({ data, error }) => {
         if (!error && data.session) {
           // onAuthStateChange should fire PASSWORD_RECOVERY, but as a fallback:
-          setSession(data.session)
+          applySession(data.session, 'pkce_exchange')
           setShowResetPassword(true)
           window.history.replaceState(null, '', window.location.pathname)
         }
@@ -1000,7 +1026,7 @@ export default function App() {
         if (accessToken && refreshToken) {
           supabase.auth.setSession({ access_token: accessToken, refresh_token: refreshToken }).then(({ data, error }) => {
             if (!error && data.session) {
-              setSession(data.session)
+              applySession(data.session, 'hash_recovery')
               setShowResetPassword(true)
               window.history.replaceState(null, '', window.location.pathname)
             }
@@ -1009,38 +1035,22 @@ export default function App() {
         }
       }
       supabase.auth.getSession().then(({ data: { session } }) => {
-        setSession(session)
+        applySession(session, 'get_session')
       })
     }
     return () => subscription.unsubscribe()
   }, [])
 
-  // Load user profile after session is established
+  // Screens that would lose work on a reload hold the service worker update for
+  // as long as they are on screen, including the lazy chunk load before the
+  // screen's own hold can mount, and leave a heartbeat so a tab that dies there
+  // is reported on the next launch (lib/heartbeat.ts).
+  const holdsWork = WORK_IN_PROGRESS_SCREENS.has(screen)
   useEffect(() => {
-    if (!session) {
-      setUserProfile(null)
-      setProfileLoading(false)
-      return
-    }
-    setProfileLoading(true)
-    setProfileError(false)
-    fetchOrCreateProfile(session.user.id).then(async profile => {
-      // Auto-complete onboarding for anonymous guests — skip straight to app
-      if (session.user.is_anonymous && profile && !profile.onboardingComplete) {
-        await supabase.from('user_profiles').update({ onboarding_complete: true }).eq('user_id', session.user.id)
-        profile = { ...profile, onboardingComplete: true }
-      }
-      setUserProfile(profile)
-      // Admin-only accounts skip straight to admin dashboard
-      if (profile.adminOnly) {
-        setScreen('admin')
-      }
-      setProfileLoading(false)
-    }).catch(() => {
-      setProfileError(true)
-      setProfileLoading(false)
-    })
-  }, [session])
+    if (!holdsWork) return
+    return holdReload(`screen:${screen}`)
+  }, [holdsWork, screen])
+  useHeartbeat(holdsWork ? screen : null)
 
   // Auto-navigate to join-round when pending invite code exists
   useEffect(() => {
@@ -1122,7 +1132,7 @@ export default function App() {
       <div className="min-h-screen bg-slate-50 dark:bg-gray-900 flex flex-col items-center justify-center gap-4 px-6">
         <p className="text-red-500 font-semibold text-lg">Failed to load profile</p>
         <p className="text-gray-500 text-sm text-center">Check your connection and try again.</p>
-        <button onClick={() => { setProfileLoading(true); setProfileError(false); fetchOrCreateProfile(session.user.id).then(p => { setUserProfile(p); setProfileLoading(false) }).catch(() => { setProfileError(true); setProfileLoading(false) }) }} className="px-6 py-3 bg-amber-500 text-white font-bold rounded-xl active:bg-amber-600">Retry</button>
+        <button onClick={retryProfile} className="px-6 py-3 bg-amber-500 text-white font-bold rounded-xl active:bg-amber-600">Retry</button>
       </div>
     )
   }
