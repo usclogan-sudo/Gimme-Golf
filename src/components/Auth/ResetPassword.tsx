@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { supabase } from '../../lib/supabase'
+import { Seal } from '../brand'
 
 interface Props {
   onDone: () => void
@@ -30,7 +31,9 @@ export function ResetPassword({ onDone }: Props) {
     <div className="min-h-screen bg-slate-50 dark:bg-gray-900 flex flex-col items-center justify-center px-4">
       <div className="w-full max-w-sm space-y-6">
         <div className="text-center">
-          <div className="text-6xl mb-4">&#9971;</div>
+          <div className="flex justify-center mb-4 text-navy dark:text-cream">
+            <Seal size={52} outer="currentColor" letter="currentColor" />
+          </div>
           <h1 className="font-display text-3xl font-800 tracking-tight text-gray-900 dark:text-gray-100">Gimme</h1>
           <p className="text-[#C2A24C] text-sm font-medium mt-1 tracking-wide">SIDE GAMES &middot; SCORES &middot; SETTLED</p>
         </div>
