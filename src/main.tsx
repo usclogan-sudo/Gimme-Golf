@@ -3,11 +3,15 @@ import { createRoot } from 'react-dom/client'
 import { initSentry, Sentry } from './lib/sentry'
 import { passwordRecoveryInProgress } from './lib/supabase'
 import { reloadHeld, markUpdatePending } from './lib/swUpdate'
+import { reportUncleanExit } from './lib/heartbeat'
 import './index.css'
 import App from './App.tsx'
 import { RecoveryScreen } from './components/RecoveryScreen'
 
 initSentry()
+// A tab that died on a work-in-progress screen last time leaves a heartbeat
+// record behind; report it before any screen starts a new one.
+reportUncleanExit()
 
 // Error boundaries don't catch promise rejections thrown from event handlers — which
 // is exactly what white-screened the app when navigator.share was denied. Log those

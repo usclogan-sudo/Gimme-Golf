@@ -342,13 +342,10 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
   // still being edited when the user leaves. (UX v2.1 §16.2 — data-loss guard)
   const hasUnsavedBatch = Object.values(batchScores).some(holes => Object.keys(holes).length > 0)
   useUnsavedChangesPrompt(pendingCount > 0 || hasUnsavedBatch)
-  // Same condition holds the service worker reload: a deploy must not reload a
-  // scorecard with queued or half-entered scores (see lib/swUpdate.ts).
-  const hasUnsavedScores = pendingCount > 0 || hasUnsavedBatch
-  useEffect(() => {
-    if (!hasUnsavedScores) return
-    return holdReload('scorecard')
-  }, [hasUnsavedScores])
+  // A mounted scorecard holds the service worker reload for its whole life, not
+  // only while scores are unsaved: a reload mid-round loses the hole, the tab and
+  // the open panel even when every tap has landed (see lib/swUpdate.ts).
+  useEffect(() => holdReload('scorecard'), [])
   const [numberPadTarget, setNumberPadTarget] = useState<{ playerId: string; playerName: string } | null>(null)
   const [photoExtraction, setPhotoExtraction] = useState<ExtractionResult | null>(null)
 
