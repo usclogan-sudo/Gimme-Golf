@@ -89,6 +89,7 @@ import type {
   Game,
 } from '../../types'
 import { reportSupabaseError } from '../../lib/sentry'
+import { holdReload } from '../../lib/swUpdate'
 import { SHOW_HOLE_BETS, SHOW_PROP_BETS, SHOW_PRESSES } from '../../lib/featureFlags'
 
 interface Props {
@@ -341,6 +342,13 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
   // still being edited when the user leaves. (UX v2.1 §16.2 — data-loss guard)
   const hasUnsavedBatch = Object.values(batchScores).some(holes => Object.keys(holes).length > 0)
   useUnsavedChangesPrompt(pendingCount > 0 || hasUnsavedBatch)
+  // Same condition holds the service worker reload: a deploy must not reload a
+  // scorecard with queued or half-entered scores (see lib/swUpdate.ts).
+  const hasUnsavedScores = pendingCount > 0 || hasUnsavedBatch
+  useEffect(() => {
+    if (!hasUnsavedScores) return
+    return holdReload('scorecard')
+  }, [hasUnsavedScores])
   const [numberPadTarget, setNumberPadTarget] = useState<{ playerId: string; playerName: string } | null>(null)
   const [photoExtraction, setPhotoExtraction] = useState<ExtractionResult | null>(null)
 

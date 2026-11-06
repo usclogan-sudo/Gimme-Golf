@@ -13,3 +13,20 @@ export function findPlayerByName(name: string, players: Player[]): Player | unde
   if (!key) return undefined
   return players.find(p => normalise(p.name) === key)
 }
+
+/**
+ * Ids of guest rows whose name matches a registered player's display name. Two
+ * "Jeff Logan" entries at the same handicap on Create Event were telling nobody
+ * which one carried the account; the guest one is labelled "guest copy" from this.
+ * Guest rows that match each other but no registered player are left alone.
+ */
+export function guestCopyIds(registered: Player[], guests: Player[]): Set<string> {
+  const registeredNames = new Set(registered.map(p => normalise(p.name)).filter(Boolean))
+  const registeredIds = new Set(registered.map(p => p.id))
+  const out = new Set<string>()
+  for (const g of guests) {
+    if (registeredIds.has(g.id)) continue
+    if (registeredNames.has(normalise(g.name))) out.add(g.id)
+  }
+  return out
+}

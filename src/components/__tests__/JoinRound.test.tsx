@@ -16,6 +16,7 @@ vi.mock('../../lib/supabase', () => ({
 
 vi.mock('../../lib/sentry', () => ({
   reportSupabaseError: vi.fn(),
+  addBreadcrumb: vi.fn(),
 }))
 
 import { reportSupabaseError } from '../../lib/sentry'

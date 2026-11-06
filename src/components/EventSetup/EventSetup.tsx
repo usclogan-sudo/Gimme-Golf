@@ -2,11 +2,12 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { v4 as uuidv4 } from 'uuid'
 import { supabase, rowToCourse, rowToPlayer, rowToSharedCourse, roundToRow, roundPlayerToRow, buyInToRow, eventToRow, generateInviteCode, rowToUserProfile } from '../../lib/supabase'
 import { writeOrThrow, describeWriteError } from '../../lib/safeWrite'
-import { reportSupabaseError } from '../../lib/sentry'
+import { reportSupabaseError, addBreadcrumb } from '../../lib/sentry'
+import { holdReload } from '../../lib/swUpdate'
 // Events store buy-in in cents (money mode); fmtAmount with no stakesMode
 // converts cents -> points for display (1 pt = $1), so no $ surfaces.
 import { fmtAmount, fmtHandicap, computeCourseHandicap } from '../../lib/gameLogic'
-import { findPlayerByName } from '../../lib/players'
+import { findPlayerByName, guestCopyIds } from '../../lib/players'
 import { autoAssignGroups, randomAssignGroups, fillMissingGroups, autoAssignShotgunStarts, MAX_PER_GROUP } from '../../lib/eventUtils'
 import type { GroupMode } from '../../lib/eventUtils'
 import { parseDollarsToCents } from '../../lib/money'
@@ -42,6 +43,11 @@ type Step = 'name' | 'course' | 'players' | 'groups' | 'game' | 'review' | 'shar
 
 export function EventSetup({ userId, onStart, onCancel, onAddCourse }: Props) {
   const [step, setStep] = useState<Step>('name')
+  // A deploy mid-wizard must not reload the page out from under the organiser
+  // (6 November: two Create Event attempts reset to this screen). Hold the
+  // service worker reload for the life of the wizard; it is released on unmount.
+  useEffect(() => holdReload('event-setup'), [])
+  useEffect(() => { addBreadcrumb('wizard', 'event-setup step', { step }) }, [step])
   const [saving, setSaving] = useState(false)
   const savingRef = useRef(false)
   const [createError, setCreateError] = useState<string | null>(null)
@@ -61,6 +67,8 @@ export function EventSetup({ userId, onStart, onCancel, onAddCourse }: Props) {
   // Step 3: Players
   const [availablePlayers, setAvailablePlayers] = useState<Player[]>([])
   const [selectedPlayers, setSelectedPlayers] = useState<Player[]>([])
+  // Guest rows that share a name with a registered player (see guestCopyIds).
+  const [guestCopies, setGuestCopies] = useState<Set<string>>(new Set())
   const [playerSearch, setPlayerSearch] = useState('')
   const [quickAddName, setQuickAddName] = useState('')
 
@@ -140,6 +148,7 @@ export function EventSetup({ userId, onStart, onCancel, onAddCourse }: Props) {
         if (!seen.has(p.id)) { seen.add(p.id); all.push(p) }
       }
       setAvailablePlayers(all)
+      setGuestCopies(guestCopyIds(profilePlayers, guestPlayers))
 
       // THE ORGANISER IS A PLAYER UNTIL THEY SAY OTHERWISE
       //
@@ -216,6 +225,16 @@ export function EventSetup({ userId, onStart, onCancel, onAddCourse }: Props) {
 
   const numGroups = Math.max(...Object.values(groups), 1)
   const groupNumbers = Array.from({ length: numGroups }, (_, i) => i + 1)
+
+  // Who is who, on every step. Two "Jeff Logan" rows at the same handicap gave the
+  // organiser no way to tell the account from the guest copy once past the list.
+  const playerTag = (p: Player) => {
+    if (p.id === userId) return <span className="ml-2 text-xs font-normal text-amber-700">you</span>
+    if (guestCopies.has(p.id)) return <span className="ml-2 text-xs font-normal text-gray-400">guest copy</span>
+    return null
+  }
+  const playerTagText = (p: Player) =>
+    p.id === userId ? ' (you)' : guestCopies.has(p.id) ? ' (guest copy)' : ''
 
   const buildGame = (): Game => {
     let config: SkinsConfig | BestBallConfig | NassauConfig | WolfConfig | BBBConfig | HammerConfig
@@ -567,7 +586,7 @@ export function EventSetup({ userId, onStart, onCancel, onAddCourse }: Props) {
                   onClick={() => togglePlayer(p)}
                   className="px-3 py-1.5 bg-amber-100 text-amber-800 rounded-full text-sm font-semibold active:bg-amber-200"
                 >
-                  {p.name} ✕
+                  {p.name}{playerTagText(p)} ✕
                 </button>
               ))}
             </div>
@@ -619,9 +638,7 @@ export function EventSetup({ userId, onStart, onCancel, onAddCourse }: Props) {
                   <div>
                     <p className="font-semibold text-gray-900 dark:text-gray-100">
                       {p.name}
-                      {p.id === userId && (
-                        <span className="ml-2 text-xs font-normal text-amber-700">you</span>
-                      )}
+                      {playerTag(p)}
                     </p>
                     <p className="text-xs text-gray-500">HCP {fmtHandicap(p.handicapIndex)} · {p.tee}</p>
                   </div>
@@ -757,7 +774,7 @@ export function EventSetup({ userId, onStart, onCancel, onAddCourse }: Props) {
                   >
                     <option value="">Everyone keeps their own</option>
                     {groupPlayers.map(p => (
-                      <option key={p.id} value={p.id}>{p.name}</option>
+                      <option key={p.id} value={p.id}>{p.name}{playerTagText(p)}</option>
                     ))}
                   </select>
                 </div>
@@ -772,6 +789,7 @@ export function EventSetup({ userId, onStart, onCancel, onAddCourse }: Props) {
                     <div>
                       <p className="font-medium text-gray-800 dark:text-gray-100 text-sm">
                         {player.name}
+                        {playerTag(player)}
                         {groupScorekeepers[gn] === player.id && (
                           <span className="ml-2 text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-200 text-amber-700">SK</span>
                         )}
@@ -1023,7 +1041,7 @@ export function EventSetup({ userId, onStart, onCancel, onAddCourse }: Props) {
                       : 'border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300'
                   }`}
                 >
-                  {p.name}{treasurerId === p.id ? ' ✓' : ''}
+                  {p.name}{playerTagText(p)}{treasurerId === p.id ? ' ✓' : ''}
                 </button>
               ))}
             </div>
@@ -1210,7 +1228,7 @@ export function EventSetup({ userId, onStart, onCancel, onAddCourse }: Props) {
                   <p className="text-sm font-bold text-gray-800 dark:text-gray-100">Group {gn}</p>
                   {skName && <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-200 text-amber-700">SK: {skName}</span>}
                 </div>
-                <p className="text-xs text-gray-500 mt-1">{gp.map(p => p.name).join(', ')}</p>
+                <p className="text-xs text-gray-500 mt-1">{gp.map(p => `${p.name}${playerTagText(p)}`).join(', ')}</p>
               </div>
             )
           })}

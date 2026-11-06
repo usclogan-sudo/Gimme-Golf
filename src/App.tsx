@@ -47,6 +47,7 @@ const LiveLeaderboard = lazy(() => import('./components/LiveLeaderboard/LiveLead
 const PropBetsScreen = lazy(() => import('./components/PropBets/PropBetsScreen').then(m => ({ default: m.PropBetsScreen })))
 import { RouteErrorBoundary } from './components/RouteErrorBoundary'
 import { Seal } from './components/brand'
+import { UpdateReadyLine } from './components/UpdateReadyLine'
 import type { AppNotification, Course, Round, UserProfile, GameType, StakesMode } from './types'
 
 type Screen = 'home' | 'course-catalog' | 'course-setup' | 'new-round' | 'scorecard' | 'settle-up' | 'round-history' | 'stats' | 'settings' | 'onboarding' | 'admin' | 'upgrade-account' | 'player-directory' | 'handicap-detail' | 'join-round' | 'tournament-list' | 'tournament-setup' | 'tournament-detail' | 'personal-dashboard' | 'event-setup' | 'event-leaderboard' | 'ledger' | 'spectate' | 'prop-bets'
@@ -1312,6 +1313,7 @@ export default function App() {
   if (screenContent) {
     return (
       <RouteErrorBoundary onReset={goHome} screenLabel={screen}>
+        <UpdateReadyLine />
         <Suspense fallback={screenFallback}>{screenContent}</Suspense>
       </RouteErrorBoundary>
     )
@@ -1368,6 +1370,7 @@ export default function App() {
 
   return (
     <>
+    <UpdateReadyLine />
     <Home
       key={homeKey}
       homeTab={homeTab}
