@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import { supabase, rowToRound, rowToRoundPlayer, rowToHoleScore, rowToEvent, rowToEventParticipant } from '../../lib/supabase'
-import { buildCourseHandicaps, strokesOnHole, fmtAmount } from '../../lib/gameLogic'
+import { buildCourseHandicaps, strokesOnHole, fmtAmount, fmtHandicap } from '../../lib/gameLogic'
+import { createRealtimeSync } from '../../lib/realtimeSync'
+import { approvedOnly, pendingCountByPlayer } from '../../lib/scores'
 import { makePlayableSnapshot, roundToHolesConfig } from '../../lib/holeUtils'
 import { InvitePlayerModal } from '../InvitePlayerModal'
 import type { Round, RoundPlayer, HoleScore, GolfEvent, EventParticipant, ScoreStatus } from '../../types'
@@ -24,7 +26,8 @@ export function EventLeaderboard({ userId, eventId, onBack }: Props) {
   const [showApproval, setShowApproval] = useState(false)
   const [approvingId, setApprovingId] = useState<string | null>(null)
 
-  // Load data — extracted so the visibility-resume path can refetch on demand.
+  // Load data — extracted so the realtime catch-up paths can refetch on demand.
+  // Those refetches are silent: they never put the loading screen back up.
   const loadData = (isCancelled?: () => boolean) => {
     const cancelled = () => isCancelled?.() ?? false
     supabase.from('events').select('*').eq('id', eventId).single().then(({ data }) => {
@@ -56,21 +59,18 @@ export function EventLeaderboard({ userId, eventId, onBack }: Props) {
     return () => { cancelled = true }
   }, [eventId])
 
-  // Realtime + presence subscriptions, gated by tab visibility — backgrounded
-  // tabs drop their channels after a 5s grace window so they don't count
-  // against the realtime cap. On resume we refetch state and resubscribe.
+  // Realtime + presence subscriptions. Lifecycle lives in lib/realtimeSync.ts:
+  // the data channel is opened with a status callback and, on error, timeout or
+  // an unexpected close, torn down, refetched and reopened with backoff. A hidden
+  // tab drops both channels after a grace period (channel cap); coming back
+  // refetches whatever the gap missed. Presence rides along with the data channel.
   useEffect(() => {
     if (!round || !event) return
     let cancelled = false
-    let dataChannel: ReturnType<typeof supabase.channel> | null = null
-    let presenceChannel: ReturnType<typeof supabase.channel> | null = null
-    let hiddenTimer: ReturnType<typeof setTimeout> | null = null
-    const HIDDEN_GRACE_MS = 5000
 
-    const subscribe = () => {
-      if (cancelled) return
-      if (!dataChannel) {
-        dataChannel = supabase
+    const sync = createRealtimeSync({
+      open: (onStatus) => {
+        const dataChannel = supabase
           .channel(`event-${eventId}`)
           .on('postgres_changes', { event: '*', schema: 'public', table: 'hole_scores', filter: `round_id=eq.${round.id}` }, (payload) => {
             if (payload.eventType === 'INSERT') {
@@ -84,12 +84,11 @@ export function EventLeaderboard({ userId, eventId, onBack }: Props) {
               setHoleScores(prev => prev.filter(s => s.id !== row.id))
             }
           })
-          .subscribe()
-      }
-      if (!presenceChannel) {
-        const ch = supabase.channel(`presence-event-${eventId}`)
-        ch.on('presence', { event: 'sync' }, () => {
-          const state = ch.presenceState()
+        dataChannel.subscribe(status => onStatus(status))
+
+        const presenceChannel = supabase.channel(`presence-event-${eventId}`)
+        presenceChannel.on('presence', { event: 'sync' }, () => {
+          const state = presenceChannel.presenceState()
           const userIds = new Set<string>()
           for (const entries of Object.values(state)) {
             for (const entry of entries as any[]) {
@@ -99,42 +98,22 @@ export function EventLeaderboard({ userId, eventId, onBack }: Props) {
           setOnlineUsers(userIds)
         }).subscribe(async (status) => {
           if (status === 'SUBSCRIBED' && !cancelled) {
-            await ch.track({ user_id: userId })
+            await presenceChannel.track({ user_id: userId })
           }
         })
-        presenceChannel = ch
-      }
-    }
 
-    const unsubscribe = () => {
-      if (dataChannel) { supabase.removeChannel(dataChannel); dataChannel = null }
-      if (presenceChannel) { supabase.removeChannel(presenceChannel); presenceChannel = null }
-    }
-
-    const onVisibilityChange = () => {
-      if (cancelled) return
-      if (document.visibilityState === 'hidden') {
-        if (hiddenTimer) clearTimeout(hiddenTimer)
-        hiddenTimer = setTimeout(() => {
-          if (!cancelled && document.visibilityState === 'hidden') unsubscribe()
-        }, HIDDEN_GRACE_MS)
-      } else {
-        if (hiddenTimer) { clearTimeout(hiddenTimer); hiddenTimer = null }
-        if (!dataChannel || !presenceChannel) {
-          loadData(() => cancelled)
-          subscribe()
+        return () => {
+          supabase.removeChannel(dataChannel)
+          supabase.removeChannel(presenceChannel)
         }
-      }
-    }
-
-    document.addEventListener('visibilitychange', onVisibilityChange)
-    if (document.visibilityState !== 'hidden') subscribe()
+      },
+      refetch: () => { if (!cancelled) loadData(() => cancelled) },
+    })
+    sync.start()
 
     return () => {
       cancelled = true
-      if (hiddenTimer) clearTimeout(hiddenTimer)
-      document.removeEventListener('visibilitychange', onVisibilityChange)
-      unsubscribe()
+      sync.stop()
     }
   }, [round?.id, event?.id, eventId, userId])
 
@@ -149,10 +128,14 @@ export function EventLeaderboard({ userId, eventId, onBack }: Props) {
     return makePlayableSnapshot(snapshot, roundToHolesConfig(round))
   }, [snapshot, round])
 
-  // Only use approved scores for calculations
-  const approvedScores = useMemo(() => {
-    return holeScores.filter(s => s.scoreStatus !== 'rejected' && s.scoreStatus !== 'pending')
-  }, [holeScores])
+  // Only use approved scores for calculations (same rule as the scorecard engine)
+  const approvedScores = useMemo(() => approvedOnly(holeScores), [holeScores])
+  const pendingByPlayer = useMemo(() => pendingCountByPlayer(holeScores), [holeScores])
+  const teeByPlayer = useMemo(() => {
+    const m: Record<string, string> = {}
+    for (const p of players) m[p.id] = roundPlayers.find(rp => rp.playerId === p.id)?.teePlayed ?? p.tee
+    return m
+  }, [players, roundPlayers])
 
   const courseHcps = useMemo(() => {
     if (!snapshot || !roundPlayers) return {}
@@ -358,7 +341,7 @@ export function EventLeaderboard({ userId, eventId, onBack }: Props) {
             </thead>
             <tbody>
               {filteredLeaderboard.map((entry, idx) => (
-                <tr key={entry.player.id} className={`border-b border-gray-50 dark:border-gray-700 ${positions[idx] === 1 ? 'bg-amber-50 dark:bg-amber-900/20' : ''}`}>
+                <tr key={entry.player.id} className={`border-b border-gray-50 dark:border-gray-700 ${positions[idx] === 1 ? 'bg-amber-50 dark:bg-amber-900/20' : ''} ${(pendingByPlayer[entry.player.id] ?? 0) > 0 ? 'opacity-60' : ''}`}>
                   <td className={`py-2.5 px-1 font-bold ${positions[idx] === 1 ? 'text-amber-600' : 'text-gray-500'}`}>
                     {positions[idx]}
                   </td>
@@ -371,7 +354,13 @@ export function EventLeaderboard({ userId, eventId, onBack }: Props) {
                       {activeTab === 'overall' && groupNumbers.length > 1 && (
                         <span className="text-[10px] font-bold px-1 py-0.5 rounded bg-gray-100 dark:bg-gray-600 text-gray-500 dark:text-gray-300">G{entry.groupNum}</span>
                       )}
+                      {(pendingByPlayer[entry.player.id] ?? 0) > 0 && (
+                        <span className="text-[10px] font-bold px-1 py-0.5 rounded bg-yellow-100 text-yellow-700">{pendingByPlayer[entry.player.id]} pending</span>
+                      )}
                     </div>
+                    <p className="text-[11px] text-gray-400 dark:text-gray-500">
+                      {courseHcps[entry.player.id] !== undefined ? fmtHandicap(courseHcps[entry.player.id]) : '—'}{teeByPlayer[entry.player.id] ? ` · ${teeByPlayer[entry.player.id]}` : ''}
+                    </p>
                   </td>
                   <td className="py-2.5 px-1 text-center text-gray-500">{entry.thru}</td>
                   <td className="py-2.5 px-1 text-center font-semibold text-gray-700 dark:text-gray-300">{entry.gross || '—'}</td>

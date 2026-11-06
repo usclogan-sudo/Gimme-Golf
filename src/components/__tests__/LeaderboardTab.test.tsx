@@ -69,3 +69,53 @@ describe('LeaderboardTab — claimed guest seats', () => {
     expect(screen.queryByText(/claimed by/)).toBeNull()
   })
 })
+
+describe('LeaderboardTab — approved scores and pending rows', () => {
+  it('counts only approved scores in gross and thru, and marks a player with a pending score', () => {
+    const scores: HoleScore[] = [
+      { id: 'a1', roundId: 'r', playerId: 'org-uid', holeNumber: 1, grossScore: 4, scoreStatus: 'approved' } as HoleScore,
+      { id: 'a2', roundId: 'r', playerId: 'org-uid', holeNumber: 2, grossScore: 5, scoreStatus: 'approved' } as HoleScore,
+      { id: 'b1', roundId: 'r', playerId: 'guest-seat', holeNumber: 1, grossScore: 5, scoreStatus: 'approved' } as HoleScore,
+      { id: 'b2', roundId: 'r', playerId: 'guest-seat', holeNumber: 2, grossScore: 6, scoreStatus: 'pending' } as HoleScore,
+    ]
+    render(
+      <LeaderboardTab
+        snapshot={snapshot}
+        players={players}
+        holeScores={scores}
+        courseHcps={{ 'org-uid': 10, 'guest-seat': 12 }}
+        game={null}
+        round={null}
+        {...nullResults}
+      />,
+    )
+    const rowOf = (name: string) => screen.getByText(name).closest('tr')!
+    // Jeff: two approved → thru 2, gross 9.
+    expect(rowOf('Jeff Logan').textContent).toContain('2')
+    expect(rowOf('Jeff Logan').textContent).toContain('9')
+    // Guest: one approved, one pending → thru 1, gross 5, marked pending and faded.
+    const guest = rowOf("Lee's buddy")
+    expect(screen.getByText('1 pending')).toBeDefined()
+    expect(guest.className).toContain('opacity-60')
+    const cells = Array.from(guest.querySelectorAll('td')).map(td => td.textContent)
+    expect(cells[2]).toBe('1')
+    expect(cells[3]).toBe('5')
+  })
+
+  it('prints course handicap and tee beside each name', () => {
+    render(
+      <LeaderboardTab
+        snapshot={snapshot}
+        players={players}
+        holeScores={holeScores}
+        courseHcps={{ 'org-uid': -8, 'guest-seat': 18 }}
+        teeByPlayer={{ 'org-uid': 'Blue', 'guest-seat': 'White' }}
+        game={null}
+        round={null}
+        {...nullResults}
+      />,
+    )
+    expect(screen.getByText('+8 · Blue')).toBeDefined()
+    expect(screen.getByText('18 · White')).toBeDefined()
+  })
+})

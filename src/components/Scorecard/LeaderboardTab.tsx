@@ -4,8 +4,9 @@ import { renderResultCardToBlob } from '../ResultCard'
 import type { ResultCardStanding } from '../ResultCard'
 import { shareCard } from '../../lib/share'
 import { gameStandings } from '../../lib/standings'
+import { approvedOnly, pendingCountByPlayer } from '../../lib/scores'
 import {
-  strokesOnHole, fmtAmount,
+  strokesOnHole, fmtAmount, fmtHandicap,
   calculateSkinsPayouts, calculateSkinsPerSkinNet, calculateBestBallPayouts, calculateNassauPayouts,
   calculateBBBPayouts, calculateVegasPayouts,
   calculateStablefordPayouts, calculateQuotaPayouts,
@@ -50,6 +51,8 @@ interface Props {
   primaryMode?: 'net' | 'gross'
   /** Seat id → first name of the registered user holding a claimed guest seat. */
   claimedBy?: Record<string, string>
+  /** playerId → tee played, shown beside the course handicap ("+8 · Blue"). */
+  teeByPlayer?: Record<string, string>
 }
 
 const GAME_LABELS: Record<string, string> = {
@@ -64,6 +67,7 @@ export function LeaderboardTab({
   hammerResult, vegasResult, stablefordResult, bankerResult, quotaResult,
   primaryMode = 'net',
   claimedBy = {},
+  teeByPlayer = {},
 }: Props) {
   const [sharing, setSharing] = useState(false)
   const claimedLine = (playerId: string) => claimedBy[playerId]
@@ -113,7 +117,7 @@ export function LeaderboardTab({
       let payouts: PlayerPayout[] = []
       if (game.type === 'skins' && skinsResult) payouts = calculateSkinsPayouts(skinsResult, game, players.length)
       else if (game.type === 'best_ball' && bestBallResult) payouts = calculateBestBallPayouts(bestBallResult, game.config as BestBallConfig, game, players)
-      else if (game.type === 'nassau' && nassauResult) payouts = calculateNassauPayouts(nassauResult, game, players, holeScores, snapshot, courseHcps)
+      else if (game.type === 'nassau' && nassauResult) payouts = calculateNassauPayouts(nassauResult, game, players, approvedOnly(holeScores), snapshot, courseHcps)
       else if (game.type === 'bingo_bango_bongo' && bbbResult) payouts = calculateBBBPayouts(bbbResult, game, players)
       else if (game.type === 'vegas' && vegasResult) payouts = calculateVegasPayouts(vegasResult, game.config as VegasConfig, game, players)
       else if (game.type === 'stableford' && stablefordResult) payouts = calculateStablefordPayouts(stablefordResult, game, players)
@@ -126,8 +130,23 @@ export function LeaderboardTab({
   })()
   const hasGameResult = Array.from(gameNetByPlayer.values()).some(v => v !== 0)
 
+  // Same set the game engine scores from, so gross and thru here can never
+  // disagree with the standings above. Pending rows are shown, faded and marked.
+  const approvedScores = approvedOnly(holeScores)
+  const pendingByPlayer = pendingCountByPlayer(holeScores)
+  const hcpLine = (playerId: string) => {
+    const tee = teeByPlayer[playerId]
+    const hcp = courseHcps[playerId]
+    if (hcp === undefined && !tee) return null
+    return (
+      <p className="text-[11px] font-normal text-gray-400 dark:text-gray-500">
+        {hcp !== undefined ? fmtHandicap(hcp) : '—'}{tee ? ` · ${tee}` : ''}
+      </p>
+    )
+  }
+
   const board = players.map(p => {
-    const pScores = holeScores.filter(s => s.playerId === p.id)
+    const pScores = approvedScores.filter(s => s.playerId === p.id)
     const gross = pScores.reduce((s, hs) => s + hs.grossScore, 0)
     const courseHcp = courseHcps[p.id] ?? 0
     const netStrokes = pScores.reduce((s, hs) => {
@@ -138,7 +157,7 @@ export function LeaderboardTab({
       const hole = snapshot.holes.find(h => h.number === hs.holeNumber)
       return s + (hole?.par ?? 0)
     }, 0)
-    return { player: p, gross, net: gross - netStrokes, vsPar: gross - scoredPar, thru: pScores.length }
+    return { player: p, gross, net: gross - netStrokes, vsPar: gross - scoredPar, thru: pScores.length, pending: pendingByPlayer[p.id] ?? 0 }
   }).sort((a, b) =>
     // The golf-scores table is a reference, so it ranks by net strokes to par —
     // never by the game result, which has its own table above it (Finding 9).
@@ -191,7 +210,7 @@ export function LeaderboardTab({
           // Strokes only: this component receives computed results, not the
           // hole-level BBB/junk records, so a points round still under-reports
           // here. SettleUp's card — the one that printed "0 HOLES" — is fixed.
-          holesPlayed: new Set(holeScores.map(h => h.holeNumber)).size,
+          holesPlayed: new Set(approvedScores.map(h => h.holeNumber)).size,
         },
         standings: cardStandings,
         settlements: [],
@@ -395,9 +414,18 @@ export function LeaderboardTab({
           </thead>
           <tbody>
             {board.map((entry, idx) => (
-              <tr key={entry.player.id} className={`border-b border-gray-50 ${positions[idx] === 1 ? 'bg-amber-50' : ''}`}>
+              <tr key={entry.player.id} className={`border-b border-gray-50 ${positions[idx] === 1 ? 'bg-amber-50' : ''} ${entry.pending > 0 ? 'opacity-60' : ''}`}>
                 <td className={`py-2.5 px-1 font-bold ${positions[idx] === 1 ? 'text-amber-600' : 'text-gray-500'}`}>{positions[idx]}</td>
-                <td className="py-2.5 px-1 font-semibold text-gray-800 dark:text-gray-100">{entry.player.name}{claimedLine(entry.player.id)}</td>
+                <td className="py-2.5 px-1 font-semibold text-gray-800 dark:text-gray-100">
+                  {entry.player.name}
+                  {entry.pending > 0 && (
+                    <span className="ml-2 text-[10px] font-bold px-1.5 py-0.5 rounded bg-yellow-100 text-yellow-700">
+                      {entry.pending} pending
+                    </span>
+                  )}
+                  {hcpLine(entry.player.id)}
+                  {claimedLine(entry.player.id)}
+                </td>
                 <td className="py-2.5 px-1 text-center text-gray-500">{entry.thru}</td>
                 <td className="py-2.5 px-1 text-center font-semibold text-gray-700">{entry.gross || '—'}</td>
                 <td className="py-2.5 px-1 text-center font-semibold text-gray-700">{entry.net || '—'}</td>

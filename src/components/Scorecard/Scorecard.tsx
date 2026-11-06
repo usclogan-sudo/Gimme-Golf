@@ -92,6 +92,8 @@ import type {
 } from '../../types'
 import { reportSupabaseError } from '../../lib/sentry'
 import { holdReload } from '../../lib/swUpdate'
+import { createRealtimeSync } from '../../lib/realtimeSync'
+import { approvedOnly, missingScorePlayers } from '../../lib/scores'
 import { SHOW_HOLE_BETS, SHOW_PROP_BETS, SHOW_PRESSES } from '../../lib/featureFlags'
 
 interface Props {
@@ -360,10 +362,15 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
   const [numberPadTarget, setNumberPadTarget] = useState<{ playerId: string; playerName: string } | null>(null)
   const [photoExtraction, setPhotoExtraction] = useState<ExtractionResult | null>(null)
 
-  const loadScorecardData = (isCancelled?: () => boolean) => {
+  // `silent` refetches behind the current screen (realtime catch up, tab opened,
+  // back from hidden): no loading screen, and a failure keeps what is shown.
+  const loadScorecardData = (isCancelled?: () => boolean, opts?: { silent?: boolean }) => {
     const cancelled = () => isCancelled?.() ?? false
-    setLoadError(false)
-    setLoading(true)
+    const silent = opts?.silent === true
+    if (!silent) {
+      setLoadError(false)
+      setLoading(true)
+    }
     Promise.all([
       supabase.from('rounds').select('*').eq('id', roundId).single(),
       supabase.from('round_players').select('*').eq('round_id', roundId),
@@ -379,6 +386,7 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
     ]).then(([roundRes, rpRes, hsRes, bbbRes, junkRes, sbRes, partRes, biRes, pbRes, pwRes, pendingRes]) => {
       if (cancelled()) return
       if (roundRes.error || !roundRes.data) {
+        if (silent) return
         setLoadError(true)
         setLoading(false)
         return
@@ -396,7 +404,7 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
       if (pwRes?.data) setPropWagers(pwRes.data.map(rowToPropWager))
       setLoading(false)
     }).catch(() => {
-      if (cancelled()) return
+      if (cancelled() || silent) return
       setLoadError(true)
       setLoading(false)
     })
@@ -407,6 +415,10 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
     loadScorecardData(() => cancelled)
     return () => { cancelled = true }
   }, [roundId])
+
+  // Latest silent refetch, for the Leaderboard tab button (it is a plain handler
+  // outside the realtime effect's closure).
+  const refetchRef = useRef<() => void>(() => {})
 
   // ─── Fetch event data when round is part of an event ──────────────────────
   useEffect(() => {
@@ -457,14 +469,12 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
   }, [round?.treasurerPlayerId, round?.players, roundParticipants])
 
   // ─── Realtime subscriptions for multi-device sync ──────────────────────────
-  // Channel is opened only while the tab is visible. On a >5s hidden window
-  // we drop the channel so backgrounded tabs don't count against the project's
-  // realtime channel cap; on return we refetch state + resubscribe.
+  // Lifecycle lives in lib/realtimeSync.ts: the channel is opened with a status
+  // callback and, on error, timeout or an unexpected close, torn down, refetched
+  // and reopened with backoff. A hidden tab drops its channel after a grace
+  // period (channel cap); coming back refetches whatever the gap missed.
   useEffect(() => {
-    let channel: ReturnType<typeof supabase.channel> | null = null
     let cancelled = false
-    let hiddenTimer: ReturnType<typeof setTimeout> | null = null
-    const HIDDEN_GRACE_MS = 5000
 
     const buildChannel = () => supabase
       .channel(`round-${roundId}`)
@@ -507,47 +517,22 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
       .on('postgres_changes', { event: '*', schema: 'public', table: 'prop_wagers', filter: `round_id=eq.${roundId}` }, (payload) => {
         setPropWagers(prev => applyPropWagerPayload(prev, payload as any))
       })
-      .subscribe()
 
-    const subscribe = () => {
-      if (channel || cancelled) return
-      channel = buildChannel()
-    }
-
-    const unsubscribe = () => {
-      if (!channel) return
-      supabase.removeChannel(channel)
-      channel = null
-    }
-
-    const onVisibilityChange = () => {
-      if (cancelled) return
-      if (document.visibilityState === 'hidden') {
-        // Only drop the channel after a grace period — short tab-switches
-        // shouldn't cause subscribe/unsubscribe thrash.
-        if (hiddenTimer) clearTimeout(hiddenTimer)
-        hiddenTimer = setTimeout(() => {
-          if (!cancelled && document.visibilityState === 'hidden') unsubscribe()
-        }, HIDDEN_GRACE_MS)
-      } else {
-        if (hiddenTimer) { clearTimeout(hiddenTimer); hiddenTimer = null }
-        // If we dropped the channel while hidden, refetch state to catch up
-        // on writes that landed during the gap, then resubscribe.
-        if (!channel) {
-          loadScorecardData(() => cancelled)
-          subscribe()
-        }
-      }
-    }
-
-    document.addEventListener('visibilitychange', onVisibilityChange)
-    if (document.visibilityState !== 'hidden') subscribe()
+    const sync = createRealtimeSync({
+      open: (onStatus) => {
+        const channel = buildChannel()
+        channel.subscribe(status => onStatus(status))
+        return () => { supabase.removeChannel(channel) }
+      },
+      refetch: () => { if (!cancelled) loadScorecardData(() => cancelled, { silent: true }) },
+    })
+    refetchRef.current = () => sync.refetch()
+    sync.start()
 
     return () => {
       cancelled = true
-      if (hiddenTimer) clearTimeout(hiddenTimer)
-      document.removeEventListener('visibilitychange', onVisibilityChange)
-      unsubscribe()
+      refetchRef.current = () => {}
+      sync.stop()
     }
   }, [roundId])
 
@@ -648,6 +633,14 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
     if (!snapshot || !roundPlayers) return {}
     return buildCourseHandicaps(players, roundPlayers, snapshot, round?.holesMode)
   }, [players, roundPlayers, snapshot, round?.holesMode])
+  // The tee each player is scored from: frozen on the round player row at setup,
+  // falling back to the roster entry. Shown beside the course handicap on the
+  // leaderboard so a plus player can see why a mid-index hole carries a stroke.
+  const teeByPlayer = useMemo(() => {
+    const m: Record<string, string> = {}
+    for (const p of players) m[p.id] = roundPlayers.find(rp => rp.playerId === p.id)?.teePlayed ?? p.tee
+    return m
+  }, [players, roundPlayers])
 
   // Claimed guest seats: fetch the claimant's profile display name once per uid.
   const claimantUids = useMemo(
@@ -1501,10 +1494,11 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
     holes: playableHoleNums,
   }
 
-  // Filter scores for game logic: only use approved scores
+  // Filter scores for game logic: only use approved scores. The leaderboard
+  // table applies the same rule (lib/scores.ts), so the two never disagree.
   const approvedScores = useMemo(() => {
     if (!isEventRound) return holeScores
-    return holeScores.filter(s => s.scoreStatus !== 'rejected' && s.scoreStatus !== 'pending')
+    return approvedOnly(holeScores)
   }, [holeScores, isEventRound])
 
   // Pending scores for approval panel
@@ -1970,7 +1964,9 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
             </button>
           )}
           <button
-            onClick={() => setScoreTab('leaderboard')}
+            // Opening the board is a moment the user expects it to be current, so
+            // catch up on anything realtime missed.
+            onClick={() => { setScoreTab('leaderboard'); refetchRef.current() }}
             className={`flex-1 min-h-[44px] rounded-lg text-sm font-semibold transition-colors ${
               scoreTab === 'leaderboard' ? 'bg-gray-800 text-white dark:bg-brass dark:text-navy' : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300'
             }`}
@@ -2335,6 +2331,7 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
           quotaResultAlt={quotaResultAlt}
           primaryMode={(game?.config as any)?.mode ?? 'net'}
           claimedBy={claimedBy}
+          teeByPlayer={teeByPlayer}
         />
       )}
 
@@ -2627,6 +2624,27 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
                 />
               </InlineErrorBoundary>
             )}
+
+            {/* Banker: who banks this hole, named on every hole the way the Wolf
+                panel names the wolf. The rotation is fixed at setup, so this is a
+                read-out, not a decision. */}
+            {showGameStatus && game?.type === 'banker' && (() => {
+              const order = ((game.config as BankerConfig).bankerOrder ?? []).filter(id => players.some(p => p.id === id))
+              const bankerId = order.length ? order[(currentHole - 1) % order.length] : null
+              const banker = bankerId ? players.find(p => p.id === bankerId) : null
+              return (
+                <div className="bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl p-3 space-y-1">
+                  <p className="font-bold text-gray-800 dark:text-gray-100 text-sm">
+                    Banker: {banker ? banker.name : 'nobody in the rotation is still in the round'}
+                  </p>
+                  {banker && (
+                    <p className="text-xs text-gray-500 dark:text-gray-400">
+                      {banker.name} plays each other player on hole {currentHole}.
+                    </p>
+                  )}
+                </div>
+              )
+            })()}
 
             {/* Hammer panel */}
             {showGameStatus && game?.type === 'hammer' && hammerConfig && players.length === 2 && (
@@ -3208,7 +3226,8 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
         {/* Next Hole / End Round — in scrollable content. BBB settles from points,
             so a missing-strokes nag would be noise there. */}
         {!showBatchEntry && !readOnly && game?.type !== 'bingo_bango_bongo' && (() => {
-          const missingPlayers = players.filter(p => !holeScores.some(s => s.playerId === p.id && s.holeNumber === currentHole))
+          // A pending score counts as entered; only a rejected one is still owed.
+          const missingPlayers = missingScorePlayers(players, holeScores, currentHole)
           return missingPlayers.length > 0 ? (
             <p className="text-amber-600 text-xs font-medium text-center py-1.5 bg-amber-50 rounded-xl">
               Not all players have scores for this hole

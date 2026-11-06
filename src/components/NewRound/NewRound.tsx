@@ -6,7 +6,7 @@ import { reportSupabaseError, addBreadcrumb } from '../../lib/sentry'
 import { holdReload } from '../../lib/swUpdate'
 import { SHOW_HOLE_BETS, SHOW_EXTRA_GAMES, SHOW_DOTS, SHOW_BEST_BALL_STROKE_PLAY } from '../../lib/featureFlags'
 import { fmtMoney, fmtAmount, fmtHandicap, JUNK_LABELS, DOT_LABELS, computeCourseHandicap } from '../../lib/gameLogic'
-import { findPlayerByName } from '../../lib/players'
+import { findPlayerByName, guestCopyIds, recentFriendOrder } from '../../lib/players'
 import { parseDollarsToCents, parsePointsValue } from '../../lib/money'
 import { venturaCourses } from '../../data/venturaCourses'
 import { NearMeCourses } from '../NearMeCourses/NearMeCourses'
@@ -383,6 +383,9 @@ export function PlayerPicker({
   stepIndicator,
   playerTees,
   onPlayerTeesChange,
+  maxPlayers = 6,
+  subtitle,
+  nextLabel,
 }: {
   userId: string
   course: Course
@@ -393,11 +396,20 @@ export function PlayerPicker({
   stepIndicator?: React.ReactNode
   playerTees: Record<string, string>
   onPlayerTeesChange: (tees: Record<string, string>) => void
+  /** Roster cap: a round is six; an event is as many as its groups hold. */
+  maxPlayers?: number
+  /** Header line under the title; defaults to the course name. */
+  subtitle?: string
+  /** Label for the proceed button once two or more are selected. */
+  nextLabel?: (count: number) => string
 }) {
   const [allPlayers, setAllPlayers] = useState<Player[]>([])
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set(preSelectedIds ?? []))
   const [query, setQuery] = useState('')
-  const [recentFriendIds, setRecentFriendIds] = useState<Set<string>>(new Set())
+  // Most recently played with first (lib/players.ts recentFriendOrder).
+  const [recentFriendIds, setRecentFriendIds] = useState<string[]>([])
+  // Guest rows that share a name with a registered player (lib/players.ts).
+  const [guestCopies, setGuestCopies] = useState<Set<string>>(new Set())
   const [showAllPlayers, setShowAllPlayers] = useState(false)
 
   const [showAddForm, setShowAddForm] = useState(false)
@@ -415,7 +427,7 @@ export function PlayerPicker({
   const [showInviteSheet, setShowInviteSheet] = useState(false)
   const [loadingPlayers, setLoadingPlayers] = useState(true)
 
-  const MAX_PLAYERS = 6
+  const MAX_PLAYERS = maxPlayers
   const headerClass = stakesMode === 'high_roller' ? 'hr-header' : 'app-header'
 
   useEffect(() => {
@@ -444,6 +456,7 @@ export function PlayerPicker({
       // Deduplicate: registered users take priority, guests that share an ID are skipped
       const registeredIds = new Set(registeredPlayers.map(p => p.id))
       const uniqueGuests = guestPlayers.filter(g => !registeredIds.has(g.id))
+      setGuestCopies(guestCopyIds(registeredPlayers, uniqueGuests))
 
       let all = [...registeredPlayers, ...uniqueGuests].sort((a, b) => a.name.localeCompare(b.name))
 
@@ -477,27 +490,23 @@ export function PlayerPicker({
         }
       }
 
-      // Fetch recent friends — player IDs from user's last 5 rounds
+      // Recent friends: everyone from the organiser's last ten rounds, ordered by
+      // the most recent round played with each of them.
       try {
         const { data: recentRounds } = await supabase
           .from('rounds')
           .select('id')
           .eq('user_id', userId)
           .order('date', { ascending: false })
-          .limit(5)
+          .limit(10)
         if (recentRounds && recentRounds.length > 0) {
           const roundIds = recentRounds.map((r: any) => r.id)
           const { data: rpData } = await supabase
             .from('round_players')
-            .select('player_id')
+            .select('round_id, player_id')
             .in('round_id', roundIds)
           if (rpData) {
-            const friendIds = new Set<string>()
-            for (const rp of rpData) {
-              const pid = (rp as any).player_id
-              if (pid && pid !== userId) friendIds.add(pid)
-            }
-            setRecentFriendIds(friendIds)
+            setRecentFriendIds(recentFriendOrder(recentRounds as { id: string }[], rpData as any[], userId))
           }
         }
       } catch {
@@ -524,7 +533,12 @@ export function PlayerPicker({
     .filter(p => selectedIds.has(p.id))
     .sort((a, b) => (a.id === userId ? -1 : b.id === userId ? 1 : byName(a, b)))
   const unselected = (p: Player) => p.id !== userId && !selectedIds.has(p.id)
-  const friends = allPlayers.filter(p => unselected(p) && recentFriendIds.has(p.id)).sort(byName).slice(0, 10)
+  // Recency order, not alphabetical: the people you played with last week come
+  // before the ones from last season.
+  const friends = recentFriendIds
+    .map(id => allPlayers.find(p => p.id === id))
+    .filter((p): p is Player => !!p && unselected(p))
+    .slice(0, 10)
   const friendIdsShown = new Set(friends.map(p => p.id))
   // Everyone else — including friends past the tenth, who used to render nowhere.
   const others = allPlayers.filter(p => unselected(p) && !friendIdsShown.has(p.id)).sort(byName)
@@ -587,7 +601,7 @@ export function PlayerPicker({
         </button>
         <div>
           <h1 className="text-xl font-bold">Select Players</h1>
-          <p className="text-gray-300 text-xs truncate">{course.name}</p>
+          <p className="text-gray-300 text-xs truncate">{subtitle ?? course.name}</p>
         </div>
       </header>
       {stepIndicator}
@@ -769,6 +783,9 @@ export function PlayerPicker({
                       {badge && (
                         <span className="ml-2 text-[10px] font-bold uppercase px-1.5 py-0.5 rounded bg-amber-100 text-amber-700">{badge}</span>
                       )}
+                      {guestCopies.has(player.id) && (
+                        <span className="ml-2 text-xs font-normal text-gray-400">guest copy</span>
+                      )}
                     </p>
                     <p className="text-sm text-gray-500">HCP {fmtHandicap(player.handicapIndex)}</p>
                   </div>
@@ -884,7 +901,9 @@ export function PlayerPicker({
           >
             {selectedIds.size < 2
               ? 'Continue'
-              : `Continue · ${selectedIds.size} Player${selectedIds.size !== 1 ? 's' : ''}`}
+              : nextLabel
+                ? nextLabel(selectedIds.size)
+                : `Continue · ${selectedIds.size} Player${selectedIds.size !== 1 ? 's' : ''}`}
           </button>
         </div>
       </div>
@@ -1715,9 +1734,10 @@ export function GameSetup({
           </section>
         )}
 
-        {/* Buy-in */}
+        {/* Buy-in. Dots settles directly per dot, so there is no entry and no
+            total to show; its own section above carries the value per dot. */}
         <section className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm p-4 space-y-3">
-          {!perPointSelected && (
+          {!perPointSelected && type !== 'dots' && (
           <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
             {stakesMode === 'points'
               ? 'Points Per Player'
@@ -1725,7 +1745,7 @@ export function GameSetup({
           </p>
           )}
 
-          {!perPointSelected && (
+          {!perPointSelected && type !== 'dots' && (
           <div className="flex items-center gap-2">
             <span className="text-xl font-bold text-gray-500">{stakesMode === 'points' ? 'tokens' : '$'}</span>
             <input
@@ -1826,7 +1846,7 @@ export function GameSetup({
                 {fmtAmount(buyInCents, stakesMode)} from each of the other {Math.max(players.length - 1, 1)} player{players.length - 1 === 1 ? '' : 's'}. No total up front — it depends how many skins fall.
               </p>
             </div>
-          ) : perPointSelected ? null : (
+          ) : perPointSelected || type === 'dots' ? null : (
             <div className="bg-amber-50 rounded-xl px-4 py-3 flex items-center justify-between">
               <span className="text-sm text-gray-600">{stakesMode === 'points' ? 'Total points' : 'Total in play'}</span>
               <span className="font-bold text-gray-800 dark:text-gray-100 text-lg">
@@ -2144,17 +2164,17 @@ export function GameSetup({
                 {(Object.keys(DOT_LABELS) as DotType[]).map(dt => {
                   const info = DOT_LABELS[dt]
                   const active = dotsTypes.has(dt)
-                  const isSnake = dt === 'snake'
                   return (
                     <button
                       key={dt}
                       type="button"
                       onClick={() => toggleDotType(dt)}
                       title={info.description}
+                      aria-pressed={active}
                       className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
                         active
-                          ? isSnake ? 'bg-red-500 text-white' : 'bg-rose-500 text-white'
-                          : 'bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-300'
+                          ? 'bg-brass text-navy'
+                          : 'bg-slate-brand/10 dark:bg-slate-brand/40 border border-slate-brand/20 text-slate-brand dark:text-cream'
                       }`}
                     >
                       {info.emoji} {info.name}
@@ -2164,7 +2184,7 @@ export function GameSetup({
               </div>
               {dotsTypes.size === 0 && <p className="text-xs text-red-500 mt-1">Select at least one dot type.</p>}
             </div>
-            <div className="bg-red-50 rounded-xl p-3 text-sm text-red-700 space-y-1">
+            <div className="bg-cream dark:bg-slate-brand/40 rounded-xl p-3 text-sm text-navy dark:text-cream space-y-1">
               <p className="font-semibold">How Dots work:</p>
               <p>• Each dot earned = value from each other player</p>
               <p>• Snake (3-putt) = you pay each other player</p>
