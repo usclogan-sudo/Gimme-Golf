@@ -4,6 +4,8 @@ import { GAME_RULES } from '../data/gameRules'
 interface Props {
   gameType: GameType
   onClose: () => void
+  /** This round's teams, e.g. "Ann and Cy vs Bo and Test." Shown under the summary. */
+  teamsLine?: string
 }
 
 // Typographic monograms, not icons — a tracked two-letter mark in brass inside a
@@ -23,7 +25,7 @@ const GAME_MONOGRAM: Record<GameType, string> = {
   quota: 'QT',
 }
 
-export function GameRulesModal({ gameType, onClose }: Props) {
+export function GameRulesModal({ gameType, onClose, teamsLine }: Props) {
   const rules = GAME_RULES[gameType]
   if (!rules) return null
 
@@ -50,6 +52,9 @@ export function GameRulesModal({ gameType, onClose }: Props) {
           {/* Summary */}
           <div className="bg-amber-50 dark:bg-amber-900/20 rounded-xl p-4">
             <p className="text-sm text-amber-900 dark:text-amber-200 leading-relaxed">{rules.summary}</p>
+            {teamsLine && (
+              <p className="text-sm font-semibold text-amber-900 dark:text-amber-200 mt-2">Teams: {teamsLine}</p>
+            )}
           </div>
 
           {/* How to Play */}

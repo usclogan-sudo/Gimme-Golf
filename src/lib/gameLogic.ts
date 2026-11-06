@@ -721,6 +721,14 @@ export interface BestBallResult {
   holeResults: HoleBestBallResult[]
 }
 
+/** "Ann and Cy vs Bo and Test." — who is with whom, for the first hole and the rules. */
+export function bestBallTeamsLabel(players: Player[], teams: Record<string, 'A' | 'B'>): string {
+  const names = (team: 'A' | 'B') => players.filter(p => teams[p.id] === team).map(p => p.name)
+  const join = (ns: string[]) =>
+    ns.length === 0 ? '—' : ns.length === 1 ? ns[0] : `${ns.slice(0, -1).join(', ')} and ${ns[ns.length - 1]}`
+  return `${join(names('A'))} vs ${join(names('B'))}.`
+}
+
 export function calculateBestBall(
   players: Player[],
   holeScores: HoleScore[],
@@ -1554,6 +1562,11 @@ export interface HammerHoleResult {
   amountCents: number
 }
 
+/** What a decline costs: the value before the last throw doubled it. */
+export function hammerPreThrowValue(state: HammerHoleState): number {
+  return Math.floor(state.value / 2)
+}
+
 /**
  * Calculate hammer results from hole scores and hammer states.
  * Hammer is a 2-player game. Each hole, the hammer holder can "throw" to double.
@@ -1591,23 +1604,25 @@ export function calculateHammer(
       return hs.grossScore // Hammer is always gross
     }
 
+    // A declined hammer settles the hole on the spot at the pre-throw value. It
+    // used to sit behind the "both scores entered" gate below, so a decline posted
+    // nothing to the totals until the hole was also scored, and nothing at all if
+    // the players moved on without scoring it.
+    if (hammerState?.declined) {
+      const thrower = hammerState.hammerHolder
+      const decliner = hammerState.declinedBy ?? (thrower === p1.id ? p2.id : p1.id)
+      const winAmount = hammerPreThrowValue(hammerState)
+      netCents[thrower] += winAmount
+      netCents[decliner] -= winAmount
+      holeResults.push({ holeNumber: holeNum, hammerState, winnerId: thrower, amountCents: winAmount })
+      continue
+    }
+
     const s1 = getNet(p1.id)
     const s2 = getNet(p2.id)
 
     if (s1 === null || s2 === null) {
       holeResults.push({ holeNumber: holeNum, hammerState, winnerId: null, amountCents: 0 })
-      continue
-    }
-
-    // If hammer was declined, the thrower wins the pre-throw value
-    if (hammerState?.declined) {
-      const thrower = hammerState.hammerHolder
-      const decliner = hammerState.declinedBy ?? (thrower === p1.id ? p2.id : p1.id)
-      // Value before the throw (half the current doubled value)
-      const winAmount = Math.floor(hammerState.value / 2)
-      netCents[thrower] += winAmount
-      netCents[decliner] -= winAmount
-      holeResults.push({ holeNumber: holeNum, hammerState, winnerId: thrower, amountCents: winAmount })
       continue
     }
 

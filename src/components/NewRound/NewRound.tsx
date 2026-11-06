@@ -1132,12 +1132,12 @@ export function GameSetup({
   const [bbScoring, setBbScoring] = useState<'match' | 'total'>(
     initialGame?.type === 'best_ball' ? (initialGame.config as any).scoring : 'match'
   )
-  const [teams, setTeams] = useState<Record<string, 'A' | 'B'>>(() => {
-    if (initialGame?.type === 'best_ball') return (initialGame.config as any).teams ?? {}
-    const t: Record<string, 'A' | 'B'> = {}
-    players.forEach((p, i) => (t[p.id] = i % 2 === 0 ? 'A' : 'B'))
-    return t
-  })
+  // No automatic pairing: an alternating A/B default was a silent decision the
+  // organiser never saw, and a round could start with teams nobody agreed to.
+  // Everyone is unassigned until tapped onto a side (a saved game keeps its teams).
+  const [teams, setTeams] = useState<Record<string, 'A' | 'B'>>(() =>
+    initialGame?.type === 'best_ball' ? ((initialGame.config as any).teams ?? {}) : {},
+  )
 
   // Wolf
   const [wolfOrder, setWolfOrder] = useState<string[]>(() =>
@@ -1268,13 +1268,15 @@ export function GameSetup({
 
   const teamCounts = useMemo(() => {
     let a = 0, b = 0
+    const unassigned: Player[] = []
     for (const p of players) {
       if (teams[p.id] === 'A') a++
-      else b++
+      else if (teams[p.id] === 'B') b++
+      else unassigned.push(p)
     }
-    return { a, b }
+    return { a, b, unassigned }
   }, [players, teams])
-  const teamsValid = teamCounts.a >= 1 && teamCounts.a === teamCounts.b
+  const teamsValid = teamCounts.unassigned.length === 0 && teamCounts.a >= 1 && teamCounts.a === teamCounts.b
 
   const vegasTeamCounts = useMemo(() => {
     let a = 0, b = 0
@@ -1885,6 +1887,7 @@ export function GameSetup({
                       {players.map(p => (
                         <button key={p.id}
                           onClick={() => setTeams(prev => ({ ...prev, [p.id]: team }))}
+                          aria-pressed={teams[p.id] === team}
                           className={`w-full text-left px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
                             teams[p.id] === team
                               ? team === 'A' ? 'bg-blue-600 text-white' : 'bg-orange-600 text-white'
@@ -1898,11 +1901,15 @@ export function GameSetup({
                   </div>
                 ))}
               </div>
-              {!teamsValid && (
+              {teamCounts.unassigned.length > 0 ? (
+                <p className="text-sm text-gray-600 dark:text-gray-400 mt-2">
+                  Still to assign: {teamCounts.unassigned.map(p => p.name).join(', ')}.
+                </p>
+              ) : !teamsValid ? (
                 <p className="text-red-600 text-sm mt-2">
                   Teams must be equal size. ({teamCounts.a} / {teamCounts.b})
                 </p>
-              )}
+              ) : null}
             </div>
           </section>
         )}
