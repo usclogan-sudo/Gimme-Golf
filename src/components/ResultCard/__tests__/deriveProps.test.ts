@@ -83,4 +83,29 @@ describe('buildResultCardProps — money mode + payout fallback', () => {
     expect(byId.b.net).toBe(-10)
     expect(byId.c.net).toBe(-10)
   })
+
+  it('a head-to-head net of zero for everyone reads E, not −entry (Nassau ended with no leg decided)', () => {
+    const props = buildResultCardProps({
+      ...base,
+      settlements: [],
+      payouts: [],
+      buyInCents: 25,
+      net: { a: 0, b: 0, c: 0 },
+    })
+    expect(props.standings.every(s => s.net === 0)).toBe(true)
+    expect(props.standings.every(s => s.position === 1)).toBe(true)
+  })
+
+  it('a head-to-head net shows a negative only for a player who owes', () => {
+    const props = buildResultCardProps({
+      ...base,
+      settlements: [],
+      buyInCents: 25,
+      net: { a: 16, b: -16, c: 0 },
+    })
+    const byId = Object.fromEntries(props.standings.map(s => [s.playerId, s]))
+    expect(byId.a.net).toBe(16)
+    expect(byId.b.net).toBe(-16)
+    expect(byId.c.net).toBe(0)
+  })
 })
