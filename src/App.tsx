@@ -682,7 +682,10 @@ function Home({
                   <div className="flex items-center justify-between">
                     <div className="text-left">
                       <p className="font-display font-bold text-blue-950 text-lg leading-tight">Live Scoreboard</p>
-                      <p className="text-blue-800 text-sm mt-0.5">{round.courseSnapshot?.courseName ?? 'Unknown course'}</p>
+                      <p className="text-blue-800 text-sm mt-0.5">
+                        {round.eventId && eventNames[round.eventId] ? `${eventNames[round.eventId]} · ` : ''}
+                        {round.courseSnapshot?.courseName ?? 'Unknown course'}
+                      </p>
                     </div>
                     <div className="text-right">
                       <p className="font-display font-bold text-blue-950 text-2xl">&#9971; {round.currentHole}</p>

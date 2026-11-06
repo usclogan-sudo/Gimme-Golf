@@ -5,6 +5,8 @@ import type { ResultCardStanding } from '../ResultCard'
 import { shareCard } from '../../lib/share'
 import { gameStandings } from '../../lib/standings'
 import { approvedOnly, pendingCountByPlayer } from '../../lib/scores'
+import { FreshnessLine } from '../FreshnessLine'
+import { PullToRefresh } from '../PullToRefresh'
 import {
   strokesOnHole, fmtAmount, fmtHandicap,
   calculateSkinsPayouts, calculateSkinsPerSkinNet, calculateBestBallPayouts, calculateNassauPayouts,
@@ -53,6 +55,10 @@ interface Props {
   claimedBy?: Record<string, string>
   /** playerId → tee played, shown beside the course handicap ("+8 · Blue"). */
   teeByPlayer?: Record<string, string>
+  /** "Updated 12s ago" / "Reconnecting" (lib/freshness.ts). */
+  freshness?: string
+  /** Pull to refresh on touch, Refresh control elsewhere. */
+  onRefresh?: () => void | Promise<void>
 }
 
 const GAME_LABELS: Record<string, string> = {
@@ -68,6 +74,8 @@ export function LeaderboardTab({
   primaryMode = 'net',
   claimedBy = {},
   teeByPlayer = {},
+  freshness,
+  onRefresh,
 }: Props) {
   const [sharing, setSharing] = useState(false)
   const claimedLine = (playerId: string) => claimedBy[playerId]
@@ -224,8 +232,13 @@ export function LeaderboardTab({
     }
   }
 
-  return (
+  const body = (
     <div className="px-4 py-4 max-w-2xl mx-auto">
+      {freshness && (
+        <div className="mb-2 flex justify-end">
+          <FreshnessLine label={freshness} onRefresh={onRefresh} />
+        </div>
+      )}
       {/* Every game leads with its own standings — the layout Stableford always
           had — and the stroke scorecard follows as reference (Finding 9). */}
       {game && (
@@ -454,4 +467,7 @@ export function LeaderboardTab({
       )}
     </div>
   )
+  // Pull to refresh wraps the whole board; it only counts when the page is at
+  // the top, so it never fights a scroll. Desktop gets the Refresh control.
+  return onRefresh ? <PullToRefresh onRefresh={onRefresh}>{body}</PullToRefresh> : body
 }
