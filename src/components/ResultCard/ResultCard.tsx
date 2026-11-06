@@ -128,13 +128,28 @@ function numberWord(n: number): string {
   return NUMBER_WORDS[n] ?? String(n)
 }
 
-interface Headline {
+export interface Headline {
   line1: string
   line2: string
   figure: string | null
 }
 
-function buildHeadline(winners: ResultCardStanding[], isAllSquare: boolean, inProgress: boolean): Headline {
+function firstName(name: string): string {
+  return name.trim().split(/\s+/)[0] || name
+}
+
+/**
+ * Names for a shared headline: first names so "Jeff and Lee split it." fits at phone
+ * width; full names when the first names collide (two Jeffs), so the line still
+ * says who.
+ */
+export function splitHeadlineNames(names: string[]): string[] {
+  const firsts = names.map(firstName)
+  const distinct = new Set(firsts.map(f => f.toLowerCase())).size === firsts.length
+  return distinct ? firsts : names.map(n => middleTruncate(n, 14))
+}
+
+export function buildHeadline(winners: ResultCardStanding[], isAllSquare: boolean, inProgress: boolean): Headline {
   if (isAllSquare) return { line1: 'All square.', line2: inProgress ? 'Nobody ahead yet.' : '', figure: null }
 
   if (winners.length >= 3) {
@@ -146,8 +161,9 @@ function buildHeadline(winners: ResultCardStanding[], isAllSquare: boolean, inPr
   }
   if (winners.length === 2) {
     const [a, b] = winners
+    const [nameA, nameB] = splitHeadlineNames([a.displayName, b.displayName])
     return {
-      line1: `${middleTruncate(a.displayName, 14)} and ${middleTruncate(b.displayName, 14)}`,
+      line1: `${nameA} and ${nameB}`,
       line2: inProgress ? 'share the lead.' : 'split it.',
       figure: a.net > 0 ? fmtSigned(a.net) : null,
     }

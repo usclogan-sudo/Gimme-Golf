@@ -20,6 +20,13 @@ export interface DeriveResultCardInput {
   /** Live payouts — only used to derive net when a round has no settlement records yet. */
   payouts?: { playerId: string; amountCents: number }[]
   buyInCents?: number
+  /**
+   * Signed net per player, in cents, for games that settle head to head rather than
+   * from a pot (unit games, per point, match-play Nassau). Takes precedence over
+   * the payouts fallback: a match-play Nassau that ends with no leg decided has no
+   * payouts and a zero net for everyone, and the card must read E, not −entry.
+   */
+  net?: Record<string, number>
   isPoints: boolean
   /**
    * How the number was arrived at — "At 2 per point · 50 points awarded", or
@@ -30,7 +37,7 @@ export interface DeriveResultCardInput {
 }
 
 export function buildResultCardProps(input: DeriveResultCardInput): ResultCardProps {
-  const { players, settlements, payouts = [], buyInCents = 0, isPoints } = input
+  const { players, settlements, payouts = [], buyInCents = 0, isPoints, net } = input
   const toPoints = (cents: number) => (isPoints ? cents : Math.round(cents / 100))
   const nameById = new Map(players.map(p => [p.id, p.name]))
 
@@ -41,6 +48,9 @@ export function buildResultCardProps(input: DeriveResultCardInput): ResultCardPr
       netByPlayer.set(r.fromPlayerId, (netByPlayer.get(r.fromPlayerId) ?? 0) - r.amountCents)
       netByPlayer.set(r.toPlayerId, (netByPlayer.get(r.toPlayerId) ?? 0) + r.amountCents)
     })
+  } else if (net) {
+    // Head-to-head games: the signed net is the truth, and a zero is E, not −entry.
+    players.forEach(p => netByPlayer.set(p.id, net[p.id] ?? 0))
   } else {
     // Not yet settled — derive net from live payouts so the card matches the board.
     players.forEach(p => {

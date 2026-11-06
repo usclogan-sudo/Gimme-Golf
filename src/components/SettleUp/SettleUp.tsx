@@ -1158,6 +1158,9 @@ export function SettleUp({ roundId, userId, eventId, onDone, onContinue }: Props
     settlements: settlementRecords,
     payouts,
     buyInCents: game?.buyInCents ?? 0,
+    // Head-to-head games carry their signed net; without it a match-play Nassau
+    // that ended with no leg decided would show −entry for every player.
+    net: unitNet ?? undefined,
     isPoints,
   })
 

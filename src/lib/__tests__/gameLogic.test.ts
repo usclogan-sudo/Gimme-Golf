@@ -22,6 +22,7 @@ import {
   calculateNassauMatch,
   nassauMatchNet,
   nassauMatchLegValues,
+  nassauPressStartHole,
   nassauMatchLabel,
   nassauMatchLegStatus,
   isMatchNassau,
@@ -667,6 +668,29 @@ describe('Nassau match play', () => {
     }
     const r = calculateNassauMatch(two, holes({ 1: 1 }, 9), snapshot, cfg, hcps, BUY)
     expect(r.presses).toHaveLength(0)
+  })
+
+  describe('press start hole', () => {
+    const front = [1, 2, 3, 4, 5, 6, 7, 8, 9]
+    const back = [10, 11, 12, 13, 14, 15, 16, 17, 18]
+
+    it('starts on the current hole when no scores are in for it yet', () => {
+      expect(nassauPressStartHole(front, 2, false)).toBe(2)
+      expect(nassauPressStartHole(back, 14, false)).toBe(14)
+      // Even the last hole of the nine can be pressed while it is still unscored.
+      expect(nassauPressStartHole(front, 9, false)).toBe(9)
+    })
+
+    it('starts on the next hole once the current hole is scored', () => {
+      expect(nassauPressStartHole(front, 2, true)).toBe(3)
+      expect(nassauPressStartHole(back, 14, true)).toBe(15)
+    })
+
+    it('offers no press once the last hole of the nine is scored, or off the nine', () => {
+      expect(nassauPressStartHole(front, 9, true)).toBeNull()
+      expect(nassauPressStartHole(back, 18, true)).toBeNull()
+      expect(nassauPressStartHole(front, 12, false)).toBeNull()
+    })
   })
 
   it('legacy rounds still score lowest total strokes', () => {

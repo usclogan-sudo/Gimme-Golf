@@ -38,6 +38,7 @@ import {
   calculateNassauMatch,
   isMatchNassau,
   nassauMatchLegStatus,
+  nassauPressStartHole,
   calculateWolf,
   calculateBBB,
   calculateHammer,
@@ -1075,23 +1076,23 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
   const myPressCount = ((game?.config as any)?.presses ?? []).filter((p: any) => p.playerId === userId).length
 
   // Match-play Nassau presses (Finding 6). The leg in progress is the one the
-  // current hole sits in. A press opens a new match from the NEXT hole to the end
-  // of that nine, so — unlike the Skins press — it is allowed after this hole is
-  // scored: that is exactly when a player knows they are down. It records who
-  // pressed, which leg, and the starting hole. Nothing is automatic.
+  // current hole sits in. A press opens a new match from the current hole if no
+  // scores are in for it yet, otherwise from the next hole, to the end of that
+  // nine. Unlike the Skins press it is allowed after this hole is scored: that is
+  // exactly when a player knows they are down. It records who pressed, which leg,
+  // and the starting hole. Nothing is automatic.
   const nassauMatchCfg = game?.type === 'nassau' && isMatchNassau(game.config as NassauConfig)
     ? (game.config as NassauConfig) : null
   const [pressPickerOpen, setPressPickerOpen] = useState(false)
+  const currentHoleScored = holeScores.some(s => s.holeNumber === currentHole)
   const matchPressContext = useMemo(() => {
     if (!nassauMatchCfg || !playableSnapshot) return null
     const { frontHoles, backHoles } = getFrontBackSplit(playableSnapshot.holes)
     const leg: 'front' | 'back' = frontHoles.includes(currentHole) ? 'front' : 'back'
     const legHoles = leg === 'front' ? frontHoles : backHoles
-    const idx = legHoles.indexOf(currentHole)
-    // No press on the last hole of a nine — there is nothing left to play for.
-    const startHole = idx >= 0 && idx < legHoles.length - 1 ? legHoles[idx + 1] : null
-    return { leg, startHole }
-  }, [nassauMatchCfg, playableSnapshot, currentHole])
+    const startHole = nassauPressStartHole(legHoles, currentHole, currentHoleScored)
+    return { leg, startHole, startsHere: startHole === currentHole }
+  }, [nassauMatchCfg, playableSnapshot, currentHole, currentHoleScored])
   const matchPressCount = nassauMatchCfg?.matchPresses?.length ?? 0
   const handleMatchPress = async (playerId: string) => {
     if (!matchPressContext?.startHole) return
@@ -2416,7 +2417,10 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
                     <div className="bg-white dark:bg-gray-800 border border-teal-200 dark:border-gray-700 rounded-xl px-3 py-3 space-y-2">
                       <p className="text-sm font-semibold text-gray-800 dark:text-gray-100">Who's pressing?</p>
                       <p className="text-xs text-gray-500 dark:text-gray-400">
-                        Opens a new match on the {matchPressContext.leg} nine from hole {matchPressContext.startHole} to the end, at the same value as the leg.
+                        Opens a new match on the {matchPressContext.leg} nine from hole {matchPressContext.startHole} to the end, at the same value as the leg.{' '}
+                        {matchPressContext.startsHere
+                          ? 'No scores are in for this hole yet, so the press starts here.'
+                          : 'This hole is already scored, so the press starts on the next one.'}
                       </p>
                       <div className="flex flex-wrap gap-2">
                         {players.map(p => (
@@ -3023,7 +3027,7 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
                 </div>
                 <div className="flex items-center gap-3 text-right">
                   <span className={`text-base font-bold px-2 py-1 rounded ${isPending ? 'opacity-50' : ''} ${isRejected ? 'line-through opacity-40' : ''} ${getScoreClass(grossScore, par)}`}>{grossScore}</span>
-                  {strokesGiven > 0 && <span className="text-xs text-amber-600 font-semibold">Net {netScore}</span>}
+                  {strokesGiven > 0 && <span className="text-xs text-amber-600 font-semibold">Net {scoreRow ? netScore : '—'}</span>}
                   {holesPlayed > 0 && (
                     <span className={`text-xs font-semibold ${runningVsPar > 0 ? 'text-red-500' : runningVsPar < 0 ? 'text-green-600' : 'text-gray-400'}`}>
                       {runningGross} ({runningVsPar > 0 ? '+' : ''}{runningVsPar})
@@ -3110,7 +3114,8 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
                 {/* §7b: badges deleted (outcome lives in the selected chip); the cryptic
                     "Thru N: G (±P)" line dropped — the Leaderboard tab answers it. */}
                 <div className="text-right">
-                  {strokesGiven > 0 && <p className="text-sm font-semibold text-amber-600 dark:text-amber-400 mt-0.5">Net {netScore}</p>}
+                  {/* The pre-highlighted par is a suggestion, not a score: no Net until a tap lands. */}
+                  {strokesGiven > 0 && <p className="text-sm font-semibold text-amber-600 dark:text-amber-400 mt-0.5">Net {currentScore ? netScore : '—'}</p>}
                 </div>
               </div>
               <InlineScorePad
