@@ -7,6 +7,8 @@ import { reportUncleanExit } from './lib/heartbeat'
 import './index.css'
 import App from './App.tsx'
 import { RecoveryScreen } from './components/RecoveryScreen'
+import { StagingRibbon } from './components/StagingRibbon'
+import { appEnv, previewHarnessAllowed } from './lib/appEnv'
 
 initSentry()
 // A tab that died on a work-in-progress screen last time leaves a heartbeat
@@ -23,15 +25,18 @@ window.addEventListener('unhandledrejection', (event) => {
 })
 
 // Brand QA preview — bypasses auth and renders the result-card scenarios.
-// Reachable at /?preview=result-card. Removing the query param returns to the app.
+// Reachable at /?preview=result-card on staging and local builds only; a
+// production build ignores the parameter and loads the app. Removing the
+// query param returns to the app.
 const previewParam = new URLSearchParams(window.location.search).get('preview')
 const PreviewComponent =
-  previewParam === 'result-card'
+  previewParam === 'result-card' && previewHarnessAllowed(appEnv())
     ? lazy(() => import('./components/ResultCard/ResultCardPreview').then(m => ({ default: m.ResultCardPreview })))
     : null
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
+    <StagingRibbon />
     <Sentry.ErrorBoundary fallback={() => <RecoveryScreen />}>
       {PreviewComponent ? (
         <Suspense fallback={<div style={{ minHeight: '100vh', background: '#16263B' }} />}>

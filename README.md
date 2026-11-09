@@ -70,6 +70,57 @@ Database changes live in `supabase/migrations` with idempotent guards and are
 applied through the Supabase SQL Editor. The migration history on the project
 is the record of what has been applied.
 
+## Environments
+
+Gimme runs in three places. Each has its own database, and data never moves
+between them.
+
+| Environment | Where | Database | Who uses it |
+|---|---|---|---|
+| Local | `npm run dev` on your machine | a local Supabase stack, or staging | whoever is writing code |
+| Staging | the staging Vercel project | the staging Supabase project | testing before a release, with made up accounts |
+| Production | www.gimme.gg | the production Supabase project | real players |
+
+**How to tell them apart.** Staging shows a thin brass line reading Staging
+across the top of every screen. Production never shows it. The line is driven
+by `VITE_APP_ENV`, which is set per environment in Vercel and in your `.env`.
+
+**Staging accounts.** The seed creates three sign ins, all on example.com and
+all with the password `staging-pass-123`:
+
+| Email | Role in the seed |
+|---|---|
+| organizer@example.com | owns the rounds, the event and eight guest players |
+| joiner@example.com | a second registered player in every round |
+| admin@example.com | has the Admin dashboard |
+
+It also creates the course catalogue, two game presets, a finished Skins round
+with settlement rows, an open Wolf round on hole 7, and an event with two
+groups of four (join code SEEDEV).
+
+**Scripts.** Both need `psql` installed and `SUPABASE_DB_URL` set to the
+staging database connection string from the Supabase dashboard (Connect, then
+the direct connection string). Both refuse to run if that string names the
+production project.
+
+| Command | What it does |
+|---|---|
+| `npm run seed:staging` | adds the seed data; safe to run again, it skips rows that already exist |
+| `npm run reset:staging` | empties every app table, removes the example.com accounts, then seeds again |
+
+Neither script touches production. There is no script that writes to
+production, by design.
+
+**Previews.** Every pull request gets a Vercel preview build. Previews use
+whatever environment variables the Vercel project holds for the Preview
+environment. Point the Preview environment at the staging database and set
+`VITE_APP_ENV=staging` there so previews show the ribbon and never write to
+production. Previews are behind Vercel's sign in, so only the team can open
+them.
+
+**The QA harness.** `/?preview=result-card` renders the result card scenarios
+without signing in. It works on staging and local builds only.
+
 ## Layout
 
 ```
