@@ -34,6 +34,22 @@ export default defineConfig({
     __APP_VERSION__: JSON.stringify(APP_VERSION),
     __APP_PLATFORM__: JSON.stringify('web'),
   },
+  build: {
+    rollupOptions: {
+      output: {
+        // The entry chunk sat at 499 kB, one import short of Rollup's 500 kB
+        // warning. The three framework libraries change far less often than app
+        // code, so they get their own long cached chunks and the entry chunk
+        // holds only our code.
+        manualChunks(id) {
+          if (!id.includes('node_modules')) return
+          if (/node_modules\/(react|react-dom|scheduler)\//.test(id)) return 'react'
+          if (id.includes('node_modules/@supabase/')) return 'supabase'
+          if (id.includes('node_modules/@sentry/')) return 'sentry'
+        },
+      },
+    },
+  },
   test: {
     globals: true,
   },
