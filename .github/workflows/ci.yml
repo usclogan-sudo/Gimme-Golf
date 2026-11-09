@@ -1,0 +1,45 @@
+name: CI
+
+# Type check, test and build on every pull request and every push to main.
+# Vercel builds main on its own and does not run the test suite, so this is
+# the gate. Require the "test" job in branch protection on main.
+#
+# The suite needs the two Supabase variables set to anything non empty; it
+# never contacts Supabase. No repository secrets are involved.
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    env:
+      VITE_SUPABASE_URL: http://localhost
+      VITE_SUPABASE_ANON_KEY: ci
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        # npm install (not ci) for the same lockfile reason as deploy.yml.
+        run: npm install --no-audit --no-fund
+
+      - name: Test
+        run: npm test
+
+      - name: Build
+        run: npm run build
