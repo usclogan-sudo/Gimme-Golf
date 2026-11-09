@@ -1,73 +1,91 @@
-# React + TypeScript + Vite
+# Gimme
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+Gimme is a golf scorecard app with side games. A group picks a course and a
+game, scores hole by hole on their phones, watches the standings move in real
+time, and sees who owes who when the round ends. Settlement is displayed, never
+collected: the app holds no funds and routes payment outward through each
+player's own payment app.
 
-Currently, two official plugins are available:
+Live at [www.gimme.gg](https://www.gimme.gg). Installable as a PWA. Built and
+operated by PELORUS HX LLC.
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+## Games
 
-## React Compiler
+Skins, Best Ball, Nassau, Wolf, Bingo Bango Bongo, Hammer, Vegas, Stableford,
+Dots, Banker and Quota. Handicaps freeze at setup. Rounds can run as a single
+group or as an event with several groups, a scorekeeper per group and an event
+wide leaderboard. Players join a round from a six character code, a link or a
+QR code, as a registered account or as a guest.
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+## Stack
 
-## Expanding the ESLint configuration
+| Layer | Technology |
+|---|---|
+| Client | React 18, TypeScript, Vite 5, Tailwind CSS 3 |
+| Data and auth | Supabase: Postgres with row level security, email and anonymous auth, Realtime |
+| Edge functions | Supabase Deno functions in `supabase/functions` |
+| Errors | Sentry, no op when the DSN is unset |
+| Hosting | Vercel, production deploys from `main` |
+| Tests | Vitest, Testing Library, happy-dom |
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+## Local setup
 
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
+Node 24 is what CI uses.
 
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```sh
+npm install
+cp .env.example .env    # fill in the two Supabase values
+npm run dev
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+`.env.example` lists every variable. Only `VITE_SUPABASE_URL` and
+`VITE_SUPABASE_ANON_KEY` are required; the client module throws at import
+without them. The rest are optional.
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+## Scripts
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+| Command | What it does |
+|---|---|
+| `npm run dev` | Vite dev server |
+| `npm test` | Full suite once, then exits |
+| `npm run test:watch` | Suite in watch mode |
+| `npm run build` | `tsc -b` then a production bundle in `dist` |
+| `npm run preview` | Serve the production bundle locally |
+
+The test suite never contacts Supabase, but it needs the two required
+variables set to any non empty value so the client module can load:
+
+```sh
+VITE_SUPABASE_URL=http://localhost VITE_SUPABASE_ANON_KEY=test npm test
 ```
+
+## Deploying
+
+Every pull request and every push to `main` runs the CI workflow in
+`.github/workflows/ci.yml`: the suite, then the production build. Branch
+protection on `main` requires that check, so nothing merges on a red suite.
+Vercel builds and deploys `main` on its own.
+
+Database changes live in `supabase/migrations` with idempotent guards and are
+applied through the Supabase SQL Editor. The migration history on the project
+is the record of what has been applied.
+
+## Layout
+
+```
+src/
+  components/   screens and shared UI, one folder per screen
+  lib/          game engines, settlement, handicaps, realtime, Sentry
+  types/        shared TypeScript types
+  hooks/
+public/
+  sw.js         service worker: shell precache, cache first hashed assets
+  .well-known/  Apple and Android app link association files
+supabase/
+  migrations/   schema and RPCs
+  functions/    edge functions
+docs/           product, UX, store and native build notes
+```
+
+Start with `SCOPE.md` for the product picture, `docs/PRODUCT-OVERVIEW.md` for
+the player's view, and `docs/NATIVE-BUILD.md` for the store shell.
