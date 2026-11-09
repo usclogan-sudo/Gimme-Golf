@@ -1,8 +1,10 @@
 const CACHE_NAME = '__BUILD_HASH__'
+// Served from the root at gimme.gg since June 2026. The old GitHub Pages
+// subpath entries hit the SPA rewrite and precached index.html three times over.
 const SHELL_URLS = [
-  '/golf-tracker/',
-  '/golf-tracker/index.html',
-  '/golf-tracker/offline.html',
+  '/',
+  '/index.html',
+  '/offline.html',
 ]
 
 self.addEventListener('install', (event) => {
@@ -73,8 +75,11 @@ self.addEventListener('fetch', (event) => {
 
   const url = new URL(event.request.url)
 
-  // Vite hashed assets (contain a hash in filename) — cache-first since they're immutable
-  const isHashedAsset = /\.[a-f0-9]{8,}\.(js|css|woff2?|png|jpg|svg)$/.test(url.pathname)
+  // Vite hashed assets are immutable, so cache-first. Vite names them
+  // name-H4sHh4sh.ext with an eight character base64url hash after a dash,
+  // e.g. /assets/index-B67ftZRr.js. The earlier pattern expected a dot and a
+  // hex hash and never matched, so every chunk was fetched network-first.
+  const isHashedAsset = /^\/assets\/.+-[A-Za-z0-9_-]{8}\.(js|css|woff2?|png|jpg|svg)$/.test(url.pathname)
 
   if (isHashedAsset) {
     event.respondWith(
@@ -107,7 +112,7 @@ self.addEventListener('fetch', (event) => {
           if (cached) return cached
           // For navigation requests, show offline page
           if (event.request.mode === 'navigate') {
-            return caches.match('/golf-tracker/offline.html')
+            return caches.match('/offline.html')
           }
           return new Response('', { status: 503 })
         })

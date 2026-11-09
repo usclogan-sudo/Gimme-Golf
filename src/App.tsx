@@ -1,4 +1,5 @@
-import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react'
+import { Suspense, useCallback, useEffect, useRef, useState } from 'react'
+import { lazyScreen } from './lib/lazyScreen'
 import { supabase, rowToCourse, rowToRound, rowToHoleScore, fetchOrCreateProfile, arrivedViaPasswordRecovery, clearPasswordRecovery } from './lib/supabase'
 import { useNotifications } from './hooks/useNotifications'
 import { flush as flushOfflineQueue, getPending as getOfflinePending } from './lib/offlineQueue'
@@ -24,29 +25,29 @@ import { NavCard } from './components/nav/NavCard'
 import { PendingInvites } from './components/PendingInvites'
 
 // Lazy-loaded screens (not needed for initial Home render)
-const JoinRound = lazy(() => import('./components/JoinRound/JoinRound').then(m => ({ default: m.JoinRound })))
-const UpgradeAccount = lazy(() => import('./components/Auth/UpgradeAccount').then(m => ({ default: m.UpgradeAccount })))
-const CourseCatalog = lazy(() => import('./components/CourseCatalog/CourseCatalog').then(m => ({ default: m.CourseCatalog })))
-const CourseSetup = lazy(() => import('./components/CourseSetup/CourseSetup').then(m => ({ default: m.CourseSetup })))
-const NewRound = lazy(() => import('./components/NewRound/NewRound').then(m => ({ default: m.NewRound })))
-const Scorecard = lazy(() => import('./components/Scorecard/Scorecard').then(m => ({ default: m.Scorecard })))
-const SettleUp = lazy(() => import('./components/SettleUp/SettleUp').then(m => ({ default: m.SettleUp })))
-const RoundHistory = lazy(() => import('./components/RoundHistory/RoundHistory').then(m => ({ default: m.RoundHistory })))
-const Settings = lazy(() => import('./components/Settings/Settings').then(m => ({ default: m.Settings })))
-const Onboarding = lazy(() => import('./components/Onboarding/Onboarding').then(m => ({ default: m.Onboarding })))
-const AdminDashboard = lazy(() => import('./components/Admin/AdminDashboard').then(m => ({ default: m.AdminDashboard })))
-const Stats = lazy(() => import('./components/Stats/Stats').then(m => ({ default: m.Stats })))
-const PlayerDirectory = lazy(() => import('./components/PlayerDirectory/PlayerDirectory').then(m => ({ default: m.PlayerDirectory })))
-const HandicapDetail = lazy(() => import('./components/HandicapDetail/HandicapDetail').then(m => ({ default: m.HandicapDetail })))
-const PersonalDashboard = lazy(() => import('./components/PersonalDashboard/PersonalDashboard').then(m => ({ default: m.PersonalDashboard })))
-const TournamentList = lazy(() => import('./components/TournamentList/TournamentList').then(m => ({ default: m.TournamentList })))
-const TournamentSetup = lazy(() => import('./components/TournamentSetup/TournamentSetup').then(m => ({ default: m.TournamentSetup })))
-const TournamentDetail = lazy(() => import('./components/TournamentDetail/TournamentDetail').then(m => ({ default: m.TournamentDetail })))
-const EventSetup = lazy(() => import('./components/EventSetup/EventSetup').then(m => ({ default: m.EventSetup })))
-const EventLeaderboard = lazy(() => import('./components/EventLeaderboard/EventLeaderboard').then(m => ({ default: m.EventLeaderboard })))
-const Ledger = lazy(() => import('./components/Ledger/Ledger').then(m => ({ default: m.Ledger })))
-const LiveLeaderboard = lazy(() => import('./components/LiveLeaderboard/LiveLeaderboard').then(m => ({ default: m.LiveLeaderboard })))
-const PropBetsScreen = lazy(() => import('./components/PropBets/PropBetsScreen').then(m => ({ default: m.PropBetsScreen })))
+const JoinRound = lazyScreen(() => import('./components/JoinRound/JoinRound'), m => m.JoinRound)
+const UpgradeAccount = lazyScreen(() => import('./components/Auth/UpgradeAccount'), m => m.UpgradeAccount)
+const CourseCatalog = lazyScreen(() => import('./components/CourseCatalog/CourseCatalog'), m => m.CourseCatalog)
+const CourseSetup = lazyScreen(() => import('./components/CourseSetup/CourseSetup'), m => m.CourseSetup)
+const NewRound = lazyScreen(() => import('./components/NewRound/NewRound'), m => m.NewRound)
+const Scorecard = lazyScreen(() => import('./components/Scorecard/Scorecard'), m => m.Scorecard)
+const SettleUp = lazyScreen(() => import('./components/SettleUp/SettleUp'), m => m.SettleUp)
+const RoundHistory = lazyScreen(() => import('./components/RoundHistory/RoundHistory'), m => m.RoundHistory)
+const Settings = lazyScreen(() => import('./components/Settings/Settings'), m => m.Settings)
+const Onboarding = lazyScreen(() => import('./components/Onboarding/Onboarding'), m => m.Onboarding)
+const AdminDashboard = lazyScreen(() => import('./components/Admin/AdminDashboard'), m => m.AdminDashboard)
+const Stats = lazyScreen(() => import('./components/Stats/Stats'), m => m.Stats)
+const PlayerDirectory = lazyScreen(() => import('./components/PlayerDirectory/PlayerDirectory'), m => m.PlayerDirectory)
+const HandicapDetail = lazyScreen(() => import('./components/HandicapDetail/HandicapDetail'), m => m.HandicapDetail)
+const PersonalDashboard = lazyScreen(() => import('./components/PersonalDashboard/PersonalDashboard'), m => m.PersonalDashboard)
+const TournamentList = lazyScreen(() => import('./components/TournamentList/TournamentList'), m => m.TournamentList)
+const TournamentSetup = lazyScreen(() => import('./components/TournamentSetup/TournamentSetup'), m => m.TournamentSetup)
+const TournamentDetail = lazyScreen(() => import('./components/TournamentDetail/TournamentDetail'), m => m.TournamentDetail)
+const EventSetup = lazyScreen(() => import('./components/EventSetup/EventSetup'), m => m.EventSetup)
+const EventLeaderboard = lazyScreen(() => import('./components/EventLeaderboard/EventLeaderboard'), m => m.EventLeaderboard)
+const Ledger = lazyScreen(() => import('./components/Ledger/Ledger'), m => m.Ledger)
+const LiveLeaderboard = lazyScreen(() => import('./components/LiveLeaderboard/LiveLeaderboard'), m => m.LiveLeaderboard)
+const PropBetsScreen = lazyScreen(() => import('./components/PropBets/PropBetsScreen'), m => m.PropBetsScreen)
 import { RouteErrorBoundary } from './components/RouteErrorBoundary'
 import { Seal } from './components/brand'
 import { UpdateReadyLine } from './components/UpdateReadyLine'

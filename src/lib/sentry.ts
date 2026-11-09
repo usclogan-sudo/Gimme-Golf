@@ -83,10 +83,48 @@ export function reportSupabaseError(
   context?: Record<string, unknown>,
 ): void {
   if (!error) return
-  Sentry.captureException(error, {
-    tags: { area: 'supabase', op },
-    extra: context,
+  const { error: err, code, details, hint } = toSupabaseError(error)
+  Sentry.captureException(err, {
+    tags: { area: 'supabase', op, ...(code ? { code } : {}) },
+    extra: { ...context, code, details, hint },
+    // Every wrapped error shares this function's stack frame, so Sentry would
+    // otherwise group all of them into one issue. Group by operation and
+    // Postgres code instead; fall back to the message when there is no code.
+    fingerprint: ['supabase', op, code ?? err.message],
   })
+}
+
+/**
+ * Supabase returns `{ code, details, hint, message }` plain objects, not Error
+ * instances. Captured raw, Sentry titles the issue with the minified caller
+ * name and the text "Object captured as exception with keys ...", which is
+ * useless in the issue list and in alert emails. Wrap it in a real Error named
+ * SupabaseError whose message is the Postgres message. Real Error instances
+ * (network failures and the like) pass through untouched.
+ */
+export function toSupabaseError(error: unknown): {
+  error: Error
+  code?: string
+  details?: string | null
+  hint?: string | null
+} {
+  if (error instanceof Error) return { error }
+  if (typeof error === 'object' && error !== null) {
+    const o = error as Record<string, unknown>
+    const message = typeof o.message === 'string' ? o.message : JSON.stringify(error)
+    const code = o.code == null ? undefined : String(o.code)
+    const wrapped = new Error(message)
+    wrapped.name = 'SupabaseError'
+    return {
+      error: wrapped,
+      code,
+      details: typeof o.details === 'string' ? o.details : null,
+      hint: typeof o.hint === 'string' ? o.hint : null,
+    }
+  }
+  const wrapped = new Error(String(error))
+  wrapped.name = 'SupabaseError'
+  return { error: wrapped }
 }
 
 export { Sentry }
