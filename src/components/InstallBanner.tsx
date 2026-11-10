@@ -1,5 +1,4 @@
-  // The store build is already installed; the PWA prompt makes no sense there.
-  if (isNative() || isStandalone() || isDismissed()) return nullimport { useState } from 'react'
+import { useState } from 'react'
 import { isNative } from '../lib/native'
 
 const DISMISS_KEY = 'install-banner-dismissed'
@@ -27,7 +26,8 @@ function isStandalone(): boolean {
 }
 
 function getPlatform(): 'ios' | 'android' | null {
-  if (isStandalone() || isDismissed()) return null
+  // The store build is already installed; the PWA prompt makes no sense there.
+  if (isNative() || isStandalone() || isDismissed()) return null
   if (isIOSSafari()) return 'ios'
   if (isAndroidChrome()) return 'android'
   return null
