@@ -10,6 +10,7 @@ import { RecoveryScreen } from './components/RecoveryScreen'
 import { StagingRibbon } from './components/StagingRibbon'
 import { appEnv, previewHarnessAllowed } from './lib/appEnv'
 import { Analytics } from '@vercel/analytics/react'
+import { SpeedInsights } from '@vercel/speed-insights/react'
 
 initSentry()
 // A tab that died on a work-in-progress screen last time leaves a heartbeat
@@ -41,6 +42,7 @@ createRoot(document.getElementById('root')!).render(
     {/* Vercel Web Analytics: page views only, no cookies. The script loads from
         /_vercel/insights on Vercel hosted builds and is a no op everywhere else. */}
     <Analytics />
+    <SpeedInsights />
     <Sentry.ErrorBoundary fallback={() => <RecoveryScreen />}>
       {PreviewComponent ? (
         <Suspense fallback={<div style={{ minHeight: '100vh', background: '#16263B' }} />}>
