@@ -1,4 +1,6 @@
-import { useState } from 'react'
+  // The store build is already installed; the PWA prompt makes no sense there.
+  if (isNative() || isStandalone() || isDismissed()) return nullimport { useState } from 'react'
+import { isNative } from '../lib/native'
 
 const DISMISS_KEY = 'install-banner-dismissed'
 const DISMISS_DAYS = 7
