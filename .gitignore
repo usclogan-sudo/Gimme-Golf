@@ -27,3 +27,6 @@ docs/**/*.png
 
 # Claude Code local runtime state
 .claude/
+
+# Vercel CLI link state
+.vercel/
