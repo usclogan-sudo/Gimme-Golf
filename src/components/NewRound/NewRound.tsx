@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { v4 as uuidv4 } from 'uuid'
 import { supabase, courseToRow, playerToRow, roundToRow, roundPlayerToRow, buyInToRow, rowToCourse, rowToPlayer, rowToSharedCourse, rowToGamePreset, rowToUserProfile, generateInviteCode } from '../../lib/supabase'
+import { useSwitches, blockedMessage } from '../../lib/switches'
 import { safeWrite } from '../../lib/safeWrite'
 import { reportSupabaseError, addBreadcrumb } from '../../lib/sentry'
 import { holdReload } from '../../lib/swUpdate'
@@ -2367,6 +2368,9 @@ function TreasurerAndBuyIns({
   const [allowStartUnpaid, setAllowStartUnpaid] = useState(false)
   const [saving, setSaving] = useState(false)
   const [createError, setCreateError] = useState<string | null>(null)
+  // The new_rounds kill switch. The rounds insert policy refuses the row anyway;
+  // this names the reason instead of "Failed to create round".
+  const roundsBlocked = blockedMessage(useSwitches(), 'new_rounds')
 
   useEffect(() => { window.scrollTo({ top: 0, behavior: 'smooth' }) }, [])
 
@@ -2378,6 +2382,7 @@ function TreasurerAndBuyIns({
 
   const startRound = async () => {
     if (!treasurerId) return
+    if (roundsBlocked) { setCreateError(roundsBlocked); return }
     setSaving(true)
     try {
       const roundId = uuidv4()
@@ -2634,9 +2639,12 @@ function TreasurerAndBuyIns({
           {createError && (
             <p className="text-red-600 text-sm font-semibold text-center">{createError}</p>
           )}
+          {!createError && roundsBlocked && (
+            <p className="text-amber-700 dark:text-amber-300 text-sm font-semibold text-center">{roundsBlocked}</p>
+          )}
           <button
             onClick={startRound}
-            disabled={!canStart || saving}
+            disabled={!canStart || saving || !!roundsBlocked}
             className="w-full h-14 bg-gray-800 text-white dark:bg-brass dark:text-navy text-lg font-bold rounded-2xl shadow-lg disabled:opacity-40 active:bg-gray-900 transition-colors"
           >
             {saving
@@ -2683,6 +2691,7 @@ export function NewRound({ userId, onStart, onCancel, onAddCourse, initialStakes
   const preSelectedPlayerIds = templateRound?.players?.map(p => p.id)
   const [creatingDirect, setCreatingDirect] = useState(false)
   const [directCreateError, setDirectCreateError] = useState<string | null>(null)
+  const roundsBlocked = blockedMessage(useSwitches(), 'new_rounds')
 
   const skipGroups = !players || players.length <= MAX_PER_GROUP_CONST
 
@@ -2704,6 +2713,7 @@ export function NewRound({ userId, onStart, onCancel, onAddCourse, initialStakes
 
   const createRoundDirect = async (g: Game, jc?: JunkConfig) => {
     if (!course || !players || creatingDirect) return
+    if (roundsBlocked) { setDirectCreateError(roundsBlocked); return }
     setCreatingDirect(true)
     setDirectCreateError(null)
     try {

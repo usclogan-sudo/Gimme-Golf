@@ -3,6 +3,7 @@ import { v4 as uuidv4 } from 'uuid'
 import { useOnlineStatus } from '../../hooks/useOnlineStatus'
 import { useUnsavedChangesPrompt } from '../../hooks/useUnsavedChangesPrompt'
 import { enqueue, flush, getPending } from '../../lib/offlineQueue'
+import { useSwitches, blockedMessage } from '../../lib/switches'
 import { supabase, rowToRound, rowToRoundPlayer, rowToHoleScore, rowToBuyIn, rowToBBBPoint, rowToJunkRecord, rowToSideBet, rowToRoundParticipant, rowToEvent, rowToEventParticipant, rowToUserProfile, holeScoreToRow, bbbPointToRow, junkRecordToRow, sideBetToRow, rowToPropBet, propBetToRow, rowToPropWager, propWagerToRow, generateInviteCode } from '../../lib/supabase'
 import { safeWrite } from '../../lib/safeWrite'
 import { finalizeRound } from '../../lib/finalizeRound'
@@ -187,6 +188,9 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
   const [inviteToast, setInviteToast] = useState<string | null>(null)
   const [showRulesModal, setShowRulesModal] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
+  // The scoring kill switch. hole_scores refuses writes at the database while it
+  // is off; the status line below says so before a tap fails.
+  const scoringBlocked = blockedMessage(useSwitches(), 'scoring')
   const [lastFailedSave, setLastFailedSave] = useState<{ playerId: string; grossScore: number } | null>(null)
   const [activeGroupTab, setActiveGroupTab] = useState<number | 'all'>(1)
   const [celebration, setCelebration] = useState<{ level: 'toast' | 'fullscreen'; title: string; subtitle?: string; emoji: string; playerName: string } | null>(null)
@@ -2311,6 +2315,11 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
                   className="text-red-600 text-xs font-bold bg-red-100 px-2 py-1 rounded-lg active:bg-red-200 whitespace-nowrap">Retry</button>
               )}
               <button onClick={() => { setSaveError(null); setLastFailedSave(null) }} className="text-red-400 font-bold ml-1">&times;</button>
+            </div>
+          )
+          if (scoringBlocked) return (
+            <div role="status" className="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+              <p className="text-amber-800 text-sm font-semibold">{scoringBlocked}</p>
             </div>
           )
           if (!isOnline) return (

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { v4 as uuidv4 } from 'uuid'
 import { supabase, rowToCourse, rowToPlayer, rowToSharedCourse, roundToRow, roundPlayerToRow, buyInToRow, eventToRow, generateInviteCode, rowToUserProfile } from '../../lib/supabase'
+import { useSwitches, blockedMessage } from '../../lib/switches'
 import { writeOrThrow, describeWriteError } from '../../lib/safeWrite'
 import { reportSupabaseError, addBreadcrumb } from '../../lib/sentry'
 import { holdReload } from '../../lib/swUpdate'
@@ -52,6 +53,9 @@ export function EventSetup({ userId, onStart, onCancel, onAddCourse }: Props) {
   const [saving, setSaving] = useState(false)
   const savingRef = useRef(false)
   const [createError, setCreateError] = useState<string | null>(null)
+  // The new_rounds kill switch. The rounds insert policy refuses the row anyway;
+  // this names the reason instead of "Event not created".
+  const roundsBlocked = blockedMessage(useSwitches(), 'new_rounds')
   const [createdRoundId, setCreatedRoundId] = useState<string | null>(null)
   const [createdEventId, setCreatedEventId] = useState<string | null>(null)
   const [createdInviteCode, setCreatedInviteCode] = useState<string | null>(null)
@@ -252,6 +256,10 @@ export function EventSetup({ userId, onStart, onCancel, onAddCourse }: Props) {
     // everyone else hits this with no idea what is wrong.
     if (!selectedCourse) {
       setCreateError('Pick a course before starting.')
+      return
+    }
+    if (roundsBlocked) {
+      setCreateError(roundsBlocked)
       return
     }
     if (savingRef.current) return
@@ -1201,9 +1209,10 @@ export function EventSetup({ userId, onStart, onCancel, onAddCourse }: Props) {
       <div className="fixed bottom-0 inset-x-0 p-4 bg-white/95 dark:bg-gray-800/95 backdrop-blur-sm border-t border-gray-200 safe-bottom">
         <div className="max-w-2xl mx-auto">
           {createError && <p className="text-red-500 text-sm text-center mb-2">{createError}</p>}
+          {!createError && roundsBlocked && <p className="text-amber-700 dark:text-amber-300 text-sm text-center mb-2">{roundsBlocked}</p>}
           <button
             onClick={createEvent}
-            disabled={saving}
+            disabled={saving || !!roundsBlocked}
             className="w-full h-14 bg-amber-500 text-white text-lg font-bold rounded-2xl active:bg-amber-600 disabled:opacity-60 shadow-lg"
           >
             {saving ? 'Creating Event...' : 'Create Event & Start'}
