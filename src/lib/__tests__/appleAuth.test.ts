@@ -6,13 +6,14 @@
 
 import { describe, it, expect, vi } from 'vitest'
 
-const { signInWithOAuth } = vi.hoisted(() => ({
-  signInWithOAuth: vi.fn(async () => ({ error: null })),
+const { signInWithProvider } = vi.hoisted(() => ({
+  signInWithProvider: vi.fn(async () => ({ error: null })),
 }))
 
-vi.mock('@capacitor/core', () => ({ Capacitor: { getPlatform: () => 'web' } }))
+vi.mock('@capacitor/core', () => ({ Capacitor: { getPlatform: () => 'web', isNativePlatform: () => false } }))
 vi.mock('@capacitor-community/apple-sign-in', () => ({ SignInWithApple: { authorize: vi.fn() } }))
-vi.mock('../supabase', () => ({ supabase: { auth: { signInWithOAuth } } }))
+vi.mock('../supabase', () => ({ supabase: { auth: {} } }))
+vi.mock('../oauth', () => ({ signInWithProvider }))
 
 import { randomNonce, sha256Hex, appleNativeAvailable, signInWithApple } from '../appleAuth'
 
@@ -35,13 +36,10 @@ describe('sha256Hex', () => {
 })
 
 describe('signInWithApple off iOS', () => {
-  it('uses the hosted OAuth flow with a redirect back to the app origin', async () => {
+  it('hands off to the shared provider flow', async () => {
     expect(appleNativeAvailable()).toBe(false)
     const res = await signInWithApple()
     expect(res.error).toBeNull()
-    expect(signInWithOAuth).toHaveBeenCalledWith({
-      provider: 'apple',
-      options: { redirectTo: `${window.location.origin}/` },
-    })
+    expect(signInWithProvider).toHaveBeenCalledWith('apple')
   })
 })

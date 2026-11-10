@@ -27,6 +27,14 @@
                 <data android:scheme="https" android:host="gimme.gg" />
                 <data android:scheme="https" android:host="www.gimme.gg" />
             </intent-filter>
+            <!-- gimme://auth/callback: the system browser hands a Google or Apple
+                 sign in back to the app. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="gimme" />
+            </intent-filter>
         </activity>
 
         <provider

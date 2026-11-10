@@ -12,6 +12,7 @@
 import { Capacitor } from '@capacitor/core'
 import { SignInWithApple } from '@capacitor-community/apple-sign-in'
 import { supabase } from './supabase'
+import { signInWithProvider } from './oauth'
 
 export const APPLE_CLIENT_ID = 'gg.gimme.app'
 export const APPLE_REDIRECT = 'https://www.gimme.gg/'
@@ -79,9 +80,7 @@ export async function signInWithApple(): Promise<{ error: string | null }> {
     return { error: null }
   }
 
-  const { error } = await supabase.auth.signInWithOAuth({
-    provider: 'apple',
-    options: { redirectTo: `${window.location.origin}/` },
-  })
-  return { error: error?.message ?? null }
+  // Android shell and the web: the hosted flow, through the system browser
+  // when inside the shell.
+  return signInWithProvider('apple')
 }

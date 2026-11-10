@@ -65,6 +65,26 @@ Developer portal:
 The iOS target already carries the Sign in with Apple entitlement. Nothing else
 in the app changes when these are filled in.
 
+## Supabase: Google sign in
+
+Google refuses to sign in inside an embedded WebView, so in the shell both
+Google and the Android Apple flow open the system browser and come back
+through the app's own scheme, `gimme://auth/callback`. Two dashboard steps:
+
+1. **Redirect URLs.** Authentication, URL Configuration, add
+   `gimme://auth/callback` to the allow list on both projects.
+2. **Google provider.** In Google Cloud, APIs and Services, Credentials, create
+   an OAuth client of type Web application with the authorized redirect URI
+   Supabase shows on its Google provider page
+   (`https://<ref>.supabase.co/auth/v1/callback`, one client per project or one
+   client with both URIs). Paste the client id and secret into Supabase,
+   Authentication, Providers, Google. A consent screen with the app name and
+   the gimme.gg privacy and terms links is required before Google will show
+   the sign in to the public.
+
+Nothing in the app changes when these are filled in. Until they are, the
+Google button returns a provider error line.
+
 ## iOS: first build and submit
 
 1. `npm run native:sync`, then `npm run native:ios`.

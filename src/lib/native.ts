@@ -14,6 +14,7 @@ import { App as CapApp } from '@capacitor/app'
 import { StatusBar, Style } from '@capacitor/status-bar'
 import { SplashScreen } from '@capacitor/splash-screen'
 import { Sentry } from './sentry'
+import { completeAuthCallback } from './oauth'
 
 export type NativePlatform = 'ios' | 'android' | 'web'
 
@@ -76,19 +77,22 @@ export function initNative(): void {
     StatusBar.setBackgroundColor({ color: '#16263B' }).catch(() => {})
   }
 
+  // A URL reaching the app is one of two things: the system browser handing
+  // back a Google or Apple sign in on gimme://auth/callback, or a tapped
+  // gimme.gg link into a round.
+  const handleUrl = async (url: string) => {
+    if (await completeAuthCallback(url)) return
+    const link = parseDeepLink(url)
+    if (link) navigateToDeepLink(link)
+  }
+
   // The app opened from a link while closed: Capacitor queues the URL for us.
   CapApp.getLaunchUrl()
-    .then(launch => {
-      const link = launch?.url ? parseDeepLink(launch.url) : null
-      if (link) navigateToDeepLink(link)
-    })
+    .then(launch => { if (launch?.url) void handleUrl(launch.url) })
     .catch(() => {})
 
   // The app opened from a link while already running.
-  CapApp.addListener('appUrlOpen', ({ url }) => {
-    const link = parseDeepLink(url)
-    if (link) navigateToDeepLink(link)
-  })
+  CapApp.addListener('appUrlOpen', ({ url }) => { void handleUrl(url) })
 
   // Let the first paint land before the splash goes, so there is no flash of
   // white between the navy launch screen and the navy app header.

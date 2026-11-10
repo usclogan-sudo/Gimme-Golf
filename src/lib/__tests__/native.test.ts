@@ -9,6 +9,7 @@ vi.mock('@capacitor/app', () => ({ App: { getLaunchUrl: vi.fn(), addListener: vi
 vi.mock('@capacitor/status-bar', () => ({ StatusBar: {}, Style: { Dark: 'DARK' } }))
 vi.mock('@capacitor/splash-screen', () => ({ SplashScreen: {} }))
 vi.mock('../sentry', () => ({ Sentry: { setTag: vi.fn() } }))
+vi.mock('../oauth', () => ({ completeAuthCallback: vi.fn(async () => false) }))
 
 import { parseDeepLink, isNative, nativePlatform } from '../native'
 
