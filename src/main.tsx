@@ -9,10 +9,13 @@ import App from './App.tsx'
 import { RecoveryScreen } from './components/RecoveryScreen'
 import { StagingRibbon } from './components/StagingRibbon'
 import { appEnv, previewHarnessAllowed } from './lib/appEnv'
+import { initNative, isNative } from './lib/native'
 import { Analytics } from '@vercel/analytics/react'
 import { SpeedInsights } from '@vercel/speed-insights/react'
 
 initSentry()
+// Status bar, splash, deep links. Returns at once on the web.
+initNative()
 // A tab that died on a work-in-progress screen last time leaves a heartbeat
 // record behind; report it before any screen starts a new one.
 reportUncleanExit()
@@ -55,7 +58,9 @@ createRoot(document.getElementById('root')!).render(
   </StrictMode>,
 )
 
-if ('serviceWorker' in navigator) {
+// The native shell serves the bundle from the app package: no service worker,
+// no update flow. A new build reaches those users through the store.
+if ('serviceWorker' in navigator && !isNative()) {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('/sw.js').then((reg) => {
       // Check for updates every 5 minutes

@@ -1,124 +1,112 @@
-> **Historical — read before following.** This describes the Capacitor shell as it
-> existed on the `feat/capacitor-native` branch in July 2026. **That shell was never
-> merged** and the branch has been closed (PR #7). Main has moved a long way since:
-> the app now deploys to Vercel rather than GitHub Pages, and `src/main.tsx`,
-> `package-lock.json` and the push-notification edge function have all diverged.
->
-> Treat this as a record of the decisions taken, not a runbook. When native
-> submission is scheduled, regenerate the shell with `npx cap add ios android`
-> against current main and use this to remember *why* each choice was made.
+# Gimme native shell (Capacitor)
 
-# Gimme — Native app build (Capacitor)
+The iOS and Android apps wrap the same Vite build that serves gimme.gg. Nothing
+moves into native code: the shell loads `dist`, talks to the same Supabase, and
+reuses every screen, the offline queue, invites and settlement. Added on
+2026-11-10 (Spec 1). The July 2026 attempt on `feat/capacitor-native` was never
+merged; this shell was regenerated from current main.
 
-The native iOS & Android apps wrap the **existing React PWA + Supabase backend** via
-[Capacitor](https://capacitorjs.com). Nothing about the web app or backend changed —
-the same `dist/` bundle runs inside a native shell, talks to the same Supabase, and
-reuses the offline queue, game logic, invite flows, token mode, everything.
+Bundle and package id: `com.gimme.golf`. Apple Team ID `M35SV96877`.
+Legal entity: PELORUS HX LLC.
 
-Bundle / package id: **`com.gimme.golf`** (matches `public/.well-known/`).
+## What is in the repo
 
-## What's already set up (in this repo)
-- `capacitor.config.ts` — appId, navy splash/status bar, https scheme, plugin config.
-- `ios/` and `android/` — native Xcode + Android Studio projects (checked in; build
-  artifacts are gitignored).
-- App icons + splash for both platforms, generated from the brand seal on navy
-  (`assets/logo.png` is the source; regenerate with `npx capacitor-assets generate`).
-- `src/lib/native.ts` — native-only init: status bar, splash hide, **deep-link routing**
-  (Universal/App Links → the app's existing `?join=` / `?spectate=` flow), and **push
-  registration**. No-op on web.
-- Service worker is disabled in the native shell (Capacitor serves assets locally).
-- Plugins installed: `@capacitor/app`, `status-bar`, `splash-screen`, `keyboard`,
-  `push-notifications`, `camera`.
+| Piece | Where |
+|---|---|
+| Capacitor config: app id, name, navy splash and status bar | `capacitor.config.ts` |
+| Xcode project, entitlements, privacy manifest, icons, launch screen | `ios/App` |
+| Android Studio project, App Links intent filter, icons, splash | `android` |
+| Native init: status bar, splash hide, deep link replay | `src/lib/native.ts` |
+| Sign in with Apple: native sheet on iOS, hosted flow elsewhere | `src/lib/appleAuth.ts`, `src/components/Auth/Auth.tsx` |
+| Account deletion that keeps finished rounds readable | `delete_account` migration, Settings |
+| Icon and splash source, 1024 px seal on navy | `assets/logo.png` |
+| Link association files | `public/.well-known` |
 
-## Dev workflow (every time the web app changes)
-```bash
-npm run build          # produce dist/
-npx cap sync           # copy web + update native deps
-npx cap open ios       # opens Xcode
-npx cap open android   # opens Android Studio
+Inside the shell the service worker is not registered and the Update ready
+line never shows; a new build reaches those users through the store.
+
+## Every time the web app changes
+
+```sh
+npm run native:sync      # build dist, copy into both platforms, pod install
+npm run native:ios       # opens Xcode
+npm run native:android   # opens Android Studio
 ```
 
-## Prerequisites (your machine)
-- **Full Xcode** (not just Command Line Tools) for iOS.
-- **Android Studio** + JDK 17 for Android.
-- **Apple Developer Program** membership ($99/yr) — signing + App Store Connect.
-- **Google Play Console** account ($25 one-time).
+Regenerate icons and splash only when the seal changes:
 
----
+```sh
+npm run native:assets
+```
 
-## iOS — first build & submit
-1. `npx cap open ios` → Xcode.
-2. **Signing & Capabilities** → select your Team; set the bundle id to `com.gimme.golf`.
-3. Add capability **Associated Domains** → `applinks:app.gimme.golf` (or your prod domain).
-   This creates `App.entitlements`.
-4. Add capability **Push Notifications** (and **Background Modes → Remote notifications**).
-5. Run on a simulator/device to smoke-test. Then **Product → Archive** → distribute to
-   **App Store Connect**.
+## Machine prerequisites
 
-## Android — first build & submit
-1. `npx cap open android` → Android Studio.
-2. Create a **release signing key** (`keytool`) and add a `signingConfig` in
-   `android/app/build.gradle`.
-3. Build → **Generate Signed Bundle (.aab)** → upload to **Play Console**.
-4. Note the signing cert's **SHA-256** — you need it for `assetlinks.json` (below).
+- Full Xcode (26.6 at the time of writing) and CocoaPods, for iOS.
+- Android Studio with an installed SDK and its bundled JDK, for Android. The
+  first launch of Android Studio downloads the SDK; until then `android`
+  opens but does not build.
+- Apple Developer Program and Google Play Console memberships, both in place.
 
-## Deep links — finish the `.well-known` files
-`public/.well-known/` currently ships **stubs**. Replace and redeploy on the prod domain:
-- `apple-app-site-association`: replace `PLACEHOLDER_TEAMID.com.gimme.golf` with your real
-  **Apple Team ID** + bundle id. (Already served as `application/json` via `vercel.json`.)
-- `assetlinks.json`: replace the `sha256_cert_fingerprints` placeholder with your Android
-  release signing cert's SHA-256.
-Apple/Google fetch these from `https://<domain>/.well-known/…` to verify link ownership.
+## Supabase: Sign in with Apple
 
-## Push notifications — finish the delivery path
-**Already built:** the `device_tokens` table (migration), the token upsert in
-`src/lib/native.ts` (`registration` listener), and the **`send-push` Edge Function**
-(`supabase/functions/send-push/`, FCM v1 — covers iOS + Android via Firebase).
+Dashboard, Authentication, Providers, Apple. Three things from the Apple
+Developer portal:
 
-Remaining (your Firebase/Apple config + a device to validate):
-1. **Firebase:** create a project; add iOS + Android apps; **upload an APNs Auth Key
-   (.p8)** to Firebase (this is what lets FCM deliver to iOS). Drop
-   `google-services.json` into `android/app/`; for iOS add `GoogleService-Info.plist`
-   in Xcode and the Firebase iOS SDK (or use the FCM-via-APNs path).
-2. **Secrets + deploy:**
-   ```bash
-   supabase secrets set FCM_SERVICE_ACCOUNT="$(cat service-account.json)"
-   supabase secrets set FCM_PROJECT_ID=<firebase-project-id>
-   supabase functions deploy send-push --no-verify-jwt
-   ```
-3. **Fire pushes on in-app notifications** — the app already writes `notifications`
-   rows for invites / nudges / approvals. Add a trigger so each also sends a native
-   push (uses pg_net; enable the extension first):
-   ```sql
-   create extension if not exists pg_net;
-   create or replace function public.notify_push() returns trigger
-     language plpgsql security definer set search_path = public, pg_temp as $$
-   begin
-     perform net.http_post(
-       url := '<your-project>.functions.supabase.co/send-push',
-       headers := jsonb_build_object('Content-Type','application/json',
-         'Authorization','Bearer ' || current_setting('app.service_role_key', true)),
-       body := jsonb_build_object('userId', NEW.user_id, 'title', NEW.title,
-         'body', coalesce(NEW.body,''), 'data', jsonb_build_object('round_id', coalesce(NEW.round_id,'')))
-     );
-     return NEW;
-   end $$;
-   create trigger notifications_push after insert on public.notifications
-     for each row execute function public.notify_push();
-   ```
-   Set `app.service_role_key` (e.g. via `alter database ... set`) or store it in Vault
-   and read it in the function — don't hardcode the key. `send-push` only accepts the
-   service-role key as its bearer, so it can't be called by clients.
+1. **Services ID** for the web flow, for example `gg.gimme.web`, with Sign in
+   with Apple enabled, domain `www.gimme.gg`, and the return URL Supabase shows
+   on the provider page.
+2. **Key** with Sign in with Apple enabled, downloaded once as a `.p8`. Supabase
+   needs the key id, the team id and the file contents, which it turns into the
+   client secret.
+3. **Authorized client ids** on the Supabase provider page: the bundle id
+   `com.gimme.golf` for the native sheet and the Services ID for the web flow,
+   comma separated.
 
-## Store listing / compliance (from the MVP positioning)
-- Lead copy with **side games · scores · settle up**; minimize bet/wager/gamble/money.
-- Target a **mainstream age rating** (4+/12+), not 18+ gambling — the app links out to
-  payment apps and never moves money (token/points mode reinforces this).
-- Icons/screenshots/brand: navy/cream/brass, Playfair + Inter (assets in
-  `docs/brand/gimme-brand-handoff/`).
-- Confirm the **"Gimme" trademark** before submission.
+The iOS target already carries the Sign in with Apple entitlement. Nothing else
+in the app changes when these are filled in.
 
-## Optional native enhancement — camera for photo import
-`@capacitor/camera` is installed. The photo-import UI uses a web `<input type=file>` which
-works inside the webview; swapping to `Camera.getPhoto()` on native gives a nicer picker.
-Low priority — the current flow already works in the shell.
+## iOS: first build and submit
+
+1. `npm run native:sync`, then `npm run native:ios`.
+2. Signing and Capabilities already names the team and the entitlements file,
+   which holds Sign in with Apple and Associated Domains for `gimme.gg` and
+   `www.gimme.gg`. Xcode registers the app id and capabilities with the portal
+   on first build when automatic signing is on.
+3. Run on a simulator to smoke test, then Product, Archive, and distribute to
+   App Store Connect for TestFlight.
+
+Universal Links need nothing more: `public/.well-known/apple-app-site-association`
+already names the team and bundle id and is served with the JSON content type by
+`vercel.json`. Apple fetches it from both hosts when the app is installed.
+
+## Android: first build and submit
+
+1. `npm run native:sync`, then `npm run native:android`.
+2. Build, Generate Signed Bundle. Create an **upload key** when asked and keep
+   the keystore and its password outside the repo. Play App Signing then holds
+   the release key.
+3. Upload the `.aab` to Play Console, internal testing.
+4. In Play Console, Setup, App integrity, copy the **app signing key
+   certificate SHA-256**. Put it in `public/.well-known/assetlinks.json` in
+   place of the placeholder and deploy. App Links verify against that file on
+   both hosts; until it is deployed, links open in the browser instead of the app.
+
+## Deep links
+
+`gimme.gg/?join=CODE` and `?spectate=CODE` open the installed app. The shell
+replays the URL as the same query the web app reads on load, so Join Round and
+the spectator view are the existing screens with no native routing.
+
+## Store listing
+
+Copy, keywords, category and questionnaire answers are in `STORE-LISTING.md`.
+Screenshots: ten per platform from token mode, scoring first, then the
+standings bar, then the result card; payment handles in one settle screenshot
+at most, labelled Square up. Category Sports. No gambling content declared; the
+app holds no funds and token mode is the default.
+
+## Privacy
+
+`ios/App/App/PrivacyInfo.xcprivacy` declares email, name and user id as linked
+app functionality data, and crash, performance and diagnostic data for Sentry
+as not linked. No tracking. Location and contacts are added with Specs 6 and 5.

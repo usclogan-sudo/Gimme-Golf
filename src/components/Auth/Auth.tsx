@@ -1,6 +1,23 @@
 import { useState } from 'react'
 import { supabase } from '../../lib/supabase'
+import { signInWithApple } from '../../lib/appleAuth'
 import { Seal } from '../brand'
+
+function AppleButton({ onClick, disabled }: { onClick: () => void; disabled: boolean }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className="w-full h-14 bg-black text-white text-lg font-semibold rounded-2xl shadow-sm disabled:opacity-60 active:opacity-90 transition-opacity flex items-center justify-center gap-2"
+    >
+      <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor" aria-hidden="true">
+        <path d="M16.37 12.6c-.02-2.3 1.88-3.4 1.97-3.46-1.07-1.57-2.74-1.79-3.34-1.81-1.42-.14-2.77.84-3.49.84-.72 0-1.83-.82-3.01-.8-1.55.02-2.98.9-3.78 2.29-1.61 2.8-.41 6.93 1.16 9.2.77 1.11 1.68 2.36 2.88 2.31 1.16-.05 1.6-.75 3-.75s1.79.75 3.02.73c1.25-.02 2.04-1.13 2.8-2.25.88-1.29 1.24-2.54 1.26-2.6-.03-.01-2.42-.93-2.47-3.7zM14.07 5.83c.64-.78 1.07-1.86.95-2.93-.92.04-2.03.61-2.69 1.38-.59.68-1.11 1.78-.97 2.83 1.03.08 2.07-.52 2.71-1.28z" />
+      </svg>
+      Continue with Apple
+    </button>
+  )
+}
 
 type AuthMode = 'splash' | 'sign-in' | 'sign-up' | 'forgot-password'
 
@@ -110,6 +127,16 @@ export function Auth({ inviteCode, sessionExpired }: AuthProps = {}) {
     }
     const { error: err } = await supabase.auth.signInAnonymously()
     if (err) setError(friendlyError(err.message))
+    setLoading(false)
+  }
+
+  const handleApple = async () => {
+    setLoading(true)
+    setError(null)
+    const { error: err } = await signInWithApple()
+    if (err) setError(err)
+    // On the web the page is leaving for Apple; on iOS the session is in place
+    // and the auth listener takes it from here.
     setLoading(false)
   }
 
@@ -246,6 +273,7 @@ export function Auth({ inviteCode, sessionExpired }: AuthProps = {}) {
           </div>
 
           <div className="space-y-3">
+            <AppleButton onClick={handleApple} disabled={loading} />
             <button
               onClick={() => resetState('sign-up')}
               className="w-full h-14 bg-white text-amber-600 text-lg font-bold rounded-2xl shadow-sm border-2 border-gray-800 active:bg-gray-50 transition-colors"
@@ -398,6 +426,8 @@ export function Auth({ inviteCode, sessionExpired }: AuthProps = {}) {
             >
               {loading ? 'Loading...' : buttonLabel}
             </button>
+
+            {showPassword && <AppleButton onClick={handleApple} disabled={loading} />}
 
             <div className="space-y-2 text-center text-sm">
               {mode === 'sign-in' && (

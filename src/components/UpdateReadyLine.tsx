@@ -1,4 +1,5 @@
 import { useUpdatePending, applyUpdate } from '../lib/swUpdate'
+import { isNative } from '../lib/native'
 
 /**
  * A one-line, non-blocking notice that a new build is ready. Shown only when the
@@ -7,7 +8,8 @@ import { useUpdatePending, applyUpdate } from '../lib/swUpdate'
  */
 export function UpdateReadyLine() {
   const pending = useUpdatePending()
-  if (!pending) return null
+  // The store build has no service worker; updates come through the store.
+  if (!pending || isNative()) return null
   return (
     <button
       type="button"

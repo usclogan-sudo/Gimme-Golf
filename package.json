@@ -10,9 +10,22 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "seed:staging": "bash scripts/seed-staging.sh",
-    "reset:staging": "bash scripts/reset-staging.sh"
+    "reset:staging": "bash scripts/reset-staging.sh",
+    "native:sync": "npm run build && npx cap sync",
+    "native:ios": "npx cap open ios",
+    "native:android": "npx cap open android",
+    "native:assets": "capacitor-assets generate --iconBackgroundColor '#16263B' --iconBackgroundColorDark '#16263B' --splashBackgroundColor '#16263B' --splashBackgroundColorDark '#16263B' --ios --android"
   },
   "dependencies": {
+    "@capacitor-community/apple-sign-in": "^7.1.0",
+    "@capacitor/android": "^8.6.0",
+    "@capacitor/app": "^8.1.2",
+    "@capacitor/cli": "^8.6.0",
+    "@capacitor/core": "^8.6.0",
+    "@capacitor/ios": "^8.6.0",
+    "@capacitor/keyboard": "^8.0.6",
+    "@capacitor/splash-screen": "^8.0.2",
+    "@capacitor/status-bar": "^8.0.4",
     "@sentry/react": "^10.45.0",
     "@supabase/supabase-js": "^2.98.0",
     "@vercel/analytics": "^2.0.1",
@@ -24,6 +37,7 @@
     "uuid": "^10.0.0"
   },
   "devDependencies": {
+    "@capacitor/assets": "^4.0.0",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",
     "@types/react": "^18.3.3",

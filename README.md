@@ -123,6 +123,15 @@ them.
 **The QA harness.** `/?preview=result-card` renders the result card scenarios
 without signing in. It works on staging and local builds only.
 
+## Native shell
+
+The iOS and Android apps in `ios` and `android` wrap the same build through
+Capacitor. `npm run native:sync` builds and copies the web bundle into both;
+`npm run native:ios` and `npm run native:android` open the projects. Inside the
+shell there is no service worker and no update line; new builds ship through
+the stores. Sign in with Apple, deep links, account deletion and the store
+setup steps are in `docs/NATIVE-BUILD.md`.
+
 ## Course data
 
 Course cards come from GolfCourseAPI through the `course-search` Edge
