@@ -66,9 +66,11 @@ Every pull request and every push to `main` runs the CI workflow in
 protection on `main` requires that check, so nothing merges on a red suite.
 Vercel builds and deploys `main` on its own.
 
-Database changes live in `supabase/migrations` with idempotent guards and are
-applied through the Supabase SQL Editor. The migration history on the project
-is the record of what has been applied.
+Database changes live in `supabase/migrations` with idempotent guards. A
+migration is pushed to staging and exercised there before its pull request
+opens. On merge to `main`, the Supabase GitHub integration applies any new
+migration file to production. The migration history on each project is the
+record of what has been applied.
 
 ## Environments
 
