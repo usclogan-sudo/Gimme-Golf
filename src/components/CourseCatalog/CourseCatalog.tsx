@@ -2,9 +2,9 @@ import { useState, useRef, useCallback, useEffect } from 'react'
 import { v4 as uuidv4 } from 'uuid'
 import { supabase, courseToRow } from '../../lib/supabase'
 import { venturaCourses } from '../../data/venturaCourses'
-import { searchCourses, getCourseDetails, hasCompleteScorecard } from '../../lib/golfCourseApi'
-import type { SearchResult, ApiCourseDetail } from '../../lib/golfCourseApi'
-import type { Course, Tee, Hole } from '../../types'
+import { searchCatalog, catalogDetail, catalogDetailToCourse, isCompleteCard } from '../../lib/courseCatalog'
+import type { CatalogSearchResult } from '../../lib/courseCatalog'
+import type { Course } from '../../types'
 import { Seal } from '../brand'
 
 interface Props {
@@ -18,67 +18,6 @@ function totalPar(holes: { par: number }[]) {
   return holes.reduce((s, h) => s + h.par, 0)
 }
 
-// Standard stroke index allocation fallback
-const STANDARD_SI_18 = [7, 11, 3, 15, 1, 9, 5, 13, 17, 8, 12, 4, 16, 2, 10, 6, 14, 18]
-
-/** Convert API course detail to our Course type */
-function apiDetailToCourse(detail: ApiCourseDetail): Course | null {
-  if (!detail.teeboxes?.length) return null
-
-  const tees: Tee[] = detail.teeboxes.map(tb => ({
-    name: tb.tee_name,
-    rating: tb.course_rating || 72.0,
-    slope: tb.slope_rating || 113,
-  }))
-
-  // Try to build holes from the first tee that has hole data
-  const teeWithHoles = detail.teeboxes.find(
-    tb => tb.holes?.length && tb.holes.length >= 9,
-  )
-
-  const holeCount = detail.holes === 9 ? 9 : 18
-  let holes: Hole[]
-
-  if (teeWithHoles?.holes) {
-    holes = teeWithHoles.holes.map((h, i) => {
-      const yardages: Record<string, number> = {}
-      // Collect yardages from all tees for this hole
-      for (const tb of detail.teeboxes!) {
-        const tbHole = tb.holes?.find(bh => bh.hole_number === h.hole_number)
-        if (tbHole?.yardage) yardages[tb.tee_name] = tbHole.yardage
-      }
-      return {
-        number: h.hole_number,
-        par: h.par || 4,
-        strokeIndex: h.handicap || STANDARD_SI_18[i] || (i + 1),
-        yardages,
-      }
-    })
-  } else {
-    // Partial data — build default holes
-    holes = Array.from({ length: holeCount }, (_, i) => ({
-      number: i + 1,
-      par: 4,
-      strokeIndex: STANDARD_SI_18[i] || (i + 1),
-      yardages: {},
-    }))
-  }
-
-  const name = detail.course_name
-    ? (detail.club_name && detail.club_name !== detail.course_name
-      ? `${detail.club_name} - ${detail.course_name}`
-      : detail.course_name)
-    : detail.club_name
-
-  return {
-    id: uuidv4(),
-    name,
-    tees,
-    holes,
-    createdAt: new Date(),
-  }
-}
-
 export function CourseCatalog({ userId, onDone, onAddCustom, onPrefillCourse }: Props) {
   const [query, setQuery] = useState('')
   const [adding, setAdding] = useState<string | null>(null)
@@ -86,7 +25,7 @@ export function CourseCatalog({ userId, onDone, onAddCustom, onPrefillCourse }: 
   const [error, setError] = useState<string | null>(null)
 
   // API search state
-  const [apiResults, setApiResults] = useState<SearchResult[]>([])
+  const [apiResults, setApiResults] = useState<CatalogSearchResult[]>([])
   const [apiSearching, setApiSearching] = useState(false)
   const [apiImporting, setApiImporting] = useState<string | null>(null)
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -108,7 +47,7 @@ export function CourseCatalog({ userId, onDone, onAddCustom, onPrefillCourse }: 
     }
     setApiSearching(true)
     debounceRef.current = setTimeout(async () => {
-      const results = await searchCourses(q.trim())
+      const results = await searchCatalog(q.trim())
       setApiResults(results)
       setApiSearching(false)
     }, 300)
@@ -171,25 +110,26 @@ export function CourseCatalog({ userId, onDone, onAddCustom, onPrefillCourse }: 
     }
   }
 
-  const handleApiImport = async (result: SearchResult) => {
+  const handleApiImport = async (result: CatalogSearchResult) => {
     if (apiImporting) return
     setApiImporting(result.id)
     setError(null)
 
     try {
-      const detail = await getCourseDetails(result.id)
+      const detail = await catalogDetail(result.id, result.source)
       if (!detail) {
         setError('Could not load course details. Try again.')
         return
       }
 
-      const course = apiDetailToCourse(detail)
+      const course = catalogDetailToCourse(detail)
       if (!course) {
         setError('No tee data available for this course.')
         return
       }
 
-      if (hasCompleteScorecard(detail)) {
+      const hasCard = detail.tees.some(t => t.holes.length >= 9)
+      if (hasCard && isCompleteCard(course)) {
         // Complete data — insert directly into Supabase
         const { count } = await supabase
           .from('courses')
@@ -216,7 +156,8 @@ export function CourseCatalog({ userId, onDone, onAddCustom, onPrefillCourse }: 
     }
   }
 
-  const hasApiKey = !!(import.meta.env.VITE_GOLF_COURSE_API_KEY as string)
+  // Search goes through the course-search function; there is no client key.
+  const hasApiKey = true
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900 pb-28">
@@ -238,7 +179,7 @@ export function CourseCatalog({ userId, onDone, onAddCustom, onPrefillCourse }: 
           <input
             ref={searchRef}
             type="text"
-            placeholder={hasApiKey ? "Search 30,000+ courses…" : "Search courses or city…"}
+            placeholder="Search 30,000+ courses or a city…"
             value={query}
             onChange={e => handleQueryChange(e.target.value)}
             className="w-full h-12 pl-11 pr-4 rounded-2xl border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 dark:text-gray-100 text-base focus:outline-none focus:ring-2 focus:ring-amber-500 shadow-sm"
@@ -301,7 +242,7 @@ export function CourseCatalog({ userId, onDone, onAddCustom, onPrefillCourse }: 
                       </p>
                       <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
                         {[result.city, result.state].filter(Boolean).join(', ')}
-                        {result.teeCount > 0 && ` · ${result.teeCount} tees`}
+                        {(result.teeCount ?? 0) > 0 && ` · ${result.teeCount} tees`}
                       </p>
                     </div>
                     {isImporting ? (
@@ -382,13 +323,6 @@ export function CourseCatalog({ userId, onDone, onAddCustom, onPrefillCourse }: 
             </div>
           ))}
         </section>
-        )}
-
-        {!hasApiKey && (
-          <div className="bg-blue-50 dark:bg-blue-900/20 rounded-2xl px-4 py-3 text-center">
-            <p className="text-blue-700 dark:text-blue-300 text-sm font-medium">Want access to 30,000+ courses?</p>
-            <p className="text-blue-500 dark:text-blue-400 text-xs mt-0.5">Set up a Golf Course API key for full search</p>
-          </div>
         )}
 
         <p className="text-center text-xs text-gray-400 dark:text-gray-500 py-2">

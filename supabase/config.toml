@@ -386,6 +386,12 @@ deno_version = 2
 [functions.send-push]
 verify_jwt = false
 
+# course-search proxies the course vendor with the key held server side
+# (secret GOLF_COURSE_API_KEY). Callers are signed in players, so the gateway
+# verifies the JWT. Declared here so the GitHub integration deploys it on merge.
+[functions.course-search]
+verify_jwt = true
+
 [analytics]
 enabled = true
 port = 54327

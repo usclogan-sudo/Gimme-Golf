@@ -50,6 +50,7 @@ describe('header menu and its children against a Wolf round with an unresolved h
         showSpectatorLink onSpectatorLink={vi.fn()}
         showPhotoImport onPhotoImport={vi.fn()}
         showRules onRules={onRules}
+        showCorrectCard onCorrectCard={vi.fn()}
         showSettleUp={false} onSettleUp={vi.fn()}
         showEndRound onEndRound={onEndRound}
       />,

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { v4 as uuidv4 } from 'uuid'
 import { supabase, courseToRow, playerToRow, roundToRow, roundPlayerToRow, buyInToRow, rowToCourse, rowToPlayer, rowToSharedCourse, rowToGamePreset, rowToUserProfile, generateInviteCode } from '../../lib/supabase'
 import { useSwitches, blockedMessage } from '../../lib/switches'
+import { teeLabel } from '../../lib/courseCatalog'
 import { safeWrite } from '../../lib/safeWrite'
 import { reportSupabaseError, addBreadcrumb } from '../../lib/sentry'
 import { holdReload } from '../../lib/swUpdate'
@@ -284,7 +285,7 @@ function CoursePicker({
       </header>
 
       <div className="px-4 py-4 max-w-2xl mx-auto space-y-3">
-        <NearMeCourses onAddCourse={onAddCourse} />
+        <NearMeCourses userId={userId} onAddCourse={onAddCourse} onSelectCourse={onSelect} />
 
         {/* Recently played — one-tap quick-pick so you don't re-search your usual courses. */}
         {recentCourses.length > 0 && (
@@ -632,7 +633,7 @@ export function PlayerPicker({
               className="w-full h-11 px-3 rounded-xl border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 text-base focus:outline-none focus:ring-2 focus:ring-amber-500"
             >
               {course.tees.map(t => (
-                <option key={t.name} value={t.name}>{t.name}</option>
+                <option key={t.name} value={t.name}>{teeLabel(t)}</option>
               ))}
             </select>
             {addError && <p className="text-red-500 text-sm">{addError}</p>}
@@ -807,6 +808,7 @@ export function PlayerPicker({
                           }`}
                         >
                           {t.name}
+                          <span className="ml-1 text-xs opacity-60">{t.rating.toFixed(1)} / {t.slope}</span>
                         </button>
                       ))}
                     </div>

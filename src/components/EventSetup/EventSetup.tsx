@@ -517,7 +517,7 @@ export function EventSetup({ userId, onStart, onCancel, onAddCourse }: Props) {
           </div>
         </header>
         <div className="px-4 py-4 max-w-2xl mx-auto space-y-3">
-          <NearMeCourses onAddCourse={onAddCourse} />
+          <NearMeCourses userId={userId} onAddCourse={onAddCourse} onSelectCourse={course => { setSelectedCourse(course); setStep('players') }} />
 
           <input
             type="text"
