@@ -1,4 +1,4 @@
-package com.gimme.golf;
+package gg.gimme.app;
 
 import com.getcapacitor.BridgeActivity;
 

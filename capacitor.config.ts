@@ -3,7 +3,7 @@ import type { CapacitorConfig } from '@capacitor/cli'
 // The native shell wraps the Vite build in dist. The web app at gimme.gg is
 // unchanged; this is a second distribution of the same bundle.
 const config: CapacitorConfig = {
-  appId: 'com.gimme.golf',
+  appId: 'gg.gimme.app',
   appName: 'Gimme',
   webDir: 'dist',
   plugins: {

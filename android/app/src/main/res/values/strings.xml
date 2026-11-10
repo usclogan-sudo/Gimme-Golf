@@ -2,6 +2,6 @@
 <resources>
     <string name="app_name">Gimme</string>
     <string name="title_activity_main">Gimme</string>
-    <string name="package_name">com.gimme.golf</string>
-    <string name="custom_url_scheme">com.gimme.golf</string>
+    <string name="package_name">gg.gimme.app</string>
+    <string name="custom_url_scheme">gg.gimme.app</string>
 </resources>
