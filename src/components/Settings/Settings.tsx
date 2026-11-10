@@ -219,10 +219,12 @@ export function Settings({ userId, email, onBack, onSignOut, isAdmin, onAdmin, i
     setDeleting(true)
     setDeleteError('')
     try {
-      // Server-side RPC deletes all the caller's data AND their auth account.
+      // Server-side RPC deletes the caller's personal data AND their auth account.
       // (Apple Guideline 5.1.1(v) requires deleting the account itself, not just
-      // data — which client code can't do. See migration delete_own_account.)
-      const { error } = await supabase.rpc('delete_own_account')
+      // data — which client code can't do.) Finished rounds stay readable for the
+      // other players, with this seat renamed "Former player"; see the
+      // delete_account migration.
+      const { error } = await supabase.rpc('delete_account')
       if (error) throw error
       await supabase.auth.signOut()
       onSignOut()
@@ -510,9 +512,10 @@ export function Settings({ userId, email, onBack, onSignOut, isAdmin, onAdmin, i
         {!adminOnly && <section className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm p-4 space-y-3 border border-red-200">
           <p className="text-xs font-semibold text-red-500 uppercase tracking-wide">Danger Zone</p>
           <p className="text-sm text-gray-600">
-            This will permanently delete <strong>your account</strong> and all your data
-            (profile, courses, players, rounds, scores). This cannot be undone.
-            Type <strong>DELETE</strong> to confirm.
+            This permanently deletes <strong>your account</strong>: your profile, payment
+            handles, courses, guest players, invitations, and every round still in play.
+            Finished rounds stay readable for the other players, with your name shown as
+            Former player. This cannot be undone. Type <strong>DELETE</strong> to confirm.
           </p>
           <input
             type="text"
