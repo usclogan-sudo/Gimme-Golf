@@ -1,10 +1,9 @@
 import { supabase } from './supabase'
 import { Sentry } from './sentry'
 
+// Only the direct table writes (shared courses, presets) still log from the
+// client. Every admin_* RPC writes its own audit row inside its transaction.
 export type AdminAction =
-  | 'toggle_admin'
-  | 'delete_user_profile'
-  | 'delete_round'
   | 'delete_shared_course'
   | 'delete_game_preset'
   | 'delete_player'

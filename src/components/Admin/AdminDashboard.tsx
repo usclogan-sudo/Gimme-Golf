@@ -6,6 +6,7 @@ import { parseDollarsToCents } from '../../lib/money'
 import { venturaCourses } from '../../data/venturaCourses'
 import { ConfirmModal } from '../ConfirmModal'
 import { logAdminAction } from '../../lib/adminAudit'
+import { SWITCH_KEYS, SWITCH_INFO, parseSwitchRows, loadSwitches, type SwitchKey, type Switches } from '../../lib/switches'
 import { UserDetailsModal } from './UserDetailsModal'
 import { RoundManagePanel } from './RoundManagePanel'
 import type { Course, Tee, Hole, GamePreset, GameType, StakesMode } from '../../types'
@@ -839,7 +840,6 @@ function UsersTab({ currentUserId }: { currentUserId: string }) {
 
   const toggleAdmin = async (targetUserId: string, currentlyAdmin: boolean) => {
     setToggling(targetUserId)
-    const target = users.find(u => u.user_id === targetUserId)
     const { error } = await supabase.rpc('admin_set_user_admin', {
       target_user_id: targetUserId,
       make_admin: !currentlyAdmin,
@@ -848,23 +848,16 @@ function UsersTab({ currentUserId }: { currentUserId: string }) {
       console.error('Toggle admin error:', error)
       alert('Failed to update admin status. Make sure the admin_set_user_admin RPC is deployed.')
     } else {
+      // Logged server side by admin_set_user_admin.
       setUsers(prev => prev.map(u =>
         u.user_id === targetUserId ? { ...u, is_admin: !currentlyAdmin } : u
       ))
-      logAdminAction({
-        action: 'toggle_admin',
-        target_type: 'user',
-        target_id: targetUserId,
-        target_label: target?.display_name ?? targetUserId,
-        metadata: { granted: !currentlyAdmin },
-      })
     }
     setToggling(null)
   }
 
   const deleteUser = async (targetUserId: string) => {
     setDeleting(true)
-    const target = users.find(u => u.user_id === targetUserId)
     // p_keep_courses: a course is a real golf course, not personal data — it is
     // copied into the shared catalogue rather than deleted with its author.
     const { error } = await supabase.rpc('admin_delete_user', {
@@ -875,13 +868,8 @@ function UsersTab({ currentUserId }: { currentUserId: string }) {
       console.error('Delete user error:', error)
       alert(`Failed to delete user: ${error.message}`)
     } else {
+      // Logged server side by admin_delete_user.
       setUsers(prev => prev.filter(u => u.user_id !== targetUserId))
-      logAdminAction({
-        action: 'delete_user_profile',
-        target_type: 'user',
-        target_id: targetUserId,
-        target_label: target?.display_name ?? targetUserId,
-      })
     }
     setDeleting(false)
     setDeleteTarget(null)
@@ -1227,19 +1215,13 @@ function RoundsTab() {
 
   const deleteRound = async (roundId: string) => {
     setDeleting(true)
-    const targetLabel = deleteTarget?.name ?? roundId
     const { error } = await supabase.rpc('admin_delete_round', { target_round_id: roundId })
     if (error) {
       console.error('Delete round error:', error)
       alert('Failed to delete round. Make sure the admin_delete_round RPC is deployed.')
     } else {
+      // Logged server side by admin_delete_round.
       setRounds(prev => prev.filter(r => r.id !== roundId))
-      logAdminAction({
-        action: 'delete_round',
-        target_type: 'round',
-        target_id: roundId,
-        target_label: targetLabel,
-      })
     }
     setDeleting(false)
     setDeleteTarget(null)
@@ -1530,9 +1512,172 @@ function SystemTab() {
   )
 }
 
+// ─── Switches Tab ────────────────────────────────────────────────────────────
+//
+// Kill switches. Every flip goes through admin_set_switch, which writes the
+// audit row in the same transaction. The table is read directly: it is public
+// read, and the same rows drive the player facing gates.
+
+function SwitchesTab() {
+  const [switches, setSwitches] = useState<Switches | null>(null)
+  const [drafts, setDrafts] = useState<Record<string, string>>({})
+  const [busy, setBusy] = useState<SwitchKey | null>(null)
+  const [error, setError] = useState<string | null>(null)
+
+  const load = async () => {
+    const { data, error } = await supabase.from('feature_switches').select('key, enabled, message, updated_at')
+    if (error) { setError(error.message); return }
+    const parsed = parseSwitchRows(data)
+    setSwitches(parsed)
+    const d: Record<string, string> = {}
+    for (const k of SWITCH_KEYS) d[k] = parsed[k].message ?? ''
+    setDrafts(d)
+  }
+
+  useEffect(() => { load() }, [])
+
+  const apply = async (key: SwitchKey, enabled: boolean) => {
+    setBusy(key)
+    setError(null)
+    const { error } = await supabase.rpc('admin_set_switch', {
+      p_key: key,
+      p_enabled: enabled,
+      p_message: drafts[key] ?? '',
+    })
+    if (error) setError(error.message)
+    await load()
+    await loadSwitches()
+    setBusy(null)
+  }
+
+  if (!switches) {
+    return error
+      ? <p className="text-red-600 text-sm">{error}</p>
+      : <div className="flex justify-center py-8"><div className="w-8 h-8 border-2 border-amber-500 border-t-transparent rounded-full animate-spin" /></div>
+  }
+
+  return (
+    <div className="space-y-3">
+      <p className="text-xs text-gray-500 dark:text-gray-400">
+        Off means players cannot do it, and the database refuses the write. Admins are never blocked. Every flip is logged.
+      </p>
+      {error && <p className="text-red-600 text-sm">{error}</p>}
+      {SWITCH_KEYS.map(key => {
+        const s = switches[key]
+        const info = SWITCH_INFO[key]
+        const isNotice = key === 'notice'
+        const on = s.enabled
+        return (
+          <div key={key} className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700 p-4 space-y-2">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className="font-semibold text-gray-900 dark:text-gray-100">{info.label}</p>
+                <p className="text-xs text-gray-500 dark:text-gray-400">{info.detail}</p>
+                {s.updatedAt && <p className="text-[11px] text-gray-400 mt-1">Changed {new Date(s.updatedAt).toLocaleString()}</p>}
+              </div>
+              <button
+                onClick={() => apply(key, !on)}
+                disabled={busy === key}
+                aria-pressed={on}
+                className={`flex-shrink-0 px-3 h-10 rounded-xl text-sm font-bold disabled:opacity-50 ${
+                  on ? 'bg-green-600 text-white' : 'bg-red-600 text-white'
+                }`}
+              >
+                {busy === key ? '…' : on ? (isNotice ? 'Showing' : 'On') : (isNotice ? 'Hidden' : 'Off')}
+              </button>
+            </div>
+            <div className="flex gap-2">
+              <input
+                value={drafts[key] ?? ''}
+                onChange={e => setDrafts(prev => ({ ...prev, [key]: e.target.value }))}
+                placeholder={isNotice ? 'Banner text' : `Shown to players when off. Blank uses: ${info.offMessage}`}
+                className="flex-1 min-w-0 px-3 h-10 rounded-xl border border-gray-200 dark:border-gray-600 dark:bg-gray-900 text-sm"
+              />
+              <button
+                onClick={() => apply(key, on)}
+                disabled={busy === key || (drafts[key] ?? '') === (s.message ?? '')}
+                className="px-3 h-10 rounded-xl text-sm font-semibold bg-gray-800 text-white dark:bg-brass dark:text-navy disabled:opacity-40"
+              >
+                Save text
+              </button>
+            </div>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+// ─── Audit Tab ───────────────────────────────────────────────────────────────
+
+interface AuditRow {
+  id: string
+  admin_user_id: string
+  action: string
+  target_type: string | null
+  target_id: string | null
+  target_label: string | null
+  metadata: Record<string, unknown> | null
+  created_at: string
+}
+
+function AuditTab() {
+  const [rows, setRows] = useState<AuditRow[] | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [open, setOpen] = useState<string | null>(null)
+
+  useEffect(() => {
+    supabase
+      .from('admin_audit_log')
+      .select('id, admin_user_id, action, target_type, target_id, target_label, metadata, created_at')
+      .order('created_at', { ascending: false })
+      .limit(200)
+      .then(({ data, error }) => {
+        if (error) { setError(error.message); return }
+        setRows((data ?? []) as AuditRow[])
+      })
+  }, [])
+
+  if (error) return <p className="text-red-600 text-sm">{error}</p>
+  if (!rows) return <div className="flex justify-center py-8"><div className="w-8 h-8 border-2 border-amber-500 border-t-transparent rounded-full animate-spin" /></div>
+  if (rows.length === 0) return <p className="text-gray-500 text-sm text-center py-8">No admin actions logged yet.</p>
+
+  return (
+    <div className="space-y-2">
+      <p className="text-xs text-gray-500 dark:text-gray-400">Last {rows.length} admin actions, newest first. Tap a row for detail.</p>
+      {rows.map(r => {
+        const meta = r.metadata && Object.keys(r.metadata).length > 0 ? r.metadata : null
+        const isOpen = open === r.id
+        return (
+          <button
+            key={r.id}
+            onClick={() => setOpen(isOpen ? null : r.id)}
+            className="w-full text-left bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700 px-4 py-3"
+          >
+            <div className="flex items-baseline justify-between gap-3">
+              <p className="font-semibold text-sm text-gray-900 dark:text-gray-100 truncate">
+                {r.action}
+                {r.target_label && <span className="font-normal text-gray-500"> · {r.target_label}</span>}
+              </p>
+              <p className="text-[11px] text-gray-400 whitespace-nowrap">{new Date(r.created_at).toLocaleString()}</p>
+            </div>
+            {isOpen && (
+              <div className="mt-2 text-xs text-gray-600 dark:text-gray-300 space-y-1">
+                <p>By {r.admin_user_id}</p>
+                {r.target_type && <p>{r.target_type} {r.target_id}</p>}
+                {meta && <pre className="whitespace-pre-wrap break-all bg-gray-50 dark:bg-gray-900 rounded-lg p-2">{JSON.stringify(meta, null, 2)}</pre>}
+              </div>
+            )}
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
 // ─── Admin Dashboard ─────────────────────────────────────────────────────────
 
-type AdminTab = 'courses' | 'presets' | 'players' | 'users' | 'rounds' | 'broadcast' | 'system'
+type AdminTab = 'courses' | 'presets' | 'players' | 'users' | 'rounds' | 'broadcast' | 'switches' | 'audit' | 'system'
 
 export function AdminDashboard({ userId, onBack, isHome, onSettings, onLogout }: Props) {
   const [tab, setTab] = useState<AdminTab>('courses')
@@ -1544,6 +1689,8 @@ export function AdminDashboard({ userId, onBack, isHome, onSettings, onLogout }:
     { key: 'users', label: 'Users' },
     { key: 'rounds', label: 'Rounds' },
     { key: 'broadcast', label: 'Broadcast' },
+    { key: 'switches', label: 'Switches' },
+    { key: 'audit', label: 'Audit' },
     { key: 'system', label: 'System' },
   ]
 
@@ -1609,6 +1756,8 @@ export function AdminDashboard({ userId, onBack, isHome, onSettings, onLogout }:
         {tab === 'users' && <UsersTab currentUserId={userId} />}
         {tab === 'rounds' && <RoundsTab />}
         {tab === 'broadcast' && <BroadcastTab />}
+        {tab === 'switches' && <SwitchesTab />}
+        {tab === 'audit' && <AuditTab />}
         {tab === 'system' && <SystemTab />}
       </div>
     </div>

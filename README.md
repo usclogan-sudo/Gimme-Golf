@@ -66,9 +66,11 @@ Every pull request and every push to `main` runs the CI workflow in
 protection on `main` requires that check, so nothing merges on a red suite.
 Vercel builds and deploys `main` on its own.
 
-Database changes live in `supabase/migrations` with idempotent guards and are
-applied through the Supabase SQL Editor. The migration history on the project
-is the record of what has been applied.
+Database changes live in `supabase/migrations` with idempotent guards. A
+migration is pushed to staging and exercised there before its pull request
+opens. On merge to `main`, the Supabase GitHub integration applies any new
+migration file to production. The migration history on each project is the
+record of what has been applied.
 
 ## Environments
 
@@ -120,6 +122,32 @@ them.
 
 **The QA harness.** `/?preview=result-card` renders the result card scenarios
 without signing in. It works on staging and local builds only.
+
+## Admin
+
+One flag, `user_profiles.is_admin`, grants the Admin dashboard. Only an
+existing admin can grant it, through the Users tab, and a trigger blocks every
+other route.
+
+**Audit.** Every admin action that changes data writes a row to
+`admin_audit_log` inside the same database transaction, so the row exists
+exactly when the change committed. The Audit tab shows the last two hundred.
+Shared course and preset deletes, which are direct table writes, still log
+from the client.
+
+**Kill switches.** The Switches tab holds five rows in `feature_switches`:
+
+| Switch | Off means | Where it is enforced |
+|---|---|---|
+| New rounds | nobody can start a round or create an event | the rounds insert policy |
+| Joining | nobody can join a round or event | triggers on both participant tables |
+| Scoring | hole scores cannot be entered or changed | a trigger on hole_scores |
+| Settle Up payments | pay links and handles are hidden | client only; the app holds no funds |
+| Notice | a banner shows on the home screen | client only |
+
+Admins are never blocked. Each switch carries an optional message that players
+see in place of the thing they cannot do. A missing row counts as on, so a
+broken read can never lock players out. Every flip is logged.
 
 ## Layout
 

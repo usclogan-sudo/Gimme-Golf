@@ -1,6 +1,7 @@
 import { Suspense, useCallback, useEffect, useRef, useState } from 'react'
 import { lazyScreen } from './lib/lazyScreen'
 import { supabase, rowToCourse, rowToRound, rowToHoleScore, fetchOrCreateProfile, arrivedViaPasswordRecovery, clearPasswordRecovery } from './lib/supabase'
+import { startSwitchSync, useSwitches, noticeText } from './lib/switches'
 import { useNotifications } from './hooks/useNotifications'
 import { flush as flushOfflineQueue, getPending as getOfflinePending } from './lib/offlineQueue'
 import { safeWrite } from './lib/safeWrite'
@@ -206,6 +207,8 @@ function Home({
   const [showAnonBlock, setShowAnonBlock] = useState(false)
   const [feedbackOpen, setFeedbackOpen] = useState(false)
   const [betaDismissed, setBetaDismissed] = useState(() => localStorage.getItem('gimme_beta_dismissed') === '1')
+  // Admin notice from the kill switch table; shows for everyone, no dismiss.
+  const notice = noticeText(useSwitches())
   const [retryKey, setRetryKey] = useState(0)
   const guardAnon = (action: () => void) => {
     if (isAnonymous) { setShowAnonBlock(true); return }
@@ -503,6 +506,12 @@ function Home({
             <div className="w-14 h-14 bg-white/15 rounded-2xl flex items-center justify-center text-3xl border border-white/20">🏌️</div>
           </div>
         </button>
+
+        {notice && (
+          <div role="status" className="bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-700 rounded-2xl px-4 py-2.5">
+            <p className="text-amber-900 dark:text-amber-100 text-sm">{notice}</p>
+          </div>
+        )}
 
         {/* Beta feedback — quiet, below the primary actions, Play tab only (§9e) */}
         {!betaDismissed && (
@@ -876,6 +885,9 @@ function Home({
 }
 
 export default function App() {
+  // Kill switches: one read at start, then Realtime and tab focus keep it fresh.
+  useEffect(() => { startSwitchSync() }, [])
+
   // The setter drops auth events that carry nothing new (same user, same token).
   // auth-js fires SIGNED_IN on every tab visibility change and TOKEN_REFRESHED
   // hourly; replacing the object on each one used to flip the profile spinner and

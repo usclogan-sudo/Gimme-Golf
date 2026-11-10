@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState, useCallback } from 'react'
 import { Sentry } from '../../lib/sentry'
+import { useSwitches, blockedMessage } from '../../lib/switches'
 import { v4 as uuidv4 } from 'uuid'
 import { supabase, rowToRound, rowToRoundPlayer, rowToHoleScore, rowToBuyIn, rowToBBBPoint, rowToJunkRecord, rowToSideBet, rowToPropBet, rowToPropWager, rowToSettlementRecord, settlementRecordToRow, rowToUserProfile, rowToEvent, notificationToRow } from '../../lib/supabase'
 import type { AppNotification } from '../../types'
@@ -231,7 +232,11 @@ function NudgeButton({ playerName, amountCents, toPlayer, fromPlayerId, roundId,
 }) {
   const [sending, setSending] = useState(false)
   const alreadyNudged = nudgedPlayerIds.has(fromPlayerId)
-  const paymentLink = toPlayer.venmoUsername
+  // settle_up switch off: the nudge still goes, without a pay link in it.
+  const payBlocked = blockedMessage(useSwitches(), 'settle_up')
+  const paymentLink = payBlocked
+    ? null
+    : toPlayer.venmoUsername
     ? `venmo.com/${toPlayer.venmoUsername.replace('@', '')}`
     : toPlayer.cashAppUsername
     ? `cash.app/$${toPlayer.cashAppUsername.replace('$', '')}`
@@ -285,6 +290,9 @@ function NudgeButton({ playerName, amountCents, toPlayer, fromPlayerId, roundId,
 }
 
 export function SettleUp({ roundId, userId, eventId, onDone, onContinue }: Props) {
+  // The settle_up kill switch hides pay links and handles. Standings, marks and
+  // confirmations still work; the app never moved the money anyway.
+  const payBlocked = blockedMessage(useSwitches(), 'settle_up')
   const [round, setRound] = useState<Round | null>(null)
   const [roundPlayers, setRoundPlayers] = useState<RoundPlayer[]>([])
   const [holeScores, setHoleScores] = useState<HoleScore[]>([])
@@ -1215,6 +1223,11 @@ export function SettleUp({ roundId, userId, eventId, onDone, onContinue }: Props
           <button onClick={() => setMutationError(null)} className="ml-3 underline">Dismiss</button>
         </div>
       )}
+      {payBlocked && !mutationError && (
+        <div role="status" className="fixed top-0 inset-x-0 z-50 bg-amber-100 text-amber-900 text-center text-sm font-semibold px-4 py-3 shadow-lg">
+          {payBlocked}
+        </div>
+      )}
       <header className={`${headerClass} text-white px-4 py-5 sticky top-0 z-10 shadow-xl`}>
         <div className="max-w-2xl mx-auto">
           <h1 className="font-display text-3xl font-semibold tracking-tight flex items-center gap-2">
@@ -1392,7 +1405,7 @@ export function SettleUp({ roundId, userId, eventId, onDone, onContinue }: Props
                           )}
                         </div>
                         <div className="flex items-center gap-2">
-                          {isTreasurer && !isPaid && p?.venmoUsername && (
+                          {isTreasurer && !isPaid && !payBlocked && p?.venmoUsername && (
                             <a href={`https://venmo.com/u/${p.venmoUsername.replace('@', '')}`} target="_blank" rel="noopener noreferrer"
                               className="text-xs text-blue-600 font-semibold underline">Venmo</a>
                           )}

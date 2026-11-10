@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../../lib/supabase'
+import { useSwitches, blockedMessage } from '../../lib/switches'
 import { reportSupabaseError, addBreadcrumb } from '../../lib/sentry'
 import { holdReload } from '../../lib/swUpdate'
 
@@ -48,6 +49,9 @@ interface Props {
 }
 
 export function JoinRound({ userId, initialCode, onJoined, onCancel }: Props) {
+  // The joining kill switch. The database refuses the participant row anyway;
+  // this says so before the code is typed.
+  const joinBlocked = blockedMessage(useSwitches(), 'joining')
   const [code, setCode] = useState(initialCode ?? '')
   const [step, setStep] = useState<'code' | 'pick' | 'joined'>(initialCode ? 'code' : 'code')
   // Hold the service worker reload while joining (see lib/swUpdate.ts).
@@ -287,7 +291,12 @@ export function JoinRound({ userId, initialCode, onJoined, onCancel }: Props) {
       </header>
 
       <main className="flex-1 px-4 py-6 max-w-2xl mx-auto w-full space-y-6">
-        {step === 'code' && !preview && (
+        {joinBlocked && (
+          <div role="status" className="bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-700 rounded-2xl px-4 py-3 text-sm text-amber-900 dark:text-amber-100">
+            {joinBlocked}
+          </div>
+        )}
+        {step === 'code' && !preview && !joinBlocked && (
           <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 p-6 space-y-4">
             <div className="text-center">
               <p className="text-4xl mb-2">🔗</p>
