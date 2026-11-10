@@ -1,4 +1,5 @@
 import * as Sentry from '@sentry/react'
+import { appEnv } from './appEnv'
 
 declare const __APP_VERSION__: string
 declare const __APP_PLATFORM__: string
@@ -12,7 +13,10 @@ export function initSentry() {
 
   Sentry.init({
     dsn,
-    environment: import.meta.env.MODE,
+    // Vite's MODE is "production" for every Vercel build, previews included,
+    // so staging errors were indistinguishable from production ones. VITE_APP_ENV
+    // is set per Vercel environment and defaults to production when unset.
+    environment: appEnv(),
     release: `gimme-${APP_PLATFORM}@${APP_VERSION}`,
     sampleRate: 1.0,
   })
