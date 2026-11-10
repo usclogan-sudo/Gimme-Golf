@@ -123,6 +123,23 @@ them.
 **The QA harness.** `/?preview=result-card` renders the result card scenarios
 without signing in. It works on staging and local builds only.
 
+## Course data
+
+Course cards come from GolfCourseAPI through the `course-search` Edge
+Function in `supabase/functions`. The vendor key is the function secret
+`GOLF_COURSE_API_KEY`; the browser never sees it and there is no client side
+key. Every vendor answer is cached in `courses_catalog` and `course_tees` for
+thirty days, so a search term or a course costs one vendor call a month.
+`GOLF_COURSE_API_TIER=pro` turns on the vendor's nearby search, which the
+free tier refuses; `GOLF_COURSE_API_DAILY_CAP` stops vendor calls for the day
+once reached. The free tier allows 35 requests a day, Pro 10,000.
+
+A round snapshots the card it was played from, so a catalog refresh never
+changes a finished card. An organizer can correct par or stroke index for
+their round from the scorecard menu, Correct this card; the correction
+rewrites that round's snapshot and is recorded in `course_overrides` for
+review. The shared catalog is never edited from the app.
+
 ## Admin
 
 One flag, `user_profiles.is_admin`, grants the Admin dashboard. Only an

@@ -15,6 +15,8 @@ export interface ScorecardHeaderMenuProps {
   onPhotoImport: () => void
   showRules: boolean
   onRules: () => void
+  showCorrectCard: boolean
+  onCorrectCard: () => void
   showSettleUp: boolean
   onSettleUp: () => void
   showEndRound: boolean
@@ -41,6 +43,7 @@ export function ScorecardHeaderMenu(props: ScorecardHeaderMenuProps) {
         {props.showSpectatorLink && item('📡 Live Spectator Link', props.onSpectatorLink, 'text-green-300')}
         {props.showPhotoImport && item('📸 Import scores from photo', props.onPhotoImport, 'text-amber-300')}
         {props.showRules && item('Rules', props.onRules, 'text-cyan-300')}
+        {props.showCorrectCard && item('Correct this card', props.onCorrectCard, 'text-cyan-300')}
         {props.showSettleUp && item('Settle Up', props.onSettleUp, 'text-yellow-300')}
         {props.showEndRound && item('End Round', props.onEndRound, 'text-yellow-300')}
       </InlineErrorBoundary>

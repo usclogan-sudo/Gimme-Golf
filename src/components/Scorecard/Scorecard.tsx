@@ -24,6 +24,7 @@ import { NumberPad } from './NumberPad'
 import { WolfHolePanel, WolfHoleOutcome, type WolfPick } from './WolfPanels'
 import { HammerPanel } from './HammerPanel'
 import { ScorecardHeaderMenu } from './ScorecardHeaderMenu'
+import { CorrectCardSheet } from './CorrectCardSheet'
 import { InlineErrorBoundary } from '../InlineErrorBoundary'
 import { BuyInBanner } from './BuyInBanner'
 import { LeaderboardTab } from './LeaderboardTab'
@@ -187,6 +188,7 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
   const [loadError, setLoadError] = useState(false)
   const [inviteToast, setInviteToast] = useState<string | null>(null)
   const [showRulesModal, setShowRulesModal] = useState(false)
+  const [showCorrectCard, setShowCorrectCard] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
   // The scoring kill switch. hole_scores refuses writes at the database while it
   // is off; the status line below says so before a tap fails.
@@ -1858,6 +1860,8 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
                 onPhotoImport={() => { setShowHeaderMenu(false); photoImport.open() }}
                 showRules={!!game}
                 onRules={() => { setShowHeaderMenu(false); setShowRulesModal(true) }}
+                showCorrectCard={!readOnly && !!snapshot && round.createdBy === userId}
+                onCorrectCard={() => { setShowHeaderMenu(false); setShowCorrectCard(true) }}
                 showSettleUp={round.status === 'complete'}
                 onSettleUp={() => { setShowHeaderMenu(false); onEndRound() }}
                 showEndRound={round.status !== 'complete' && !readOnly && (isEventRound ? isScoreMaster : !selfEntryOnly)}
@@ -3360,6 +3364,30 @@ export function Scorecard({ userId, roundId, onEndRound, onHome, readOnly: readO
             gameType={game.type}
             onClose={() => setShowRulesModal(false)}
             teamsLine={game.type === 'best_ball' ? bestBallTeamsLabel(players, (game.config as BestBallConfig).teams ?? {}) : undefined}
+          />
+        </InlineErrorBoundary>
+      )}
+
+      {showCorrectCard && snapshot && (
+        <InlineErrorBoundary label="the card correction">
+          <CorrectCardSheet
+            roundId={roundId}
+            snapshot={snapshot}
+            onClose={() => setShowCorrectCard(false)}
+            onCorrected={c => {
+              setShowCorrectCard(false)
+              // Mirror what the RPC wrote so par and stroke index change on
+              // this device now; Realtime brings the same row to everyone else.
+              setRound(prev => {
+                if (!prev?.courseSnapshot) return prev
+                const holes = prev.courseSnapshot.holes.map(h => {
+                  if (h.number === c.hole) return { ...h, par: c.par, strokeIndex: c.stroke_index }
+                  if (c.swapped_hole != null && h.number === c.swapped_hole) return { ...h, strokeIndex: c.previous_stroke_index }
+                  return h
+                })
+                return { ...prev, courseSnapshot: { ...prev.courseSnapshot, holes } }
+              })
+            }}
           />
         </InlineErrorBoundary>
       )}
