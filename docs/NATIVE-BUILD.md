@@ -6,7 +6,7 @@ reuses every screen, the offline queue, invites and settlement. Added on
 2026-11-10 (Spec 1). The July 2026 attempt on `feat/capacitor-native` was never
 merged; this shell was regenerated from current main.
 
-Bundle and package id: `com.gimme.golf`. Apple Team ID `M35SV96877`.
+Bundle and package id: `gg.gimme.app`. Apple Team ID `M35SV96877`.
 Legal entity: PELORUS HX LLC.
 
 ## What is in the repo
@@ -59,7 +59,7 @@ Developer portal:
    needs the key id, the team id and the file contents, which it turns into the
    client secret.
 3. **Authorized client ids** on the Supabase provider page: the bundle id
-   `com.gimme.golf` for the native sheet and the Services ID for the web flow,
+   `gg.gimme.app` for the native sheet and the Services ID for the web flow,
    comma separated.
 
 The iOS target already carries the Sign in with Apple entitlement. Nothing else

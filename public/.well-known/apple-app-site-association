@@ -1,10 +1,10 @@
 {
-  "_note": "Apple Team ID M35SV96877, bundle com.gimme.golf (PELORUS HX LLC). Apple verifies this at https://<domain>/.well-known/apple-app-site-association — must be Content-Type application/json (set in vercel.json) and reachable WITHOUT redirect on whatever domain the Associated Domains entitlement claims (applinks:...). See https://developer.apple.com/documentation/xcode/supporting-associated-domains.",
+  "_note": "Apple Team ID M35SV96877, bundle gg.gimme.app (PELORUS HX LLC). Apple verifies this at https://<domain>/.well-known/apple-app-site-association — must be Content-Type application/json (set in vercel.json) and reachable WITHOUT redirect on whatever domain the Associated Domains entitlement claims (applinks:...). See https://developer.apple.com/documentation/xcode/supporting-associated-domains.",
   "applinks": {
     "apps": [],
     "details": [
       {
-        "appIDs": ["M35SV96877.com.gimme.golf"],
+        "appIDs": ["M35SV96877.gg.gimme.app"],
         "components": [
           { "/": "/", "comment": "Splash / home" },
           { "/": "/*", "?": { "join": "?*" }, "comment": "Invite-code deep link: gimme.gg/?join=ABC123" },
@@ -14,6 +14,6 @@
     ]
   },
   "webcredentials": {
-    "apps": ["M35SV96877.com.gimme.golf"]
+    "apps": ["M35SV96877.gg.gimme.app"]
   }
 }

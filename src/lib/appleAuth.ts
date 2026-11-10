@@ -7,13 +7,13 @@
 // and the web, Supabase's hosted OAuth flow handles the round trip.
 //
 // Supabase side: the Apple provider is enabled with the bundle id
-// com.gimme.golf and the web Services ID both listed as authorized client ids.
+// gg.gimme.app and the web Services ID both listed as authorized client ids.
 
 import { Capacitor } from '@capacitor/core'
 import { SignInWithApple } from '@capacitor-community/apple-sign-in'
 import { supabase } from './supabase'
 
-export const APPLE_CLIENT_ID = 'com.gimme.golf'
+export const APPLE_CLIENT_ID = 'gg.gimme.app'
 export const APPLE_REDIRECT = 'https://www.gimme.gg/'
 
 const NONCE_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789'

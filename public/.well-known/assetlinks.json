@@ -4,7 +4,7 @@
     "relation": ["delegate_permission/common.handle_all_urls"],
     "target": {
       "namespace": "android_app",
-      "package_name": "com.gimme.golf",
+      "package_name": "gg.gimme.app",
       "sha256_cert_fingerprints": [
         "PLACEHOLDER:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00"
       ]

@@ -203,4 +203,4 @@ once we decide device frames.
 - [ ] Android keystore SHA-256 → finish `.well-known/assetlinks.json`
 - [ ] Native branch merged up to `main` (account-deletion + points fix + privacy links)
 - [ ] Set Play **developer name** to a brand (currently "usclogan" → Gimme / PELORUS HX)
-- [ ] **Register package name `com.gimme.golf`** — Android Developer Verification (required by Sept 2026; deferred 2026-07-09)
+- [ ] **Register package name `gg.gimme.app`** — Android Developer Verification (required by Sept 2026; deferred 2026-07-09)

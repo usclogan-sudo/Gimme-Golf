@@ -1,7 +1,7 @@
 # Gimme — App Store & Google Play Launch Playbook
 
 The step-by-step to get the (already-built) Capacitor app **live on both stores**.
-Assumes the native shell exists (`ios/`, `android/`, bundle id **`com.gimme.golf`**),
+Assumes the native shell exists (`ios/`, `android/`, bundle id **`gg.gimme.app`**),
 the web app is live at **gimme.gg**, and push/deep-link plumbing is built but not yet
 configured. Companion docs: `NATIVE-BUILD.md` (build/signing mechanics), `APP-STORE-PLAN.md`
 (strategy/costs), `NATIVE-APP-REQUIREMENTS.md` (deep detail).
@@ -88,7 +88,7 @@ iOS review may still take one cycle; Android is no longer the long pole.
 
 1. **Merge the native branch** — `feat/capacitor-native` (PR #7) into `main`. 🤖 (on your OK)
 2. **iOS signing (Xcode)** — `npx cap open ios` → Signing & Capabilities → select your Team,
-   bundle id `com.gimme.golf`; add **Associated Domains** `applinks:gimme.gg`, **Push
+   bundle id `gg.gimme.app`; add **Associated Domains** `applinks:gimme.gg`, **Push
    Notifications**, **Background Modes → Remote notifications**. 🧑 (needs your Apple Team;
    I'll sit alongside / document exact clicks).
 3. **Android release keystore** — generate signing key (`keytool`), add `signingConfig` in
