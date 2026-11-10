@@ -3,5 +3,5 @@
     <string name="app_name">Gimme</string>
     <string name="title_activity_main">Gimme</string>
     <string name="package_name">gg.gimme.app</string>
-    <string name="custom_url_scheme">gg.gimme.app</string>
+    <string name="custom_url_scheme">gimme</string>
 </resources>
